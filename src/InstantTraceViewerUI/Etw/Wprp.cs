@@ -88,7 +88,7 @@ namespace InstantTraceViewerUI.Etw
 
         public IReadOnlyDictionary<EventCollector, IReadOnlyList<EventProvider>> EventProviders { get; private set; }
 
-        public static WprpProfile? Parse(XElement profileEl, IReadOnlyList<EventCollector> globalEventCollectors, Dictionary<string, EventProvider> globalEventProviders)
+        public static WprpProfile Parse(XElement profileEl, IReadOnlyList<EventCollector> globalEventCollectors, Dictionary<string, EventProvider> globalEventProviders)
         {
             WprpProfile profile = new WprpProfile();
             profile.Id = (string)profileEl.Attribute("Id");
@@ -97,7 +97,7 @@ namespace InstantTraceViewerUI.Etw
             profile.DetailLevel = Enum.Parse<DetailLevel>((string)profileEl.Attribute("DetailLevel"));
             profile.LoggingMode = Enum.Parse<LoggingMode>((string)profileEl.Attribute("LoggingMode"));
 
-            string? baseProfile = (string?)profileEl.Attribute("Base");
+            string baseProfile = (string)profileEl.Attribute("Base");
             if (!string.IsNullOrEmpty(baseProfile))
             {
                 Debug.WriteLine($"Skipping profile '{profile.Id}' with base profile '{baseProfile}'. This is not supported yet.");
@@ -166,7 +166,7 @@ namespace InstantTraceViewerUI.Etw
             var profileEls = profilesNode.Elements("Profile");
             foreach (var profileEl in profileEls)
             {
-                WprpProfile? profile = WprpProfile.Parse(profileEl, _eventCollectors, globalEventProviders);
+                WprpProfile profile = WprpProfile.Parse(profileEl, _eventCollectors, globalEventProviders);
                 if (profile != null) {
                     _profiles.Add(profile);
                 }

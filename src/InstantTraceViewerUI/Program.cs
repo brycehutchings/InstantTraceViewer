@@ -3,13 +3,70 @@ using Veldrid.StartupUtilities;
 using ImGuiNET;
 using System.Diagnostics;
 using Veldrid.Sdl2;
+using System.Numerics;
 
 namespace InstantTraceViewerUI
 {
     internal class Program
     {
+        public static void DrawTraceSourceWindow(ITraceSource traceSource)
+        {
+            if (ImGui.Begin("Window"))
+            {
+                if (ImGui.BeginTable("DebugPanelLogger",
+                      7 /* columns */,
+                      ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
+                          ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
+                          ImGuiTableFlags.Hideable))
+                {
+                    ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
+                    ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 110.0f);
+                    ImGui.TableSetupColumn("Pid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
+                    ImGui.TableSetupColumn("Tid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
+                    ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
+                    ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 120.0f);
+                    ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 120.0f);
+                    ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
+                    ImGui.TableHeadersRow();
+
+                    ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 1)); // Tighten spacing
+
+                    traceSource.ReadUnderLock(traceRecords =>
+                    {
+                        foreach (var record in traceRecords)
+                        {
+                            ImGui.TableNextRow();
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.Timestamp.ToString("HH:mm:ss.fff"));
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.ProcessId.ToString());
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.ThreadId.ToString());
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.Level.ToString());
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.ProviderName);
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.Name);
+                            ImGui.TableNextColumn();
+                            ImGui.Text(record.Message);
+                        }
+                    });
+
+                    ImGui.PopStyleVar(); // ItemSpacing
+
+                    ImGui.EndTable();
+                }
+            }
+
+            ImGui.End();
+        }
+
         public static int Main(string[] args)
         {
+            Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
+            var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0]);
+
             Sdl2Window window;
             GraphicsDevice graphicsDevice;
             VeldridStartup.CreateWindowAndGraphicsDevice(
@@ -46,19 +103,10 @@ namespace InstantTraceViewerUI
                     {
                         ImGui.Text("Hello World");
                     }
-#else
+#endif
                     uint dockId = ImGui.DockSpaceOverViewport();
 
-                    if (ImGui.Begin("Window"))
-                    {
-                        ImGui.Text("Hello World");
-                    }
-#endif
-
-                    if (ImGui.Begin("Window2"))
-                    {
-                        ImGui.Text("Hello World2");
-                    }
+                    DrawTraceSourceWindow(etwTraceSource);
 
                     commandLine.Begin();
                     commandLine.SetFramebuffer(graphicsDevice.MainSwapchain.Framebuffer);
