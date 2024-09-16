@@ -21,6 +21,8 @@ namespace InstantTraceViewerUI
     /// </summary>
     public class ImGuiController : IDisposable
     {
+        private const int FontSize = 16;
+
         private GraphicsDevice _gd;
         private readonly Sdl2Window _window;
         private bool _frameBegun;
@@ -150,7 +152,18 @@ namespace InstantTraceViewerUI
             ImGui.GetIO().BackendFlags |= ImGuiBackendFlags.RendererHasVtxOffset;
 
             var fonts = ImGui.GetIO().Fonts;
+
+#if USE_PIXEL_PERFECT_FONT
+            // ImGui also embeds a 13 pixel high pixel-perfect font (ProggyClean). It is sharper but on the small side.
             ImGui.GetIO().Fonts.AddFontDefault();
+#else
+            // byte[] ttfFontBytes = GetEmbeddedResourceBytes("DroidSans.ttf");
+            byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
+            fixed (byte* ttfFontBytesPtr = ttfFontBytes)
+            {
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((IntPtr)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
+            }
+#endif
 
             CreateDeviceResources(gd, outputDescription);
 
@@ -531,10 +544,6 @@ namespace InstantTraceViewerUI
 
             _frameBegun = true;
             ImGui.NewFrame();
-
-            ImGui.Text($"Main viewport Position: {ImGui.GetPlatformIO().Viewports[0].Pos}");
-            ImGui.Text($"Main viewport Size: {ImGui.GetPlatformIO().Viewports[0].Size}");
-            ImGui.Text($"MoouseHoveredViewport: {ImGui.GetIO().MouseHoveredViewport}");
         }
 
         private unsafe void UpdateMonitors()

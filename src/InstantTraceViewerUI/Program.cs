@@ -36,11 +36,28 @@ namespace InstantTraceViewerUI
                     frameTiming.Restart();
                     controller.Update(deltaSeconds, input);
 
+#if PRIMARY_DOCKED_WINDOW
+                    uint dockId = ImGui.DockSpaceOverViewport(0, new ImGuiViewportPtr(nint.Zero), ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.AutoHideTabBar);
+
+                    // Force the next window to be docked.
+                    ImGui.SetNextWindowDockID(dockId);
+                    ImGuiWindowFlags flags = ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings;
+                    if (ImGui.Begin("Window", flags))
+                    {
+                        ImGui.Text("Hello World");
+                    }
+#else
+                    uint dockId = ImGui.DockSpaceOverViewport();
+
                     if (ImGui.Begin("Window"))
                     {
                         ImGui.Text("Hello World");
-                        ImGui.Text("lllllllllll");
-                        ImGui.Text("WWWWWWWWWWW");
+                    }
+#endif
+
+                    if (ImGui.Begin("Window2"))
+                    {
+                        ImGui.Text("Hello World2");
                     }
 
                     commandLine.Begin();
