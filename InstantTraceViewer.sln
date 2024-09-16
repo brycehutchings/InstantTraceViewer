@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35303.130
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InstantTraceViewerUI", "src\InstantTraceViewerUI\InstantTraceViewerUI.csproj", "{D1A11562-46EF-450F-886E-C52ED17B4ACB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|ARM64 = Debug|ARM64
+		Debug|x64 = Debug|x64
+		Release|ARM64 = Release|ARM64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Debug|ARM64.Build.0 = Debug|ARM64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Debug|x64.ActiveCfg = Debug|x64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Debug|x64.Build.0 = Debug|x64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|ARM64.ActiveCfg = Release|ARM64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|ARM64.Build.0 = Release|ARM64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|x64.ActiveCfg = Release|x64
+		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {453D1701-DF5F-4879-8661-B5652FBB9813}
+	EndGlobalSection
+EndGlobal

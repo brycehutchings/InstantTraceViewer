@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22621.0</TargetPlatformMinVersion>
+    <RootNamespace>InstantTraceViewerUI</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <StartupObject>InstantTraceViewerUI.Program</StartupObject>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Assets\HLSL\imgui-frag.hlsl" />
+    <None Remove="Assets\HLSL\imgui-frag.hlsl.bytes" />
+    <None Remove="Assets\HLSL\imgui-vertex.hlsl" />
+    <None Remove="Assets\HLSL\imgui-vertex.hlsl.bytes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ImGui.NET" Version="1.91.0.1" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
+    <PackageReference Include="Veldrid" Version="4.9.0" />
+    <PackageReference Include="Veldrid.SDL2" Version="4.9.0" />
+    <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\HLSL\imgui-frag.hlsl">
+      <LogicalName>imgui-frag.hlsl</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\HLSL\imgui-frag.hlsl.bytes">
+      <LogicalName>imgui-frag.hlsl.bytes</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\HLSL\imgui-vertex.hlsl">
+      <LogicalName>imgui-vertex.hlsl</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\HLSL\imgui-vertex.hlsl.bytes">
+      <LogicalName>imgui-vertex.hlsl.bytes</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>
