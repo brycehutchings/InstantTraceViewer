@@ -12,10 +12,9 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="Assets\HLSL\imgui-frag.hlsl" />
-    <None Remove="Assets\HLSL\imgui-frag.hlsl.bytes" />
-    <None Remove="Assets\HLSL\imgui-vertex.hlsl" />
-    <None Remove="Assets\HLSL\imgui-vertex.hlsl.bytes" />
+    <None Remove="Assets\DroidSans-Bold.ttf" />
+    <None Remove="Assets\DroidSans.ttf" />
+    <None Remove="Assets\Fonts\CascadiaMono.ttf" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,6 +27,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\CascadiaMono.ttf">
+      <LogicalName>CascadiaMono.ttf</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\Fonts\DroidSans.ttf">
+      <LogicalName>DroidSans.ttf</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Assets\HLSL\imgui-frag.hlsl">
       <LogicalName>imgui-frag.hlsl</LogicalName>
     </EmbeddedResource>
