@@ -5,11 +5,11 @@ struct PS_INPUT
     float2 uv  : TEXCOORD0;
 };
 
-Texture2D FontTexture : register(t0);
-sampler FontSampler : register(s0);
+Texture2D Texture : register(t0);
+sampler Sampler : register(s0);
 
-float4 FS(PS_INPUT input) : SV_Target
+float4 main(PS_INPUT input) : SV_Target
 {
-    float4 out_col = input.col * FontTexture.Sample(FontSampler, input.uv);
+    float4 out_col = input.col * Texture.Sample(Sampler, input.uv);
     return out_col;
 }

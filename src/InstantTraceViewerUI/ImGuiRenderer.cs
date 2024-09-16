@@ -19,6 +19,9 @@ namespace InstantTraceViewerUI
     /// </summary>
     public class ImGuiRenderer : IDisposable
     {
+        // 16 is a little too small and may hurt readability. 18 matches default size in Windows Terminal.
+        private const int FontSize = 18;
+
         private GraphicsDevice _gd;
         private readonly Assembly _assembly;
 
@@ -57,7 +60,7 @@ namespace InstantTraceViewerUI
         /// <param name="outputDescription">The output format.</param>
         /// <param name="width">The initial width of the rendering target. Can be resized.</param>
         /// <param name="height">The initial height of the rendering target. Can be resized.</param>
-        public ImGuiRenderer(GraphicsDevice gd, OutputDescription outputDescription, int width, int height)
+        unsafe public ImGuiRenderer(GraphicsDevice gd, OutputDescription outputDescription, int width, int height)
         {
             _gd = gd;
             _assembly = typeof(ImGuiRenderer).GetTypeInfo().Assembly;
@@ -67,7 +70,17 @@ namespace InstantTraceViewerUI
             IntPtr context = ImGui.CreateContext();
             ImGui.SetCurrentContext(context);
 
+#if USE_PIXEL_PERFECT_FONT
+            // ImGui also embeds a 13 pixel high pixel-perfect font (ProggyClean). It is sharper but on the small side.
             ImGui.GetIO().Fonts.AddFontDefault();
+#else
+            // var ttfFontBytes = GetEmbeddedResourceBytes("DroidSans.ttf");
+            var ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
+            fixed (byte* ttfFontBytesPtr = ttfFontBytes)
+            {
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((IntPtr)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
+            }
+#endif
             ImGui.GetIO().Fonts.Flags |= ImFontAtlasFlags.NoBakedLines;
 
             CreateDeviceResources(gd, outputDescription);
@@ -103,9 +116,9 @@ namespace InstantTraceViewerUI
 
             byte[] vertexShaderBytes = LoadEmbeddedShaderCode(gd.ResourceFactory, "imgui-vertex", ShaderStages.Vertex);
             byte[] fragmentShaderBytes = LoadEmbeddedShaderCode(gd.ResourceFactory, "imgui-frag", ShaderStages.Fragment);
-            _vertexShader = factory.CreateShader(new ShaderDescription(ShaderStages.Vertex, vertexShaderBytes, _gd.BackendType == GraphicsBackend.Vulkan ? "main" : "VS"));
+            _vertexShader = factory.CreateShader(new ShaderDescription(ShaderStages.Vertex, vertexShaderBytes, "main"));
             _vertexShader.Name = "ImGui.NET Vertex Shader";
-            _fragmentShader = factory.CreateShader(new ShaderDescription(ShaderStages.Fragment, fragmentShaderBytes, _gd.BackendType == GraphicsBackend.Vulkan ? "main" : "FS"));
+            _fragmentShader = factory.CreateShader(new ShaderDescription(ShaderStages.Fragment, fragmentShaderBytes, "main"));
             _fragmentShader.Name = "ImGui.NET Fragment Shader";
 
             VertexLayoutDescription[] vertexLayouts = new VertexLayoutDescription[]
