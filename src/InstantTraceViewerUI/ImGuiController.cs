@@ -40,6 +40,10 @@ namespace InstantTraceViewerUI
         private ResourceSet _fontTextureResourceSet;
 
         private IntPtr _fontAtlasID = (IntPtr)1;
+        private bool _controlDown;
+        private bool _shiftDown;
+        private bool _altDown;
+        private bool _winKeyDown;
 
         private int _windowWidth;
         private int _windowHeight;
@@ -680,6 +684,35 @@ namespace InstantTraceViewerUI
                 {
                     io.AddKeyEvent(imguikey, keyEvent.Down);
                 }
+                if (keyEvent.Key == Key.ControlLeft)
+                {
+                    _controlDown = keyEvent.Down;
+                }
+                if (keyEvent.Key == Key.ShiftLeft)
+                {
+                    _shiftDown = keyEvent.Down;
+                }
+                if (keyEvent.Key == Key.AltLeft)
+                {
+                    _altDown = keyEvent.Down;
+                }
+                if (keyEvent.Key == Key.WinLeft)
+                {
+                    _winKeyDown = keyEvent.Down;
+                }
+            }
+
+            io.KeyCtrl = _controlDown;
+            io.KeyAlt = _altDown;
+            io.KeyShift = _shiftDown;
+            io.KeySuper = _winKeyDown;
+
+            ImVector<ImGuiViewportPtr> viewports = ImGui.GetPlatformIO().Viewports;
+            for (int i = 1; i < viewports.Size; i++)
+            {
+                ImGuiViewportPtr v = viewports[i];
+                VeldridImGuiWindow window = ((VeldridImGuiWindow)GCHandle.FromIntPtr(v.PlatformUserData).Target);
+                window.Update();
             }
         }
 
