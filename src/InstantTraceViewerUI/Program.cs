@@ -9,7 +9,7 @@ namespace InstantTraceViewerUI
 {
     internal class Program
     {
-        public static void DrawTraceSourceWindow(ITraceSource traceSource)
+        public static unsafe void DrawTraceSourceWindow(ITraceSource traceSource)
         {
             if (ImGui.Begin("Window"))
             {
@@ -31,26 +31,36 @@ namespace InstantTraceViewerUI
 
                     ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 1)); // Tighten spacing
 
+                    var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
                     traceSource.ReadUnderLock(traceRecords =>
                     {
-                        foreach (var record in traceRecords)
+                        clipper.Begin(traceRecords.Count);
+                        while (clipper.Step())
                         {
-                            ImGui.TableNextRow();
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.Timestamp.ToString("HH:mm:ss.fff"));
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.ProcessId.ToString());
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.ThreadId.ToString());
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.Level.ToString());
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.ProviderName);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.Name);
-                            ImGui.TableNextColumn();
-                            ImGui.Text(record.Message);
+                            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                            {
+                                ImGui.TableNextRow();
+                                ImGui.TableNextColumn();
+                                ImGui.Text(traceRecords[i].Timestamp.ToString("HH:mm:ss.fff"));
+                                ImGui.TableNextColumn();
+
+                                // TODO: Use GetProcessName() on the traceSource.
+                                ImGui.Text(traceRecords[i].ProcessId.ToString());
+                                ImGui.TableNextColumn();
+
+                                // TODO: Use GetThreadName() on the traceSource.
+                                ImGui.Text(traceRecords[i].ThreadId.ToString());
+                                ImGui.TableNextColumn();
+                                ImGui.Text(traceRecords[i].Level.ToString());
+                                ImGui.TableNextColumn();
+                                ImGui.Text(traceRecords[i].ProviderName);
+                                ImGui.TableNextColumn();
+                                ImGui.Text(traceRecords[i].Name);
+                                ImGui.TableNextColumn();
+                                ImGui.Text(traceRecords[i].Message);
+                            }
                         }
+                        clipper.End();
                     });
 
                     ImGui.PopStyleVar(); // ItemSpacing
@@ -64,8 +74,9 @@ namespace InstantTraceViewerUI
 
         public static int Main(string[] args)
         {
-            Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
-            var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0]);
+            // Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
+            Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\tools\\Tracing\\Configs\\WPR\\BuildTrace.wprp");
+            using var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0]);
 
             Sdl2Window window;
             GraphicsDevice graphicsDevice;

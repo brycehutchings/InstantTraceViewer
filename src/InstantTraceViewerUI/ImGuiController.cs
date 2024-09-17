@@ -540,6 +540,15 @@ namespace InstantTraceViewerUI
 
             SetPerFrameImGuiData(deltaSeconds);
             UpdateImGuiInput(snapshot);
+
+            ImVector<ImGuiViewportPtr> viewports = ImGui.GetPlatformIO().Viewports;
+            for (int i = 1; i < viewports.Size; i++)
+            {
+                ImGuiViewportPtr v = viewports[i];
+                VeldridImGuiWindow window = ((VeldridImGuiWindow)GCHandle.FromIntPtr(v.PlatformUserData).Target);
+                window.Update();
+            }
+
             UpdateMonitors();
 
             _frameBegun = true;
@@ -715,14 +724,6 @@ namespace InstantTraceViewerUI
             io.KeyAlt = _altDown;
             io.KeyShift = _shiftDown;
             io.KeySuper = _winKeyDown;
-
-            ImVector<ImGuiViewportPtr> viewports = ImGui.GetPlatformIO().Viewports;
-            for (int i = 1; i < viewports.Size; i++)
-            {
-                ImGuiViewportPtr v = viewports[i];
-                VeldridImGuiWindow window = ((VeldridImGuiWindow)GCHandle.FromIntPtr(v.PlatformUserData).Target);
-                window.Update();
-            }
         }
 
         private unsafe void RenderImDrawData(ImDrawDataPtr draw_data, GraphicsDevice gd, CommandList cl)

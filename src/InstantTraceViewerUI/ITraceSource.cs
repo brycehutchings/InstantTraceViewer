@@ -9,7 +9,7 @@ namespace InstantTraceViewerUI
         Critical,
         Error,
         Warning,
-        Information,
+        Info,
         Verbose,
     }
 
@@ -42,6 +42,10 @@ namespace InstantTraceViewerUI
     internal interface ITraceSource : IDisposable
     {
         string GetOpCodeName(byte opCode);
+
+        string GetProcessName(int processId);
+
+        string GetThreadName(int threadId);
 
         void ReadUnderLock(Action<IReadOnlyList<TraceRecord>> action);
     }

@@ -22,21 +22,56 @@ namespace InstantTraceViewerUI.Etw
     }
 
     // https://learn.microsoft.com/en-us/windows-hardware/test/wpt/1-collector-definitions
-    internal class EventCollector
+    internal class CollectorBase
     {
         public string Id { get; private set; }
         public string Name { get; private set; }
         public uint? BufferSize { get; private set; }
         public uint? Buffers { get; private set; }
 
+        protected void ParseXml(XElement collectorEl)
+        {
+            Id = (string)collectorEl.Attribute("Id");
+            Name = (string)collectorEl.Attribute("Name");
+            BufferSize = (uint?)collectorEl.Element("BufferSize")?.Attribute("Value");
+            Buffers = (uint?)collectorEl.Element("Buffers")?.Attribute("Value");
+        }
+    }
+
+    internal class SystemCollector : CollectorBase
+    {
+        public static SystemCollector Parse(XElement eventCollectorEl)
+        {
+            var collector = new SystemCollector();
+            collector.ParseXml(eventCollectorEl);
+            return collector;
+        }
+    }
+
+    // https://learn.microsoft.com/en-us/windows-hardware/test/wpt/1-collector-definitions
+    internal class EventCollector : CollectorBase
+    {
         public static EventCollector Parse(XElement eventCollectorEl)
         {
-            return new EventCollector
+            var collector = new EventCollector();
+            collector.ParseXml(eventCollectorEl);
+            return collector;
+        }
+    }
+
+    internal class SystemProvider
+    {
+        public string Id { get; private set; }
+        public List<string> Keywords { get; private set; }
+
+        public static SystemProvider Parse(XElement systemProviderEl)
+        {
+            return new SystemProvider
             {
-                Id = (string)eventCollectorEl.Attribute("Id"),
-                Name = (string)eventCollectorEl.Attribute("Name"),
-                BufferSize = (uint?)eventCollectorEl.Element("BufferSize")?.Attribute("Value"),
-                Buffers = (uint?)eventCollectorEl.Element("Buffers")?.Attribute("Value")
+                Id = (string)systemProviderEl.Attribute("Id"),
+                Keywords = systemProviderEl.Elements("Keywords")
+                    .SelectMany(k => k.Elements("Keyword")
+                        .Select(k => (string)k.Attribute("Value"))).ToList()
             };
         }
     }
@@ -60,7 +95,6 @@ namespace InstantTraceViewerUI.Etw
                         return value.StartsWith("0x") ? Convert.ToUInt64(value, 16) : Convert.ToUInt64(value);
                     })).ToList();
 
-            // TODO: Should this be flattened?
             ulong? keywords = keywordCollection.Any() ? keywordCollection.Aggregate(0ul, (acc, k) => acc | k) : null;
 
             // TODO: CaptureStateOnSave, CaptureStateOnStart, EventFilters, EventKey, NonPagedMemory
@@ -86,9 +120,18 @@ namespace InstantTraceViewerUI.Etw
 
         public string Description { get; private set; }
 
+        // There can only be zero or one system collector with one system provider.
+        public SystemCollector SystemCollector { get; private set; }
+        public SystemProvider SystemProvider { get; private set; }
+
         public IReadOnlyDictionary<EventCollector, IReadOnlyList<EventProvider>> EventProviders { get; private set; }
 
-        public static WprpProfile Parse(XElement profileEl, IReadOnlyList<EventCollector> globalEventCollectors, Dictionary<string, EventProvider> globalEventProviders)
+        public static WprpProfile Parse(
+            XElement profileEl,
+            IReadOnlyList<SystemCollector> globalSystemCollectors,
+            IReadOnlyList<EventCollector> globalEventCollectors,
+            Dictionary<string, SystemProvider> globalSystemProviders,
+            Dictionary<string, EventProvider> globalEventProviders)
         {
             WprpProfile profile = new WprpProfile();
             profile.Id = (string)profileEl.Attribute("Id");
@@ -107,11 +150,13 @@ namespace InstantTraceViewerUI.Etw
             var collectorsNode = profileEl.Element("Collectors");
             // TODO: 'Operation' attribute for Add/Remove/Union
 
+            Dictionary<SystemCollector, IReadOnlyList<SystemProvider>> systemProviders = new();
             var systemCollectorNode = collectorsNode.Element("SystemCollectorId");
             if (systemCollectorNode != null)
             {
-                Debug.WriteLine("Skipping SystemCollectorId. This is not supported yet.");
-                // TODO
+                string systemCollectorId = (string)systemCollectorNode.Attribute("Value");
+                profile.SystemCollector = globalSystemCollectors.Single(c => c.Id == systemCollectorId);
+                profile.SystemProvider = globalSystemProviders[(string)systemCollectorNode.Element("SystemProviderId").Attribute("Value")];
             }
 
             Dictionary<EventCollector, IReadOnlyList<EventProvider>> eventProviders = new();
@@ -142,6 +187,7 @@ namespace InstantTraceViewerUI.Etw
 
     internal class Wprp
     {
+        private List<SystemCollector> _systemCollectors = new();
         private List<EventCollector> _eventCollectors = new();
         private List<WprpProfile> _profiles = new();
 
@@ -155,7 +201,14 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
+            _systemCollectors = profilesNode.Elements("SystemCollector").Select(SystemCollector.Parse).ToList();
             _eventCollectors = profilesNode.Elements("EventCollector").Select(EventCollector.Parse).ToList();
+
+            Dictionary<string, SystemProvider> globalSystemProviders =
+                    profilesNode
+                        .Elements("SystemProvider")
+                        .Select(SystemProvider.Parse)
+                        .ToDictionary(ep => ep.Id);
 
             Dictionary<string, EventProvider> globalEventProviders =
                     profilesNode
@@ -166,8 +219,9 @@ namespace InstantTraceViewerUI.Etw
             var profileEls = profilesNode.Elements("Profile");
             foreach (var profileEl in profileEls)
             {
-                WprpProfile profile = WprpProfile.Parse(profileEl, _eventCollectors, globalEventProviders);
-                if (profile != null) {
+                WprpProfile profile = WprpProfile.Parse(profileEl, _systemCollectors, _eventCollectors, globalSystemProviders, globalEventProviders);
+                if (profile != null)
+                {
                     _profiles.Add(profile);
                 }
             }
