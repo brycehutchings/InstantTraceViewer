@@ -14,7 +14,7 @@ namespace InstantTraceViewerUI
             if (ImGui.Begin("Window"))
             {
                 if (ImGui.BeginTable("DebugPanelLogger",
-                      7 /* columns */,
+                      8 /* columns */,
                       ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
                           ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
                           ImGuiTableFlags.Hideable))
@@ -24,12 +24,13 @@ namespace InstantTraceViewerUI
                     ImGui.TableSetupColumn("Pid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
                     ImGui.TableSetupColumn("Tid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
                     ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
+                    ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                     ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 120.0f);
                     ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 120.0f);
                     ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                     ImGui.TableHeadersRow();
 
-                    ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 1)); // Tighten spacing
+                    ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 0)); // Tighten spacing
 
                     var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
                     traceSource.ReadUnderLock(traceRecords =>
@@ -41,17 +42,15 @@ namespace InstantTraceViewerUI
                             {
                                 ImGui.TableNextRow();
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceRecords[i].Timestamp.ToString("HH:mm:ss.fff"));
+                                ImGui.Text(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"));
                                 ImGui.TableNextColumn();
-
-                                // TODO: Use GetProcessName() on the traceSource.
-                                ImGui.Text(traceRecords[i].ProcessId.ToString());
+                                ImGui.Text(traceSource.GetProcessName(traceRecords[i].ProcessId));
                                 ImGui.TableNextColumn();
-
-                                // TODO: Use GetThreadName() on the traceSource.
-                                ImGui.Text(traceRecords[i].ThreadId.ToString());
+                                ImGui.Text(traceSource.GetThreadName(traceRecords[i].ThreadId));
                                 ImGui.TableNextColumn();
                                 ImGui.Text(traceRecords[i].Level.ToString());
+                                ImGui.TableNextColumn();
+                                ImGui.Text(traceSource.GetOpCodeName(traceRecords[i].OpCode));
                                 ImGui.TableNextColumn();
                                 ImGui.Text(traceRecords[i].ProviderName);
                                 ImGui.TableNextColumn();

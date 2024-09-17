@@ -112,7 +112,12 @@ namespace InstantTraceViewerUI.Etw
                 newRecord.ActivityId = Guid.Empty;
                 newRecord.RelatedActivityId = Guid.Empty;
 
-                newRecord.Message = $"ProcessId: {data.ProcessID} ThreadId: {data.ThreadID} ThreadStartAddr: {data.StartAddr}";
+                newRecord.Message = $"ParentPid:{data.ParentProcessID} ParentTid:{data.ParentThreadID}";
+                if (!string.IsNullOrEmpty(data.ThreadName))
+                {
+                    newRecord.Message += $" ThreadName:{data.ThreadName}";
+                }
+
                 _pendingTableRecordsLock.EnterWriteLock();
                 try
                 {
@@ -123,6 +128,7 @@ namespace InstantTraceViewerUI.Etw
                     _pendingTableRecordsLock.ExitWriteLock();
                 }
             };
+
             _etwSession.Source.Kernel.ProcessStart += delegate (ProcessTraceData data)
             {
                 var newRecord = new TraceRecord();
@@ -132,12 +138,8 @@ namespace InstantTraceViewerUI.Etw
                 newRecord.Name = "ProcessStart";
                 newRecord.Level = TraceLevel.Info;
                 newRecord.ProviderName = "Kernel";
-                newRecord.OpCode = 0;
-                newRecord.Keywords = 0;
-                newRecord.ActivityId = Guid.Empty;
-                newRecord.RelatedActivityId = Guid.Empty;
 
-                newRecord.Message = $"ProcessId: {data.ProcessID} ThreadId: {data.ThreadID} ImageFileName: {data.ImageFileName}";
+                newRecord.Message = $"ParentPid:{data.ParentID} CommandLine:{data.CommandLine}";
                 _pendingTableRecordsLock.EnterWriteLock();
                 try
                 {
@@ -174,7 +176,19 @@ namespace InstantTraceViewerUI.Etw
                     StringBuilder sb = new();
                     for (int i = 0; i < data.PayloadNames.Length; i++)
                     {
-                        if (i > 0)
+                        // Extract process and thread IDs from events without them (e.g.
+                        if (newRecord.ProcessId == -1 && string.Equals(data.PayloadNames[i], "ProcessID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int pid)
+                        {
+                            newRecord.ProcessId = pid;
+                            continue;
+                        }
+                        else if (newRecord.ThreadId == -1 && string.Equals(data.PayloadNames[i], "ThreadID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int tid)
+                        {
+                            newRecord.ThreadId = tid;
+                            continue;
+                        }
+
+                        if (sb.Length > 0)
                         {
                             sb.Append(' ');
                         }
@@ -287,19 +301,19 @@ namespace InstantTraceViewerUI.Etw
 
         public string GetOpCodeName(byte opCode)
         {
-            return ((TraceEventOpcode)opCode).ToString();
+            return opCode == 0 ? string.Empty : ((TraceEventOpcode)opCode).ToString();
         }
 
         public string GetProcessName(int processId)
         {
             // TODO: Get from etw or local processes if no event and this is real-time.
-            throw new NotImplementedException();
+            return processId == -1 ? string.Empty : processId.ToString();
         }
 
         public string GetThreadName(int threadId)
         {
             // TODO: Get from etw.
-            throw new NotImplementedException();
+            return threadId == -1 ? string.Empty : threadId.ToString();
         }
 
         public void ReadUnderLock(Action<IReadOnlyList<TraceRecord>> action)

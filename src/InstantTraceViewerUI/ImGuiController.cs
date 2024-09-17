@@ -157,8 +157,8 @@ namespace InstantTraceViewerUI
             // ImGui also embeds a 13 pixel high pixel-perfect font (ProggyClean). It is sharper but on the small side.
             ImGui.GetIO().Fonts.AddFontDefault();
 #else
-            // byte[] ttfFontBytes = GetEmbeddedResourceBytes("DroidSans.ttf");
-            byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
+            byte[] ttfFontBytes = GetEmbeddedResourceBytes("DroidSans.ttf");
+            // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
             fixed (byte* ttfFontBytesPtr = ttfFontBytes)
             {
                 ImGui.GetIO().Fonts.AddFontFromMemoryTTF((IntPtr)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
