@@ -80,6 +80,12 @@ namespace InstantTraceViewerUI
 
                 using ImGuiController controller = new ImGuiController(graphicsDevice, window, graphicsDevice.MainSwapchain.Framebuffer.OutputDescription, window.Width, window.Height);
 
+                window.Resized += () =>
+                {
+                    graphicsDevice.MainSwapchain.Resize((uint)window.Width, (uint)window.Height);
+                    controller.WindowResized(window.Width, window.Height);
+                };
+
                 var frameTiming = Stopwatch.StartNew();
                 while (window.Exists)
                 {
