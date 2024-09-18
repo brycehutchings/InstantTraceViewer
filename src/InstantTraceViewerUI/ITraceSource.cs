@@ -41,6 +41,8 @@ namespace InstantTraceViewerUI
 
     internal interface ITraceSource : IDisposable
     {
+        string DisplayName { get; }
+
         string GetOpCodeName(byte opCode);
 
         string GetProcessName(int processId);

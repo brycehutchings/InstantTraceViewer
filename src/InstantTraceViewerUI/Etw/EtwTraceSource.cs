@@ -28,8 +28,11 @@ namespace InstantTraceViewerUI.Etw
         private readonly ReaderWriterLockSlim _tableRecordsLock = new ReaderWriterLockSlim();
         private readonly List<TraceRecord> _tableRecords = new();
 
-        private EtwTraceSource(TraceEventSession etwSession, int sessionNum)
+        private bool isDisposed;
+
+        private EtwTraceSource(TraceEventSession etwSession, string displayName, int sessionNum)
         {
+            DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _sessionNum = sessionNum;
             _processingThread = new Thread(() => ProcessThread());
@@ -75,7 +78,7 @@ namespace InstantTraceViewerUI.Etw
                     etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
                 }
 
-                return new EtwTraceSource(etwSession, sessionNum);
+                return new EtwTraceSource(etwSession, profile.DisplayName, sessionNum);
             }
             catch
             {
@@ -83,12 +86,6 @@ namespace InstantTraceViewerUI.Etw
                 SessionNums.Remove(sessionNum);
                 throw;
             }
-        }
-
-        public void Dispose()
-        {
-            _etwSession.Dispose();
-            SessionNums.Remove(_sessionNum);
         }
 
         private static int ReserveNextSessionNumber()
@@ -103,6 +100,8 @@ namespace InstantTraceViewerUI.Etw
 
             throw new InvalidOperationException("Too many active ETW sessions have been created.");
         }
+
+        public string DisplayName { get; private set; }
 
         public string GetOpCodeName(byte opCode)
         {
@@ -160,6 +159,27 @@ namespace InstantTraceViewerUI.Etw
             {
                 _pendingTableRecordsLock.ExitReadLock();
             }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!isDisposed)
+            {
+                if (disposing)
+                {
+                    _etwSession.Dispose();
+                    SessionNums.Remove(_sessionNum);
+                }
+
+                isDisposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }

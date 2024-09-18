@@ -11,6 +11,7 @@
     <StartupObject>InstantTraceViewerUI.Program</StartupObject>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
+    <UseWindowsForms>True</UseWindowsForms>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\DroidSans-Bold.ttf" />

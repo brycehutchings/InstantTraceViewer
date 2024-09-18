@@ -16,6 +16,8 @@ namespace InstantTraceViewerUI.Etw
 
     internal class EtwSessionProfile
     {
+        public string DisplayName { get; set; }
+
         public KernelTraceEventParser.Keywords KernelKeywords { get; set; } = KernelTraceEventParser.Keywords.None;
 
         public List<EtwSessionEnabledProvider> Providers { get; set; } = new List<EtwSessionEnabledProvider>();

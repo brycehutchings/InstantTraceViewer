@@ -191,6 +191,8 @@ namespace InstantTraceViewerUI.Etw
         {
             EtwSessionProfile etwSessionProfile = new();
 
+            etwSessionProfile.DisplayName = Name;
+
             foreach (var keyword in SystemProvider.Keywords)
             {
                 if (KernelKeywordMap.TryGetValue(keyword, out KernelTraceEventParser.Keywords matchingFlags))
