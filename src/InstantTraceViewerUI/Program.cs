@@ -4,11 +4,24 @@ using ImGuiNET;
 using System.Diagnostics;
 using Veldrid.Sdl2;
 using System.Numerics;
+using System.Collections.Generic;
 
 namespace InstantTraceViewerUI
 {
     internal class Program
     {
+        private static HashSet<int> selectedRowIndices = new HashSet<int>();
+        private static int? lastSelectedIndex;
+
+        private static Vector4 LevelToColor(TraceLevel level)
+        {
+            return level == TraceLevel.Verbose ? new Vector4(0.75f, 0.75f, 0.75f, 1.0f)     // Gray
+                   : level == TraceLevel.Warning ? new Vector4(1.0f, 0.65f, 0.0f, 1.0f)     // Orange
+                   : level == TraceLevel.Error ? new Vector4(0.75f, 0.0f, 0.0f, 1.0f)       // Red
+                   : level == TraceLevel.Critical ? new Vector4(0.60f, 0.0f, 0.0f, 1.0f)    // Dark Red
+                                                   : new Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // White
+        }
+
         public static unsafe void DrawTraceSourceWindow(ITraceSource traceSource)
         {
             if (ImGui.Begin("Window"))
@@ -32,6 +45,7 @@ namespace InstantTraceViewerUI
 
                     ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 0)); // Tighten spacing
 
+                    TraceLevel? lastLevel = null;
                     var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
                     traceSource.ReadUnderLock(traceRecords =>
                     {
@@ -41,8 +55,54 @@ namespace InstantTraceViewerUI
                             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
                             {
                                 ImGui.TableNextRow();
+
+                                // Update StyleColor if level changed.
+                                if (lastLevel != traceRecords[i].Level)
+                                {
+                                    if (lastLevel.HasValue)
+                                    {
+                                        ImGui.PopStyleColor(); // ImGuiCol_Text changed.
+                                    }
+                                    ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(traceRecords[i].Level));
+                                    lastLevel = traceRecords[i].Level;
+                                }
+
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"));
+                                bool isSelected = selectedRowIndices.Contains(i);
+                                if (ImGui.Selectable(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"), isSelected, ImGuiSelectableFlags.SpanAllColumns))
+                                {
+                                    if (ImGui.GetIO().KeyShift)
+                                    {
+                                        if (lastSelectedIndex.HasValue)
+                                        {
+                                            selectedRowIndices.Clear();
+                                            for (int j = System.Math.Min(i, lastSelectedIndex.Value); j <= System.Math.Max(i, lastSelectedIndex.Value); j++)
+                                            {
+                                                selectedRowIndices.Add(j);
+                                            }
+                                        }
+                                    }
+                                    else if (ImGui.GetIO().KeyCtrl)
+                                    {
+                                        if (isSelected)
+                                        {
+                                            selectedRowIndices.Remove(i);
+                                        }
+                                        else
+                                        {
+                                            selectedRowIndices.Add(i);
+                                        }
+
+                                        lastSelectedIndex = i;
+                                    }
+                                    else
+                                    {
+                                        selectedRowIndices.Clear();
+                                        selectedRowIndices.Add(i);
+                                        lastSelectedIndex = i;
+                                    }
+                                }
+
                                 ImGui.TableNextColumn();
                                 ImGui.Text(traceSource.GetProcessName(traceRecords[i].ProcessId));
                                 ImGui.TableNextColumn();
@@ -62,6 +122,11 @@ namespace InstantTraceViewerUI
                         clipper.End();
                     });
 
+                    if (lastLevel.HasValue)
+                    {
+                        ImGui.PopStyleColor(); // ImGuiCol_Text
+                    }
+
                     ImGui.PopStyleVar(); // ItemSpacing
 
                     ImGui.EndTable();
@@ -73,8 +138,8 @@ namespace InstantTraceViewerUI
 
         public static int Main(string[] args)
         {
-            // Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
-            Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\tools\\Tracing\\Configs\\WPR\\BuildTrace.wprp");
+            Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
+            // Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\tools\\Tracing\\Configs\\WPR\\BuildTrace.wprp");
             using var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0]);
 
             Sdl2Window window;
