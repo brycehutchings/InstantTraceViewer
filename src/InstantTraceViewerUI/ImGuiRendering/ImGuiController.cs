@@ -12,7 +12,7 @@ using ImGuiNET;
 using Veldrid;
 using Veldrid.Sdl2;
 
-namespace InstantTraceViewerUI
+namespace InstantTraceViewerUI.ImGuiRendering
 {
     /// <summary>
     /// A modified version of Veldrid.ImGui's ImGuiRenderer.
@@ -40,7 +40,7 @@ namespace InstantTraceViewerUI
         private ResourceSet _mainResourceSet;
         private ResourceSet _fontTextureResourceSet;
 
-        private IntPtr _fontAtlasID = (IntPtr)1;
+        private nint _fontAtlasID = 1;
         private bool _controlDown;
         private bool _shiftDown;
         private bool _altDown;
@@ -55,7 +55,7 @@ namespace InstantTraceViewerUI
             = new Dictionary<TextureView, ResourceSetInfo>();
         private readonly Dictionary<Texture, TextureView> _autoViewsByTexture
             = new Dictionary<Texture, TextureView>();
-        private readonly Dictionary<IntPtr, ResourceSetInfo> _viewsById = new Dictionary<IntPtr, ResourceSetInfo>();
+        private readonly Dictionary<nint, ResourceSetInfo> _viewsById = new Dictionary<nint, ResourceSetInfo>();
         private readonly List<IDisposable> _ownedResources = new List<IDisposable>();
         private readonly VeldridImGuiWindow _mainViewportWindow;
         private readonly Platform_CreateWindow _createWindow;
@@ -73,7 +73,7 @@ namespace InstantTraceViewerUI
 
         private class FixedAsciiString : IDisposable
         {
-            public IntPtr DataPtr { get; }
+            public nint DataPtr { get; }
 
             public unsafe FixedAsciiString(string s)
             {
@@ -102,7 +102,7 @@ namespace InstantTraceViewerUI
             _windowWidth = width;
             _windowHeight = height;
 
-            IntPtr context = ImGui.CreateContext();
+            nint context = ImGui.CreateContext();
             ImGui.SetCurrentContext(context);
             ImGuiIOPtr io = ImGui.GetIO();
             io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
@@ -160,7 +160,7 @@ namespace InstantTraceViewerUI
             // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
             fixed (byte* ttfFontBytesPtr = ttfFontBytes)
             {
-                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((IntPtr)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
             }
 #endif
 
@@ -180,12 +180,12 @@ namespace InstantTraceViewerUI
 
         private void DestroyWindow(ImGuiViewportPtr vp)
         {
-            if (vp.PlatformUserData != IntPtr.Zero)
+            if (vp.PlatformUserData != nint.Zero)
             {
                 VeldridImGuiWindow window = (VeldridImGuiWindow)GCHandle.FromIntPtr(vp.PlatformUserData).Target;
                 window.Dispose();
 
-                vp.PlatformUserData = IntPtr.Zero;
+                vp.PlatformUserData = nint.Zero;
             }
         }
 
@@ -221,7 +221,7 @@ namespace InstantTraceViewerUI
             *outSize = new Vector2(bounds.Width, bounds.Height);
         }
 
-        private delegate void SDL_RaiseWindow_t(IntPtr sdl2Window);
+        private delegate void SDL_RaiseWindow_t(nint sdl2Window);
         private static SDL_RaiseWindow_t p_sdl_RaiseWindow;
 
         private unsafe delegate uint SDL_GetGlobalMouseState_t(int* x, int* y);
@@ -258,7 +258,7 @@ namespace InstantTraceViewerUI
             return (flags & SDL_WindowFlags.Minimized) != 0 ? (byte)1 : (byte)0;
         }
 
-        private unsafe void SetWindowTitle(ImGuiViewportPtr vp, IntPtr title)
+        private unsafe void SetWindowTitle(ImGuiViewportPtr vp, nint title)
         {
             VeldridImGuiWindow window = (VeldridImGuiWindow)GCHandle.FromIntPtr(vp.PlatformUserData).Target;
             byte* titlePtr = (byte*)title;
@@ -267,7 +267,7 @@ namespace InstantTraceViewerUI
             {
                 count += 1;
             }
-            window.Window.Title = System.Text.Encoding.ASCII.GetString(titlePtr, count);
+            window.Window.Title = Encoding.ASCII.GetString(titlePtr, count);
         }
 
         public void WindowResized(int width, int height)
@@ -341,7 +341,7 @@ namespace InstantTraceViewerUI
         /// Gets or creates a handle for a texture to be drawn with ImGui.
         /// Pass the returned handle to Image() or ImageButton().
         /// </summary>
-        public IntPtr GetOrCreateImGuiBinding(ResourceFactory factory, TextureView textureView)
+        public nint GetOrCreateImGuiBinding(ResourceFactory factory, TextureView textureView)
         {
             if (!_setsByView.TryGetValue(textureView, out ResourceSetInfo rsi))
             {
@@ -357,17 +357,17 @@ namespace InstantTraceViewerUI
             return rsi.ImGuiBinding;
         }
 
-        private IntPtr GetNextImGuiBindingID()
+        private nint GetNextImGuiBindingID()
         {
             int newID = _lastAssignedID++;
-            return (IntPtr)newID;
+            return newID;
         }
 
         /// <summary>
         /// Gets or creates a handle for a texture to be drawn with ImGui.
         /// Pass the returned handle to Image() or ImageButton().
         /// </summary>
-        public IntPtr GetOrCreateImGuiBinding(ResourceFactory factory, Texture texture)
+        public nint GetOrCreateImGuiBinding(ResourceFactory factory, Texture texture)
         {
             if (!_autoViewsByTexture.TryGetValue(texture, out TextureView textureView))
             {
@@ -383,7 +383,7 @@ namespace InstantTraceViewerUI
         /// <summary>
         /// Retrieves the shader texture binding for the given helper handle.
         /// </summary>
-        public ResourceSet GetImageResourceSet(IntPtr imGuiBinding)
+        public ResourceSet GetImageResourceSet(nint imGuiBinding)
         {
             if (!_viewsById.TryGetValue(imGuiBinding, out ResourceSetInfo tvi))
             {
@@ -470,7 +470,7 @@ namespace InstantTraceViewerUI
             _fontTexture.Name = "ImGui.NET Font Texture";
             gd.UpdateTexture(
                 _fontTexture,
-                (IntPtr)pixels,
+                (nint)pixels,
                 (uint)(bytesPerPixel * width * height),
                 0,
                 0,
@@ -544,7 +544,7 @@ namespace InstantTraceViewerUI
             for (int i = 1; i < viewports.Size; i++)
             {
                 ImGuiViewportPtr v = viewports[i];
-                VeldridImGuiWindow window = ((VeldridImGuiWindow)GCHandle.FromIntPtr(v.PlatformUserData).Target);
+                VeldridImGuiWindow window = (VeldridImGuiWindow)GCHandle.FromIntPtr(v.PlatformUserData).Target;
                 window.Update();
             }
 
@@ -568,7 +568,7 @@ namespace InstantTraceViewerUI
             ImGuiPlatformIOPtr platformIO = ImGui.GetPlatformIO();
             Marshal.FreeHGlobal(platformIO.NativePtr->Monitors.Data);
             int numMonitors = p_sdl_GetNumVideoDisplays();
-            IntPtr data = Marshal.AllocHGlobal(Unsafe.SizeOf<ImGuiPlatformMonitor>() * numMonitors);
+            nint data = Marshal.AllocHGlobal(Unsafe.SizeOf<ImGuiPlatformMonitor>() * numMonitors);
             platformIO.NativePtr->Monitors = new ImVector(numMonitors, numMonitors, data);
             for (int i = 0; i < numMonitors; i++)
             {
@@ -799,13 +799,13 @@ namespace InstantTraceViewerUI
                 for (int cmd_i = 0; cmd_i < cmd_list.CmdBuffer.Size; cmd_i++)
                 {
                     ImDrawCmdPtr pcmd = cmd_list.CmdBuffer[cmd_i];
-                    if (pcmd.UserCallback != IntPtr.Zero)
+                    if (pcmd.UserCallback != nint.Zero)
                     {
                         throw new NotImplementedException();
                     }
                     else
                     {
-                        if (pcmd.TextureId != IntPtr.Zero)
+                        if (pcmd.TextureId != nint.Zero)
                         {
                             if (pcmd.TextureId == _fontAtlasID)
                             {
@@ -858,10 +858,10 @@ namespace InstantTraceViewerUI
 
         private struct ResourceSetInfo
         {
-            public readonly IntPtr ImGuiBinding;
+            public readonly nint ImGuiBinding;
             public readonly ResourceSet ResourceSet;
 
-            public ResourceSetInfo(IntPtr imGuiBinding, ResourceSet resourceSet)
+            public ResourceSetInfo(nint imGuiBinding, ResourceSet resourceSet)
             {
                 ImGuiBinding = imGuiBinding;
                 ResourceSet = resourceSet;

@@ -7,7 +7,7 @@ using Veldrid;
 using Veldrid.Sdl2;
 using Veldrid.StartupUtilities;
 
-namespace InstantTraceViewerUI
+namespace InstantTraceViewerUI.ImGuiRendering
 {
     public class VeldridImGuiWindow : IDisposable
     {
@@ -60,7 +60,7 @@ namespace InstantTraceViewerUI
             _sc = _gd.ResourceFactory.CreateSwapchain(scDesc);
             _window.Resized += () => _sc.Resize((uint)_window.Width, (uint)_window.Height);
 
-            vp.PlatformUserData = (IntPtr)_gcHandle;
+            vp.PlatformUserData = (nint)_gcHandle;
         }
 
         public VeldridImGuiWindow(GraphicsDevice gd, ImGuiViewportPtr vp, Sdl2Window window)
@@ -69,7 +69,7 @@ namespace InstantTraceViewerUI
             _gd = gd;
             _vp = vp;
             _window = window;
-            vp.PlatformUserData = (IntPtr)_gcHandle;
+            vp.PlatformUserData = (nint)_gcHandle;
         }
 
         public void Update()

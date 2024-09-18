@@ -1,10 +1,11 @@
-﻿using Veldrid;
-using Veldrid.StartupUtilities;
-using ImGuiNET;
-using System.Diagnostics;
-using Veldrid.Sdl2;
+﻿using System.Diagnostics;
 using System.Numerics;
 using System.Collections.Generic;
+using ImGuiNET;
+using Veldrid;
+using Veldrid.Sdl2;
+using Veldrid.StartupUtilities;
+using InstantTraceViewerUI.ImGuiRendering;
 
 namespace InstantTraceViewerUI
 {
@@ -43,7 +44,7 @@ namespace InstantTraceViewerUI
                     ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                     ImGui.TableHeadersRow();
 
-                    ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(4, 0)); // Tighten spacing
+                    ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(1, 1)); // Tighten spacing
 
                     TraceLevel? lastLevel = null;
                     var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
@@ -104,19 +105,19 @@ namespace InstantTraceViewerUI
                                 }
 
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceSource.GetProcessName(traceRecords[i].ProcessId));
+                                ImGui.TextUnformatted(traceSource.GetProcessName(traceRecords[i].ProcessId));
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceSource.GetThreadName(traceRecords[i].ThreadId));
+                                ImGui.TextUnformatted(traceSource.GetThreadName(traceRecords[i].ThreadId));
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceRecords[i].Level.ToString());
+                                ImGui.TextUnformatted(traceRecords[i].Level.ToString());
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceSource.GetOpCodeName(traceRecords[i].OpCode));
+                                ImGui.TextUnformatted(traceSource.GetOpCodeName(traceRecords[i].OpCode));
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceRecords[i].ProviderName);
+                                ImGui.TextUnformatted(traceRecords[i].ProviderName);
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceRecords[i].Name);
+                                ImGui.TextUnformatted(traceRecords[i].Name);
                                 ImGui.TableNextColumn();
-                                ImGui.Text(traceRecords[i].Message);
+                                ImGui.TextUnformatted(traceRecords[i].Message);
                             }
                         }
                         clipper.End();
@@ -127,7 +128,14 @@ namespace InstantTraceViewerUI
                         ImGui.PopStyleColor(); // ImGuiCol_Text
                     }
 
-                    ImGui.PopStyleVar(); // ItemSpacing
+                    ImGui.PopStyleVar(); // CellPadding
+
+                    // Auto scroll - AKA keep the table scrolled to the bottom as new messages come in, but only if the table is already
+                    // scrolled to the bottom.
+                    if (ImGui.GetScrollY() >= ImGui.GetScrollMaxY())
+                    {
+                        ImGui.SetScrollHereY(1.0f);
+                    }
 
                     ImGui.EndTable();
                 }
@@ -140,7 +148,7 @@ namespace InstantTraceViewerUI
         {
             Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
             // Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\tools\\Tracing\\Configs\\WPR\\BuildTrace.wprp");
-            using var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0]);
+            using var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
 
             Sdl2Window window;
             GraphicsDevice graphicsDevice;
@@ -154,6 +162,9 @@ namespace InstantTraceViewerUI
                 using CommandList commandLine = graphicsDevice.ResourceFactory.CreateCommandList();
 
                 using ImGuiController controller = new ImGuiController(graphicsDevice, window, graphicsDevice.MainSwapchain.Framebuffer.OutputDescription, window.Width, window.Height);
+
+                // Increase scrollbar size to make it easier to use.
+                ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, 18.0f);
 
                 window.Resized += () =>
                 {
@@ -198,6 +209,8 @@ namespace InstantTraceViewerUI
                     graphicsDevice.SwapBuffers(graphicsDevice.MainSwapchain);
                     controller.SwapExtraWindows(graphicsDevice);
                 }
+
+                ImGui.PopStyleVar(); // ScrollbarSize
 
                 graphicsDevice.WaitForIdle();
             }

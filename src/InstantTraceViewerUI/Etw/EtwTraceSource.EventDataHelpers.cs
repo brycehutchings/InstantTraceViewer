@@ -1,0 +1,52 @@
+﻿using Microsoft.Diagnostics.Tracing;
+using System;
+using System.Text;
+
+namespace InstantTraceViewerUI.Etw
+{
+    internal partial class EtwTraceSource
+    {
+        // The ETW parser calls the kernel event provider "MSNT_SystemTrace" but we rename to Kernel for simplicity.
+        private const string KernelProviderName = "Kernel";
+        private readonly static Guid SystemProvider = Guid.Parse("{9e814aad-3204-11d2-9a82-006008a86939}");
+
+        private static TraceRecord CreateBaseTraceRecord(TraceEvent data)
+        {
+            var newRecord = new TraceRecord();
+            newRecord.ProcessId = data.ProcessID;
+            newRecord.ThreadId = data.ThreadID;
+            newRecord.Timestamp = data.TimeStamp;
+            newRecord.Name = data.EventName;
+            newRecord.Level = ConvertLevel(data);
+            newRecord.OpCode = (byte)data.Opcode;
+            newRecord.Keywords = (long)data.Keywords;
+            newRecord.ProviderName = data.ProviderGuid == SystemProvider ? KernelProviderName : data.ProviderName;
+            newRecord.ActivityId = data.ActivityID;
+            newRecord.RelatedActivityId = data.RelatedActivityID;
+            return newRecord;
+        }
+
+        private static TraceLevel ConvertLevel(TraceEvent data)
+        {
+            return
+                data.Level == TraceEventLevel.Always ? TraceLevel.Always :
+                data.Level == TraceEventLevel.Critical ? TraceLevel.Critical :
+                data.Level == TraceEventLevel.Error ? TraceLevel.Error :
+                data.Level == TraceEventLevel.Warning ? TraceLevel.Warning :
+                data.Level == TraceEventLevel.Informational ? TraceLevel.Info : TraceLevel.Verbose;
+        }
+
+        private static StringBuilder AppendField(StringBuilder sb, string fieldName, string value)
+        {
+            if (sb.Length > 0)
+            {
+                sb.Append(' ');
+            }
+
+            sb.Append(fieldName);
+            sb.Append(':');
+            sb.Append(value);
+            return sb;
+        }
+    }
+}

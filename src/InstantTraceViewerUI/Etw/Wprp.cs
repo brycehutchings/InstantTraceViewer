@@ -6,6 +6,8 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Xml.Linq;
+using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -110,6 +112,64 @@ namespace InstantTraceViewerUI.Etw
 
     internal class WprpProfile
     {
+        // Some of these combinations seem nonsensical but I believe certain combinations are used for new meaning to avoid exceeding 64bit limit.
+        // Example: SpinLock = Keywords.NetworkTCPIP | Keywords.ThreadPriority
+        private readonly static Dictionary<string, KernelTraceEventParser.Keywords> KernelKeywordMap = new Dictionary<string, KernelTraceEventParser.Keywords> {
+            { "AllFaults", KernelTraceEventParser.Keywords.Memory },
+            { "Alpc", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls },
+            { "AntiStarvation", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "CompactCSwitch", KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "ContiguousMemorygeneration", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "CpuConfig", KernelTraceEventParser.Keywords.NetworkTCPIP | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "CSwitch", KernelTraceEventParser.Keywords.ContextSwitch },
+            { "CSwitch_Internal", KernelTraceEventParser.Keywords.ImageLoad | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "DiskIO", KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.DiskFileIO },
+            { "DiskIOInit", KernelTraceEventParser.Keywords.DiskIOInit },
+            { "Dpc", KernelTraceEventParser.Keywords.DeferedProcedureCalls },
+            { "Dpc_Internal", KernelTraceEventParser.Keywords.SystemCall | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "Drivers", KernelTraceEventParser.Keywords.Driver },
+            { "Drivers_Internal", KernelTraceEventParser.Keywords.ContextSwitch | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "FileIO", KernelTraceEventParser.Keywords.FileIO },
+            { "FileIOInit", KernelTraceEventParser.Keywords.FileIOInit },
+            { "Filename", KernelTraceEventParser.Keywords.DiskFileIO },
+            { "FootPrint", KernelTraceEventParser.Keywords.ProcessCounters | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "KeClock", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "HardFaults", KernelTraceEventParser.Keywords.MemoryHardFaults },
+            { "IdleStates", KernelTraceEventParser.Keywords.VAMap | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "InterProcessorInterrupt", KernelTraceEventParser.Keywords.Handle | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "Interrupt", KernelTraceEventParser.Keywords.Interrupt },
+            { "Interrupt_Internal", KernelTraceEventParser.Keywords.VirtualAlloc | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "KernelQueue", KernelTraceEventParser.Keywords.Profile | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "Loader", KernelTraceEventParser.Keywords.ImageLoad },
+            { "Memory", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "MemoryInfoWS", KernelTraceEventParser.Keywords.Driver | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "NetworkTrace", KernelTraceEventParser.Keywords.NetworkTCPIP },
+            { "PmcProfile", KernelTraceEventParser.Keywords.DiskIOInit | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "Pool", KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "ProcessCounter", KernelTraceEventParser.Keywords.ProcessCounters },
+            { "ProcessThread", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread },
+            { "ProcessFreeze", KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "ReadyThread", KernelTraceEventParser.Keywords.Dispatcher },
+            { "ReadyThread_Internal", KernelTraceEventParser.Keywords.DiskFileIO | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "ReferenceSet", KernelTraceEventParser.Keywords.DeferedProcedureCalls | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "Registry", KernelTraceEventParser.Keywords.Registry },
+            { "RegistryHive", KernelTraceEventParser.Keywords.Profile | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "RegistryNotify", KernelTraceEventParser.Keywords.FileIO | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "SampledProfile", KernelTraceEventParser.Keywords.Profile },
+            { "SampledProfile_Internal", KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "Session", KernelTraceEventParser.Keywords.Handle | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "SpinLock", KernelTraceEventParser.Keywords.NetworkTCPIP | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "SplitIO", KernelTraceEventParser.Keywords.SplitIO },
+            { "SynchronizationObjects", KernelTraceEventParser.Keywords.Registry | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "SystemCall", KernelTraceEventParser.Keywords.SystemCall },
+            { "SystemCall_Internal", KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "ThreadPriority", KernelTraceEventParser.Keywords.MemoryHardFaults | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "Timer", KernelTraceEventParser.Keywords.Registry | KernelTraceEventParser.Keywords.ReferenceSet },
+            { "VirtualAllocation", KernelTraceEventParser.Keywords.VirtualAlloc },
+            { "VirtualAllocation_Internal", KernelTraceEventParser.Keywords.VAMap | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "VAMap", KernelTraceEventParser.Keywords.VAMap }
+        };
+
         public string Id { get; private set; }
 
         public string Name { get; private set; }
@@ -125,6 +185,54 @@ namespace InstantTraceViewerUI.Etw
         public SystemProvider SystemProvider { get; private set; }
 
         public IReadOnlyDictionary<EventCollector, IReadOnlyList<EventProvider>> EventProviders { get; private set; }
+
+        // Convert from WPRP-native format to simplified format used to create an ETW session.
+        public EtwSessionProfile ConvertToSessionProfile()
+        {
+            EtwSessionProfile etwSessionProfile = new();
+
+            foreach (var keyword in SystemProvider.Keywords)
+            {
+                if (KernelKeywordMap.TryGetValue(keyword, out KernelTraceEventParser.Keywords matchingFlags))
+                {
+                    etwSessionProfile.KernelKeywords |= matchingFlags;
+                }
+                else
+                {
+                    Debug.WriteLine("Unknown system/kernel keyword: " + keyword);
+                }
+            }
+
+            foreach (var collectorEventProviders in EventProviders)
+            {
+                foreach (var eventProvider in collectorEventProviders.Value)
+                {
+                    // TODO: Needed when more advanced features are supported.
+                    // TraceEventProviderOptions options = new();
+
+                    TraceEventLevel level = TraceEventLevel.Verbose;
+                    if (eventProvider.Level.HasValue)
+                    {
+                        level = (TraceEventLevel)eventProvider.Level.Value;
+                    }
+
+                    ulong matchAnyKeywords = ulong.MaxValue;
+                    if (eventProvider.Keywords.HasValue)
+                    {
+                        matchAnyKeywords = eventProvider.Keywords.Value;
+                    }
+
+                    etwSessionProfile.Providers.Add(new EtwSessionEnabledProvider
+                    {
+                        Name = eventProvider.Name,
+                        Level = level,
+                        MatchAnyKeyword = matchAnyKeywords,
+                    });
+                }
+            }
+
+            return etwSessionProfile;
+        }
 
         public static WprpProfile Parse(
             XElement profileEl,
