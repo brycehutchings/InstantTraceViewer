@@ -9,7 +9,7 @@ namespace InstantTraceViewerUI.Etw
     {
         private void SubscribeToDynamicEvents()
         {
-            _etwSession.Source.Dynamic.All += OnDynamicEvent;
+            _etwSource.Dynamic.All += OnDynamicEvent;
         }
 
         private void OnDynamicEvent(TraceEvent data)

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Threading;
 
@@ -19,6 +20,8 @@ namespace InstantTraceViewerUI.Etw
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
         private readonly TraceEventSession _etwSession;
+        private readonly ETWTraceEventSource _etwSource;
+
         private readonly int _sessionNum;
         private readonly Thread _processingThread;
 
@@ -34,7 +37,18 @@ namespace InstantTraceViewerUI.Etw
         {
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
+            _etwSource = etwSession.Source;
             _sessionNum = sessionNum;
+            _processingThread = new Thread(() => ProcessThread());
+            _processingThread.Start();
+        }
+
+        private EtwTraceSource(ETWTraceEventSource etwSource, string displayName)
+        {
+            DisplayName = displayName;
+            _etwSession = null;
+            _etwSource = etwSource;
+            _sessionNum = -1;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -58,7 +72,21 @@ namespace InstantTraceViewerUI.Etw
             SubscribeToDynamicEvents();
 
             // This will block until the ETW session has been disposed.
-            _etwSession.Source.Process();
+            _etwSource.Process();
+        }
+
+        static public EtwTraceSource CreateEtlSession(string etlFile)
+        {
+            var eventSource = new ETWTraceEventSource(etlFile);
+            try
+            {
+                return new EtwTraceSource(eventSource, Path.GetFileName(etlFile));
+            }
+            catch
+            {
+                eventSource.Dispose();
+                throw;
+            }
         }
 
         static public EtwTraceSource CreateRealTimeSession(EtwSessionProfile profile)
@@ -167,7 +195,8 @@ namespace InstantTraceViewerUI.Etw
             {
                 if (disposing)
                 {
-                    _etwSession.Dispose();
+                    _etwSource.Dispose();
+                    _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
                 }
 

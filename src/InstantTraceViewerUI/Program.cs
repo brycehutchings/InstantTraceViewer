@@ -36,7 +36,7 @@ namespace InstantTraceViewerUI
                 };
 
                 var frameTiming = Stopwatch.StartNew();
-                var mainWindow = new MainWindow();
+                using var mainWindow = new MainWindow();
 
                 while (window.Exists)
                 {

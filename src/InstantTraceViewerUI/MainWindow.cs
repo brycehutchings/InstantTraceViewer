@@ -13,11 +13,6 @@ namespace InstantTraceViewerUI
 
         public MainWindow()
         {
-            Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\bin\\tools\\Tracing\\trace-configs\\WPR\\MixedRealityLinkGeneral.wprp");
-            // Etw.Wprp wprp = Etw.Wprp.Load("D:\\repos\\cloud1\\tools\\Tracing\\Configs\\WPR\\BuildTrace.wprp");
-            using var etwTraceSource = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
-
-            _logViewerWindows.Add(new LogViewerWindow(etwTraceSource));
         }
 
         public bool IsExitRequested { get; private set; }
@@ -55,7 +50,7 @@ namespace InstantTraceViewerUI
                     if (ImGui.MenuItem("Open .wprp (ETW)..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = OpenFile("Windows Performance Recorder Profiles (*.wprp)|*.wprp");
+                        string file = OpenFile("Windows Performance Recorder Profile (*.wprp)|*.wprp");
                         if (!string.IsNullOrEmpty(file))
                         {
                             var wprp = Etw.Wprp.Load(file);
@@ -65,6 +60,17 @@ namespace InstantTraceViewerUI
                             var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(selectedProfile.ConvertToSessionProfile());
 
                             _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                        }
+                    }
+
+                    if (ImGui.MenuItem("Open .etl (ETW)..."))
+                    {
+                        // TODO: This blocks the render thread
+                        string file = OpenFile("ETL Trace File (*.etl)|*.etl");
+                        if (!string.IsNullOrEmpty(file))
+                        {
+                            var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
+                            _logViewerWindows.Add(new LogViewerWindow(etlSession));
                         }
                     }
 

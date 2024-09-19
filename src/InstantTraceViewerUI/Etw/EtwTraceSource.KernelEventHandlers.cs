@@ -11,23 +11,23 @@ namespace InstantTraceViewerUI.Etw
 
         private void SubscribeToKernelEvents()
         {
-            _etwSession.Source.Kernel.ThreadStart += OnThreadEvent;
-            _etwSession.Source.Kernel.ThreadStartGroup += OnThreadEvent;
-            _etwSession.Source.Kernel.ThreadStop += OnThreadEvent;
-            _etwSession.Source.Kernel.ThreadEndGroup += OnThreadEvent;
-            _etwSession.Source.Kernel.ThreadDCStart += OnThreadEvent;
-            _etwSession.Source.Kernel.ThreadDCStop += OnThreadEvent;
+            _etwSource.Kernel.ThreadStart += OnThreadEvent;
+            _etwSource.Kernel.ThreadStartGroup += OnThreadEvent;
+            _etwSource.Kernel.ThreadStop += OnThreadEvent;
+            _etwSource.Kernel.ThreadEndGroup += OnThreadEvent;
+            _etwSource.Kernel.ThreadDCStart += OnThreadEvent;
+            _etwSource.Kernel.ThreadDCStop += OnThreadEvent;
 
-            _etwSession.Source.Kernel.ThreadSetName += OnThreadSetName;
+            _etwSource.Kernel.ThreadSetName += OnThreadSetName;
 
-            _etwSession.Source.Kernel.ProcessStart += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessStop += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessStartGroup += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessEndGroup += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessGroup += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessDCStart += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessDCStop += OnProcessEvent;
-            _etwSession.Source.Kernel.ProcessDefunct += OnProcessEvent;
+            _etwSource.Kernel.ProcessStart += OnProcessEvent;
+            _etwSource.Kernel.ProcessStop += OnProcessEvent;
+            _etwSource.Kernel.ProcessStartGroup += OnProcessEvent;
+            _etwSource.Kernel.ProcessEndGroup += OnProcessEvent;
+            _etwSource.Kernel.ProcessGroup += OnProcessEvent;
+            _etwSource.Kernel.ProcessDCStart += OnProcessEvent;
+            _etwSource.Kernel.ProcessDCStop += OnProcessEvent;
+            _etwSource.Kernel.ProcessDefunct += OnProcessEvent;
         }
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
@@ -46,7 +46,7 @@ namespace InstantTraceViewerUI.Etw
             }
 
             if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||
-                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && _etwSession.IsRealTime)
+                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && (_etwSession?.IsRealTime ?? false))
             {
                 return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
             }
@@ -75,7 +75,7 @@ namespace InstantTraceViewerUI.Etw
         private void OnProcessEvent(ProcessTraceData data)
         {
             if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||
-                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && _etwSession.IsRealTime)
+                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && (_etwSession?.IsRealTime ?? false))
             {
                 return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
             }
