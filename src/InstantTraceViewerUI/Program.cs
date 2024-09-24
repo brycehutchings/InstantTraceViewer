@@ -61,8 +61,6 @@ namespace InstantTraceViewerUI
                         ImGui.Text("Hello World");
                     }
 #endif
-                    uint dockId = ImGui.DockSpaceOverViewport();
-
                     mainWindow.Draw();
 
                     if (mainWindow.IsExitRequested)

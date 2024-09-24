@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
@@ -19,7 +19,12 @@ namespace InstantTraceViewerUI
 
         public void Draw()
         {
+            uint dockId = ImGui.DockSpaceOverViewport();
+
             DrawMenuBar();
+
+            // Force the (first) next window to be docked to fill window. Generally this is what people will want, rather than a smaller, floating window.
+            ImGui.SetNextWindowDockID(dockId, ImGuiCond.FirstUseEver);
 
             foreach (var logViewerWindow in _logViewerWindows)
             {
@@ -45,9 +50,30 @@ namespace InstantTraceViewerUI
         {
             if (ImGui.BeginMainMenuBar())
             {
+                ImGui.SetNextItemShortcut(ImGuiKey.F | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("File"))
                 {
-                    if (ImGui.MenuItem("Open .wprp (ETW)..."))
+                    if (ImGui.BeginMenu("Settings"))
+                    {
+                        // TODO: Font size, padding, etc.
+                        ImGui.MenuItem("TODO ;-)");
+                        ImGui.EndMenu();
+                    }
+
+                    ImGui.Separator();
+
+                    if (ImGui.MenuItem("Exit", "ALT+F4"))
+                    {
+                        IsExitRequested = true;
+                    }
+
+                    ImGui.EndMenu();
+                }
+
+                ImGui.SetNextItemShortcut(ImGuiKey.E | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                if (ImGui.BeginMenu("ETW"))
+                {
+                    if (ImGui.MenuItem("Open .WPRP (real-time) ..."))
                     {
                         // TODO: This blocks the render thread
                         string file = OpenFile("Windows Performance Recorder Profile (*.wprp)|*.wprp");
@@ -63,7 +89,7 @@ namespace InstantTraceViewerUI
                         }
                     }
 
-                    if (ImGui.MenuItem("Open .etl (ETW)..."))
+                    if (ImGui.MenuItem("Open .ETL ..."))
                     {
                         // TODO: This blocks the render thread
                         string file = OpenFile("ETL Trace File (*.etl)|*.etl");
@@ -72,11 +98,6 @@ namespace InstantTraceViewerUI
                             var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
                             _logViewerWindows.Add(new LogViewerWindow(etlSession));
                         }
-                    }
-
-                    if (ImGui.MenuItem("Exit"))
-                    {
-                        IsExitRequested = true;
                     }
 
                     ImGui.EndMenu();

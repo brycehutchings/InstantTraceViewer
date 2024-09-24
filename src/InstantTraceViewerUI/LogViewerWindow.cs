@@ -11,6 +11,7 @@ namespace InstantTraceViewerUI
         private static HashSet<int> _selectedRowIndices = new HashSet<int>();
         private static int? _lastSelectedIndex;
         private string _findBuffer = string.Empty;
+        private bool _findFoward = true;
 
         private bool _isDisposed;
 
@@ -28,6 +29,8 @@ namespace InstantTraceViewerUI
                 return;
             }
 
+            ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
+
             bool opened = true;
             if (ImGui.Begin(_traceSource.DisplayName, ref opened))
             {
@@ -42,68 +45,10 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private int? FindText(string text, bool searchForward)
-        {
-            int? setScrollIndex = null;
-            _traceSource.ReadUnderLock((generationId, traceRecords) =>
-            {
-                int i =
-                    searchForward ?
-                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value + 1 : 0) :
-                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value - 1 : traceRecords.Count - 1);
-                while (i >= 0 && i < traceRecords.Count)
-                {
-                    if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        setScrollIndex = i;
-                        _lastSelectedIndex = i;
-                        _selectedRowIndices.Clear();
-                        _selectedRowIndices.Add(i);
-                        break;
-                    }
-
-                    i = (searchForward ? i + 1 : i - 1);
-                }
-            });
-            return setScrollIndex;
-        }
-
         private unsafe void DrawWindowContents()
         {
-            if (ImGui.Shortcut(ImGuiKey.F | ImGuiKey.ModCtrl))
-            {
-                ImGui.SetKeyboardFocusHere();
-            }
-
-            if (ImGui.Button("Clear"))
-            {
-                _traceSource.Clear();
-                _lastSelectedIndex = null;
-                _selectedRowIndices.Clear();
-            }
-
-            bool findEnterPressed = false;
-            ImGui.SameLine();
-            ImGui.PushItemWidth(300);
-            if (ImGui.InputTextWithHint("", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue))
-            {
-                // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
-                ImGui.SetKeyboardFocusHere(-1);
-                findEnterPressed = true;
-            }
-            ImGui.PopItemWidth();
-
             int? setScrollIndex = null;
-            if (!string.IsNullOrEmpty(_findBuffer)) {
-                if (findEnterPressed || ImGui.Shortcut(ImGuiKey.F3))
-                {
-                    setScrollIndex = FindText(_findBuffer, searchForward: true);
-                }
-                else if (ImGui.Shortcut(ImGuiKey.F3 | ImGuiKey.ModShift))
-                {
-                    setScrollIndex = FindText(_findBuffer, searchForward: false);
-                }
-            }
+            DrawToolStrip(ref setScrollIndex);
 
             if (ImGui.BeginTable("DebugPanelLogger",
               8 /* columns */,
@@ -117,7 +62,7 @@ namespace InstantTraceViewerUI
                 ImGui.TableSetupColumn("Tid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
                 ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 60.0f);
-                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 120.0f);
+                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 80.0f);
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 120.0f);
                 ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
@@ -238,6 +183,55 @@ namespace InstantTraceViewerUI
 
         }
 
+        private void DrawToolStrip(ref int? setScrollIndex)
+        {
+            if (ImGui.Button("Clear"))
+            {
+                _traceSource.Clear();
+                _lastSelectedIndex = null;
+                _selectedRowIndices.Clear();
+            }
+
+            bool findRequested = false;
+            ImGui.SameLine();
+            ImGui.PushItemWidth(300);
+            if (ImGui.Shortcut(ImGuiKey.F | ImGuiKey.ModCtrl))
+            {
+                ImGui.SetKeyboardFocusHere();
+            }
+            if (ImGui.InputTextWithHint("", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue))
+            {
+                // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
+                ImGui.SetKeyboardFocusHere(-1);
+                findRequested = true;
+            }
+            ImGui.PopItemWidth();
+            ImGui.SameLine();
+            if (ImGui.ArrowButton("Find", _findFoward ? ImGuiDir.Right : ImGuiDir.Left))
+            {
+                findRequested = true;
+            }
+
+            if (!string.IsNullOrEmpty(_findBuffer))
+            {
+                if (ImGui.Shortcut(ImGuiKey.F3))
+                {
+                    _findFoward = true;
+                    findRequested = true;
+                }
+                else if (ImGui.Shortcut(ImGuiKey.F3 | ImGuiKey.ModShift))
+                {
+                    _findFoward = false;
+                    findRequested = true;
+                }
+
+                if (findRequested)
+                {
+                    setScrollIndex = FindText(_findBuffer);
+                }
+            }
+        }
+
         private static Vector4 LevelToColor(TraceLevel level)
         {
             return level == TraceLevel.Verbose ? new Vector4(0.75f, 0.75f, 0.75f, 1.0f)     // Gray
@@ -245,6 +239,32 @@ namespace InstantTraceViewerUI
                    : level == TraceLevel.Error ? new Vector4(0.75f, 0.0f, 0.0f, 1.0f)       // Red
                    : level == TraceLevel.Critical ? new Vector4(0.60f, 0.0f, 0.0f, 1.0f)    // Dark Red
                                                    : new Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // White
+        }
+
+        private int? FindText(string text)
+        {
+            int? setScrollIndex = null;
+            _traceSource.ReadUnderLock((generationId, traceRecords) =>
+            {
+                int i =
+                    _findFoward ?
+                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value + 1 : 0) :
+                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value - 1 : traceRecords.Count - 1);
+                while (i >= 0 && i < traceRecords.Count)
+                {
+                    if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        setScrollIndex = i;
+                        _lastSelectedIndex = i;
+                        _selectedRowIndices.Clear();
+                        _selectedRowIndices.Add(i);
+                        break;
+                    }
+
+                    i = (_findFoward ? i + 1 : i - 1);
+                }
+            });
+            return setScrollIndex;
         }
 
         protected virtual void Dispose(bool disposing)

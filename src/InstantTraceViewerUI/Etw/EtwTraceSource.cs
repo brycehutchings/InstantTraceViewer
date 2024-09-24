@@ -157,6 +157,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 _tableRecords.Clear();
                 _generationId++;
+                GC.Collect();
             }
             finally
             {
