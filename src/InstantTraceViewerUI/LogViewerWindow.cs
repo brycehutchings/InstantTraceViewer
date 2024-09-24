@@ -45,7 +45,7 @@ namespace InstantTraceViewerUI
         private int? FindText(string text, bool searchForward)
         {
             int? setScrollIndex = null;
-            _traceSource.ReadUnderLock(traceRecords =>
+            _traceSource.ReadUnderLock((generationId, traceRecords) =>
             {
                 int i =
                     searchForward ?
@@ -75,13 +75,23 @@ namespace InstantTraceViewerUI
                 ImGui.SetKeyboardFocusHere();
             }
 
+            if (ImGui.Button("Clear"))
+            {
+                _traceSource.Clear();
+                _lastSelectedIndex = null;
+                _selectedRowIndices.Clear();
+            }
+
             bool findEnterPressed = false;
+            ImGui.SameLine();
+            ImGui.PushItemWidth(300);
             if (ImGui.InputTextWithHint("", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue))
             {
                 // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
                 ImGui.SetKeyboardFocusHere(-1);
                 findEnterPressed = true;
             }
+            ImGui.PopItemWidth();
 
             int? setScrollIndex = null;
             if (!string.IsNullOrEmpty(_findBuffer)) {
@@ -117,7 +127,7 @@ namespace InstantTraceViewerUI
                 int recordCount = 0;
                 TraceLevel? lastLevel = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                _traceSource.ReadUnderLock(traceRecords =>
+                _traceSource.ReadUnderLock((generationId, traceRecords) =>
                 {
                     recordCount = traceRecords.Count;
                     clipper.Begin(traceRecords.Count);

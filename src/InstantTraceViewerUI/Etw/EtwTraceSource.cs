@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 
@@ -30,6 +31,7 @@ namespace InstantTraceViewerUI.Etw
 
         private readonly ReaderWriterLockSlim _tableRecordsLock = new ReaderWriterLockSlim();
         private readonly List<TraceRecord> _tableRecords = new();
+        private int _generationId = 1;
 
         private bool isDisposed;
 
@@ -148,7 +150,21 @@ namespace InstantTraceViewerUI.Etw
             return threadId == -1 ? string.Empty : threadId.ToString();
         }
 
-        public void ReadUnderLock(Action<IReadOnlyList<TraceRecord>> action)
+        public void Clear()
+        {
+            _tableRecordsLock.EnterWriteLock();
+            try
+            {
+                _tableRecords.Clear();
+                _generationId++;
+            }
+            finally
+            {
+                _tableRecordsLock.ExitWriteLock();
+            }
+        }
+
+        public void ReadUnderLock(ReadTraceRecords callback)
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTableRecords' list.
             // It is important to not block the ETW event callback or events might get dropped.
@@ -181,7 +197,7 @@ namespace InstantTraceViewerUI.Etw
             _pendingTableRecordsLock.EnterReadLock();
             try
             {
-                action(_tableRecords);
+                callback(_generationId, _tableRecords);
             }
             finally
             {

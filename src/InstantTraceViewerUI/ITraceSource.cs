@@ -39,6 +39,8 @@ namespace InstantTraceViewerUI
         public Guid RelatedActivityId;
     }
 
+    delegate void ReadTraceRecords(int generationId, IReadOnlyList<TraceRecord> records);
+
     internal interface ITraceSource : IDisposable
     {
         string DisplayName { get; }
@@ -49,6 +51,8 @@ namespace InstantTraceViewerUI
 
         string GetThreadName(int threadId);
 
-        void ReadUnderLock(Action<IReadOnlyList<TraceRecord>> action);
+        void Clear();
+
+        void ReadUnderLock(ReadTraceRecords callback);
     }
 }
