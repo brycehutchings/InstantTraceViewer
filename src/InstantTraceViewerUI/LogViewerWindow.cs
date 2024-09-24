@@ -42,6 +42,32 @@ namespace InstantTraceViewerUI
             }
         }
 
+        private int? FindText(string text, bool searchForward)
+        {
+            int? setScrollIndex = null;
+            _traceSource.ReadUnderLock(traceRecords =>
+            {
+                int i =
+                    searchForward ?
+                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value + 1 : 0) :
+                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value - 1 : traceRecords.Count - 1);
+                while (i >= 0 && i < traceRecords.Count)
+                {
+                    if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        setScrollIndex = i;
+                        _lastSelectedIndex = i;
+                        _selectedRowIndices.Clear();
+                        _selectedRowIndices.Add(i);
+                        break;
+                    }
+
+                    i = (searchForward ? i + 1 : i - 1);
+                }
+            });
+            return setScrollIndex;
+        }
+
         private unsafe void DrawWindowContents()
         {
             if (ImGui.Shortcut(ImGuiKey.F | ImGuiKey.ModCtrl))
@@ -49,27 +75,24 @@ namespace InstantTraceViewerUI
                 ImGui.SetKeyboardFocusHere();
             }
 
-            int? setScrollIndex = null;
-            if (ImGui.InputTextWithHint("", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue) && !string.IsNullOrEmpty(_findBuffer))
+            bool findEnterPressed = false;
+            if (ImGui.InputTextWithHint("", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue))
             {
                 // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
                 ImGui.SetKeyboardFocusHere(-1);
+                findEnterPressed = true;
+            }
 
-                _traceSource.ReadUnderLock(traceRecords =>
+            int? setScrollIndex = null;
+            if (!string.IsNullOrEmpty(_findBuffer)) {
+                if (findEnterPressed || ImGui.Shortcut(ImGuiKey.F3))
                 {
-                    int startIndex = _lastSelectedIndex.HasValue ? _lastSelectedIndex.Value + 1 : 0;
-                    for (int i = startIndex; i < traceRecords.Count; i++)
-                    {
-                        if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            setScrollIndex = i;
-                            _lastSelectedIndex = i;
-                            _selectedRowIndices.Clear();
-                            _selectedRowIndices.Add(i);
-                            break;
-                        }
-                    }
-                });
+                    setScrollIndex = FindText(_findBuffer, searchForward: true);
+                }
+                else if (ImGui.Shortcut(ImGuiKey.F3 | ImGuiKey.ModShift))
+                {
+                    setScrollIndex = FindText(_findBuffer, searchForward: false);
+                }
             }
 
             if (ImGui.BeginTable("DebugPanelLogger",
