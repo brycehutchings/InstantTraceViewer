@@ -2,6 +2,7 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -32,6 +33,9 @@ namespace InstantTraceViewerUI.Etw
         private readonly ReaderWriterLockSlim _tableRecordsLock = new ReaderWriterLockSlim();
         private readonly List<TraceRecord> _tableRecords = new();
         private int _generationId = 1;
+
+        private ConcurrentDictionary<int, string> _threadNames = new();
+        private ConcurrentDictionary<int, string> _processNames = new();
 
         private bool isDisposed;
 
@@ -135,19 +139,25 @@ namespace InstantTraceViewerUI.Etw
 
         public string GetOpCodeName(byte opCode)
         {
-            return opCode == 0 ? string.Empty : ((TraceEventOpcode)opCode).ToString();
+            return
+                opCode == 0 ?   string.Empty :
+                opCode == 10 ?  "Load" :
+                opCode == 11 ?  "Terminate" :
+                                ((TraceEventOpcode)opCode).ToString();
         }
 
         public string GetProcessName(int processId)
         {
-            // TODO: Get from etw or local processes if no event and this is real-time.
-            return processId == -1 ? string.Empty : processId.ToString();
+            return
+                processId == -1 ? string.Empty :
+                _processNames.TryGetValue(processId, out string name) ? $"{name} ({processId})" : processId.ToString();
         }
 
         public string GetThreadName(int threadId)
         {
-            // TODO: Get from etw.
-            return threadId == -1 ? string.Empty : threadId.ToString();
+            return
+                threadId == -1 ? string.Empty :
+                _threadNames.TryGetValue(threadId, out string name) ? $"{name} ({threadId})" : threadId.ToString();
         }
 
         public void Clear()
@@ -156,6 +166,8 @@ namespace InstantTraceViewerUI.Etw
             try
             {
                 _tableRecords.Clear();
+                _threadNames.Clear();
+                _processNames.Clear();
                 _generationId++;
                 GC.Collect();
             }

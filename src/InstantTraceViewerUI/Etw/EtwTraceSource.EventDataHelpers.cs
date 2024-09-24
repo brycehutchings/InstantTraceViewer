@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI.Etw
             newRecord.ProcessId = data.ProcessID;
             newRecord.ThreadId = data.ThreadID;
             newRecord.Timestamp = data.TimeStamp;
-            newRecord.Name = data.EventName;
+            newRecord.Name = data.TaskName;
             newRecord.Level = ConvertLevel(data);
             newRecord.OpCode = (byte)data.Opcode;
             newRecord.Keywords = (long)data.Keywords;

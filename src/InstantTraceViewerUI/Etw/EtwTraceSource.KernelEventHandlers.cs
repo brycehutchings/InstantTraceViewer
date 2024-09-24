@@ -1,20 +1,14 @@
-﻿using System;
-using System.Text;
-using Microsoft.Diagnostics.Tracing;
+﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace InstantTraceViewerUI.Etw
 {
     internal partial class EtwTraceSource : ITraceSource
     {
-
         private void SubscribeToKernelEvents()
         {
             _etwSource.Kernel.ThreadStart += OnThreadEvent;
-            _etwSource.Kernel.ThreadStartGroup += OnThreadEvent;
             _etwSource.Kernel.ThreadStop += OnThreadEvent;
-            _etwSource.Kernel.ThreadEndGroup += OnThreadEvent;
             _etwSource.Kernel.ThreadDCStart += OnThreadEvent;
             _etwSource.Kernel.ThreadDCStop += OnThreadEvent;
 
@@ -22,9 +16,6 @@ namespace InstantTraceViewerUI.Etw
 
             _etwSource.Kernel.ProcessStart += OnProcessEvent;
             _etwSource.Kernel.ProcessStop += OnProcessEvent;
-            _etwSource.Kernel.ProcessStartGroup += OnProcessEvent;
-            _etwSource.Kernel.ProcessEndGroup += OnProcessEvent;
-            _etwSource.Kernel.ProcessGroup += OnProcessEvent;
             _etwSource.Kernel.ProcessDCStart += OnProcessEvent;
             _etwSource.Kernel.ProcessDCStop += OnProcessEvent;
             _etwSource.Kernel.ProcessDefunct += OnProcessEvent;
@@ -32,14 +23,21 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
         {
-            var newRecord = CreateBaseTraceRecord(data);
-            newRecord.ProviderName = "Kernel";
-            newRecord.Message = $"ThreadName:{data.ThreadName}";
-            AddEvent(newRecord);
+            _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
         }
 
         private void OnThreadEvent(ThreadTraceData data)
         {
+            if (!string.IsNullOrEmpty(data.ThreadName))
+            {
+                if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
+                {
+                    _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
+                }
+            }
+
+            // Very noisy--Do we think anyone will want to see the thread events?
+#if false
             if (data.ProcessID == 0 && data.ThreadID == 0)
             {
                 return; // Skip the idle process and thread.
@@ -68,12 +66,17 @@ namespace InstantTraceViewerUI.Etw
                 AppendField(sb, "ThreadName", data.ThreadName);
             }
             newRecord.Message = sb.ToString();
-
             AddEvent(newRecord);
+#endif
         }
 
         private void OnProcessEvent(ProcessTraceData data)
         {
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
+            {
+                _processNames.AddOrUpdate(data.ProcessID, data.ProcessName, (key, oldValue) => data.ProcessName);
+            }
+
             if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||
                 data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && (_etwSession?.IsRealTime ?? false))
             {
@@ -81,7 +84,6 @@ namespace InstantTraceViewerUI.Etw
             }
 
             var newRecord = CreateBaseTraceRecord(data);
-            newRecord.ProviderName = "Kernel";
             newRecord.Message = $"ParentPid:{data.ParentID} CommandLine:{data.CommandLine}";
             AddEvent(newRecord);
         }

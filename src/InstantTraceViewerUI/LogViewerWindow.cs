@@ -58,12 +58,12 @@ namespace InstantTraceViewerUI
             {
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
                 ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 110.0f);
-                ImGui.TableSetupColumn("Pid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
-                ImGui.TableSetupColumn("Tid", ImGuiTableColumnFlags.WidthFixed, 40.0f);
+                ImGui.TableSetupColumn("Process", ImGuiTableColumnFlags.WidthFixed, 45.0f);
+                ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 45.0f);
                 ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 80.0f);
-                ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 120.0f);
+                ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 140.0f);
                 ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 

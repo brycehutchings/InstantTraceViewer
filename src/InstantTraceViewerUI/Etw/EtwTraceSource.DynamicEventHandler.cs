@@ -23,14 +23,20 @@ namespace InstantTraceViewerUI.Etw
                 for (int i = 0; i < data.PayloadNames.Length; i++)
                 {
                     // Extract process and thread IDs from events without them (e.g. Kernel events).
-                    if (newRecord.ProcessId == -1 && string.Equals(data.PayloadNames[i], "ProcessID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int pid)
+                    if (string.Equals(data.PayloadNames[i], "ProcessID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int pid)
                     {
-                        newRecord.ProcessId = pid;
+                        if (newRecord.ProcessId == -1)
+                        {
+                            newRecord.ProcessId = pid;
+                        }
                         continue;
                     }
-                    else if (newRecord.ThreadId == -1 && string.Equals(data.PayloadNames[i], "ThreadID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int tid)
+                    else if (string.Equals(data.PayloadNames[i], "ThreadID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int tid)
                     {
-                        newRecord.ThreadId = tid;
+                        if (newRecord.ThreadId == -1)
+                        {
+                            newRecord.ThreadId = tid;
+                        }
                         continue;
                     }
 
