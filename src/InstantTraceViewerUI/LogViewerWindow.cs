@@ -1,15 +1,16 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 using System.Collections.Generic;
 using ImGuiNET;
-using System;
 
 namespace InstantTraceViewerUI
 {
     internal class LogViewerWindow : IDisposable
     {
         private readonly ITraceSource _traceSource;
-        private static HashSet<int> selectedRowIndices = new HashSet<int>();
-        private static int? lastSelectedIndex;
+        private static HashSet<int> _selectedRowIndices = new HashSet<int>();
+        private static int? _lastSelectedIndex;
+        private string _findBuffer = string.Empty;
 
         private bool _isDisposed;
 
@@ -43,11 +44,39 @@ namespace InstantTraceViewerUI
 
         private unsafe void DrawWindowContents()
         {
+            if (ImGui.Shortcut(ImGuiKey.F | ImGuiKey.ModCtrl))
+            {
+                ImGui.SetKeyboardFocusHere();
+            }
+
+            int? setScrollIndex = null;
+            if (ImGui.InputTextWithHint("", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue) && !string.IsNullOrEmpty(_findBuffer))
+            {
+                // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
+                ImGui.SetKeyboardFocusHere(-1);
+
+                _traceSource.ReadUnderLock(traceRecords =>
+                {
+                    int startIndex = _lastSelectedIndex.HasValue ? _lastSelectedIndex.Value + 1 : 0;
+                    for (int i = startIndex; i < traceRecords.Count; i++)
+                    {
+                        if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            setScrollIndex = i;
+                            _lastSelectedIndex = i;
+                            _selectedRowIndices.Clear();
+                            _selectedRowIndices.Add(i);
+                            break;
+                        }
+                    }
+                });
+            }
+
             if (ImGui.BeginTable("DebugPanelLogger",
-                  8 /* columns */,
-                  ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
-                      ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
-                      ImGuiTableFlags.Hideable))
+              8 /* columns */,
+              ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
+                  ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
+                  ImGuiTableFlags.Hideable))
             {
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
                 ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 110.0f);
@@ -60,17 +89,25 @@ namespace InstantTraceViewerUI
                 ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 
-                ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(1, 1)); // Tighten spacing
+                ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(2, 2)); // Tighten spacing
 
+                int recordCount = 0;
                 TraceLevel? lastLevel = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
                 _traceSource.ReadUnderLock(traceRecords =>
                 {
+                    recordCount = traceRecords.Count;
                     clipper.Begin(traceRecords.Count);
                     while (clipper.Step())
                     {
                         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
                         {
+                            // Don't bother to scroll to the selected index if it's already in view.
+                            if (i == setScrollIndex)
+                            {
+                                setScrollIndex = null;
+                            }
+
                             ImGui.TableNextRow();
 
                             // Update StyleColor if level changed.
@@ -85,17 +122,19 @@ namespace InstantTraceViewerUI
                             }
 
                             ImGui.TableNextColumn();
-                            bool isSelected = selectedRowIndices.Contains(i);
-                            if (ImGui.Selectable(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"), isSelected, ImGuiSelectableFlags.SpanAllColumns))
+
+                            // Create an empty selectable that spans the full row to enable row selection.
+                            bool isSelected = _selectedRowIndices.Contains(i);
+                            if (ImGui.Selectable($"##TableRow_{i}", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                             {
                                 if (ImGui.GetIO().KeyShift)
                                 {
-                                    if (lastSelectedIndex.HasValue)
+                                    if (_lastSelectedIndex.HasValue)
                                     {
-                                        selectedRowIndices.Clear();
-                                        for (int j = System.Math.Min(i, lastSelectedIndex.Value); j <= System.Math.Max(i, lastSelectedIndex.Value); j++)
+                                        _selectedRowIndices.Clear();
+                                        for (int j = System.Math.Min(i, _lastSelectedIndex.Value); j <= System.Math.Max(i, _lastSelectedIndex.Value); j++)
                                         {
-                                            selectedRowIndices.Add(j);
+                                            _selectedRowIndices.Add(j);
                                         }
                                     }
                                 }
@@ -103,22 +142,24 @@ namespace InstantTraceViewerUI
                                 {
                                     if (isSelected)
                                     {
-                                        selectedRowIndices.Remove(i);
+                                        _selectedRowIndices.Remove(i);
                                     }
                                     else
                                     {
-                                        selectedRowIndices.Add(i);
+                                        _selectedRowIndices.Add(i);
                                     }
 
-                                    lastSelectedIndex = i;
+                                    _lastSelectedIndex = i;
                                 }
                                 else
                                 {
-                                    selectedRowIndices.Clear();
-                                    selectedRowIndices.Add(i);
-                                    lastSelectedIndex = i;
+                                    _selectedRowIndices.Clear();
+                                    _selectedRowIndices.Add(i);
+                                    _lastSelectedIndex = i;
                                 }
                             }
+                            ImGui.SameLine();
+                            ImGui.TextUnformatted(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"));
 
                             ImGui.TableNextColumn();
                             ImGui.TextUnformatted(_traceSource.GetProcessName(traceRecords[i].ProcessId));
@@ -133,7 +174,9 @@ namespace InstantTraceViewerUI
                             ImGui.TableNextColumn();
                             ImGui.TextUnformatted(traceRecords[i].Name);
                             ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].Message);
+
+                            var singleLineMessage = traceRecords[i].Message.Replace("\n", " ").Replace("\r", " ");
+                            ImGui.TextUnformatted(singleLineMessage);
                         }
                     }
                     clipper.End();
@@ -146,10 +189,14 @@ namespace InstantTraceViewerUI
 
                 ImGui.PopStyleVar(); // CellPadding
 
-                // Auto scroll - AKA keep the table scrolled to the bottom as new messages come in, but only if the table is already
-                // scrolled to the bottom.
-                if (ImGui.GetScrollY() >= ImGui.GetScrollMaxY())
+                if (setScrollIndex.HasValue)
                 {
+                    ImGui.SetScrollY(setScrollIndex.Value / (float)recordCount * ImGui.GetScrollMaxY());
+                }
+                else if (ImGui.GetScrollY() >= ImGui.GetScrollMaxY())
+                {
+                    // Auto scroll - AKA keep the table scrolled to the bottom as new messages come in, but only if the table is already
+                    // scrolled to the bottom.
                     ImGui.SetScrollHereY(1.0f);
                 }
 
