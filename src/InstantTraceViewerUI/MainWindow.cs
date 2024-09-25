@@ -8,7 +8,9 @@ namespace InstantTraceViewerUI
 {
     internal class MainWindow : IDisposable
     {
+        private Etw.OpenActiveSession _openActiveSession = new();
         private List<LogViewerWindow> _logViewerWindows = new();
+        private bool _showOpenActiveSession;
         private bool _isDisposed;
 
         public MainWindow()
@@ -29,6 +31,11 @@ namespace InstantTraceViewerUI
             foreach (var logViewerWindow in _logViewerWindows)
             {
                 logViewerWindow.DrawWindow();
+            }
+
+            if (_showOpenActiveSession)
+            {
+                _openActiveSession.DrawWindow(ref _showOpenActiveSession, _logViewerWindows);
             }
 
             // Clean up any closed windows. A window is determined to be closed during the DrawWindow call so this comes afterwards.
@@ -100,6 +107,11 @@ namespace InstantTraceViewerUI
                         }
                     }
 
+                    if (ImGui.MenuItem("Open active session ..."))
+                    {
+                        _showOpenActiveSession = true;
+                    }
+
                     ImGui.EndMenu();
                 }
             }
@@ -130,6 +142,7 @@ namespace InstantTraceViewerUI
                         logViewerWindow.Dispose();
                     }
                     _logViewerWindows.Clear();
+                    _openActiveSession.Dispose();
                 }
 
                 _isDisposed = true;

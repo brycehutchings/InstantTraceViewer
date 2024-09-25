@@ -5,10 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 
 namespace InstantTraceViewerUI.Etw
@@ -39,7 +36,7 @@ namespace InstantTraceViewerUI.Etw
 
         private bool isDisposed;
 
-        private EtwTraceSource(TraceEventSession etwSession, string displayName, int sessionNum)
+        public EtwTraceSource(TraceEventSession etwSession, string displayName, int sessionNum = -1)
         {
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
@@ -49,7 +46,7 @@ namespace InstantTraceViewerUI.Etw
             _processingThread.Start();
         }
 
-        private EtwTraceSource(ETWTraceEventSource etwSource, string displayName)
+        public EtwTraceSource(ETWTraceEventSource etwSource, string displayName)
         {
             DisplayName = displayName;
             _etwSession = null;
@@ -77,13 +74,20 @@ namespace InstantTraceViewerUI.Etw
             SubscribeToKernelEvents();
             SubscribeToDynamicEvents();
 
-            // This will block until the ETW session has been disposed.
-            _etwSource.Process();
+            try
+            {
+                // This will block until the ETW session has been disposed.
+                _etwSource.Process();
+            }
+            catch (Exception ex)
+            {
+                AddEvent(new TraceRecord { Message = $"Failed to process ETW session: {ex.Message}" });
+            }
         }
 
         static public EtwTraceSource CreateEtlSession(string etlFile)
         {
-            var eventSource = new ETWTraceEventSource(etlFile);
+            var eventSource = new ETWTraceEventSource(etlFile, TraceEventSourceType.FileOnly);
             try
             {
                 return new EtwTraceSource(eventSource, Path.GetFileName(etlFile));

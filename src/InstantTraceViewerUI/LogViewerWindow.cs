@@ -7,7 +7,9 @@ namespace InstantTraceViewerUI
 {
     internal class LogViewerWindow : IDisposable
     {
+        private static int _nextWindowId = 1;
         private readonly ITraceSource _traceSource;
+        private readonly int _windowId;
         private static HashSet<int> _selectedRowIndices = new HashSet<int>();
         private static int? _lastSelectedIndex;
         private string _findBuffer = string.Empty;
@@ -18,6 +20,7 @@ namespace InstantTraceViewerUI
         public LogViewerWindow(ITraceSource traceSource)
         {
             _traceSource = traceSource;
+            _windowId = _nextWindowId++;
         }
 
         public bool IsClosed => _isDisposed;
@@ -32,7 +35,7 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
             bool opened = true;
-            if (ImGui.Begin(_traceSource.DisplayName, ref opened))
+            if (ImGui.Begin($"{_traceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
             {
                 DrawWindowContents();
             }
@@ -50,11 +53,10 @@ namespace InstantTraceViewerUI
             int? setScrollIndex = null;
             DrawToolStrip(ref setScrollIndex);
 
-            if (ImGui.BeginTable("DebugPanelLogger",
-              8 /* columns */,
-              ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
-                  ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
-                  ImGuiTableFlags.Hideable))
+            if (ImGui.BeginTable("DebugPanelLogger", 8 /* columns */,
+                ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
+                ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
+                ImGuiTableFlags.Hideable))
             {
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
                 ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 110.0f);
@@ -171,7 +173,9 @@ namespace InstantTraceViewerUI
                 {
                     ImGui.SetScrollY(setScrollIndex.Value / (float)recordCount * ImGui.GetScrollMaxY());
                 }
-                else if (ImGui.GetScrollY() >= ImGui.GetScrollMaxY())
+                // ImGui has a bug with large scroll areas where you can't quite reach the MaxY with the scrollbar (e.g. ScrollY is 103545660 and ScrollMaxY is 103545670).
+                // So we use a percentage instead.
+                else if (ImGui.GetScrollMaxY() > 0 && ImGui.GetScrollY() / (float)ImGui.GetScrollMaxY() > 0.999f)
                 {
                     // Auto scroll - AKA keep the table scrolled to the bottom as new messages come in, but only if the table is already
                     // scrolled to the bottom.
