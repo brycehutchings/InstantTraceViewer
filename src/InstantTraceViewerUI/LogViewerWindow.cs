@@ -5,27 +5,65 @@ using ImGuiNET;
 
 namespace InstantTraceViewerUI
 {
+    // Allows multiple log viewer windows to share the same trace source.
+    internal class SharedTraceSource
+    {
+        private readonly HashSet<LogViewerWindow> _windows = new();
+
+        public SharedTraceSource(ITraceSource traceSource)
+        {
+            TraceSource = traceSource;
+        }
+
+        public ITraceSource TraceSource { get; private set; }
+
+        public SharedTraceSource AddRef(LogViewerWindow newWindow)
+        {
+            _windows.Add(newWindow);
+            return this;
+        }
+
+        public void ReleaseRef(LogViewerWindow newWindow)
+        {
+            _windows.Remove(newWindow);
+            if (_windows.Count == 0)
+            {
+                TraceSource.Dispose();
+                TraceSource = null;
+            }
+        }
+    }
+
+
     internal class LogViewerWindow : IDisposable
     {
         private static int _nextWindowId = 1;
-        private readonly ITraceSource _traceSource;
+
+        private readonly SharedTraceSource _traceSource;
         private readonly int _windowId;
-        private static HashSet<int> _selectedRowIndices = new HashSet<int>();
-        private static int? _lastSelectedIndex;
+
+        private HashSet<int> _selectedRowIndices = new HashSet<int>();
+        private int? _lastSelectedIndex;
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
-
         private bool _isDisposed;
 
-        public LogViewerWindow(ITraceSource traceSource)
+        public LogViewerWindow(SharedTraceSource traceSource)
         {
             _traceSource = traceSource;
+            _traceSource.AddRef(this);
+
             _windowId = _nextWindowId++;
+        }
+
+        public LogViewerWindow(ITraceSource traceSource)
+            : this(new SharedTraceSource(traceSource))
+        {
         }
 
         public bool IsClosed => _isDisposed;
 
-        public void DrawWindow()
+        public void DrawWindow(IUiCommands uiCommands)
         {
             if (IsClosed)
             {
@@ -35,9 +73,9 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
             bool opened = true;
-            if (ImGui.Begin($"{_traceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
+            if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
             {
-                DrawWindowContents();
+                DrawWindowContents(uiCommands);
             }
 
             ImGui.End();
@@ -48,10 +86,10 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private unsafe void DrawWindowContents()
+        private unsafe void DrawWindowContents(IUiCommands uiCommands)
         {
             int? setScrollIndex = null;
-            DrawToolStrip(ref setScrollIndex);
+            DrawToolStrip(uiCommands, ref setScrollIndex);
 
             if (ImGui.BeginTable("DebugPanelLogger", 8 /* columns */,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
@@ -74,7 +112,7 @@ namespace InstantTraceViewerUI
                 int recordCount = 0;
                 TraceLevel? lastLevel = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                _traceSource.ReadUnderLock((generationId, traceRecords) =>
+                _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
                 {
                     recordCount = traceRecords.Count;
                     clipper.Begin(traceRecords.Count);
@@ -142,13 +180,13 @@ namespace InstantTraceViewerUI
                             ImGui.TextUnformatted(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"));
 
                             ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.GetProcessName(traceRecords[i].ProcessId));
+                            ImGui.TextUnformatted(_traceSource.TraceSource.GetProcessName(traceRecords[i].ProcessId));
                             ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.GetThreadName(traceRecords[i].ThreadId));
+                            ImGui.TextUnformatted(_traceSource.TraceSource.GetThreadName(traceRecords[i].ThreadId));
                             ImGui.TableNextColumn();
                             ImGui.TextUnformatted(traceRecords[i].Level.ToString());
                             ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.GetOpCodeName(traceRecords[i].OpCode));
+                            ImGui.TextUnformatted(_traceSource.TraceSource.GetOpCodeName(traceRecords[i].OpCode));
                             ImGui.TableNextColumn();
                             ImGui.TextUnformatted(traceRecords[i].ProviderName);
                             ImGui.TableNextColumn();
@@ -187,13 +225,19 @@ namespace InstantTraceViewerUI
 
         }
 
-        private void DrawToolStrip(ref int? setScrollIndex)
+        private void DrawToolStrip(IUiCommands uiCommands, ref int? setScrollIndex)
         {
             if (ImGui.Button("Clear"))
             {
-                _traceSource.Clear();
+                _traceSource.TraceSource.Clear();
                 _lastSelectedIndex = null;
                 _selectedRowIndices.Clear();
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Clone"))
+            {
+                uiCommands.AddLogViewerWindow(Clone());
             }
 
             bool findRequested = false;
@@ -236,6 +280,13 @@ namespace InstantTraceViewerUI
             }
         }
 
+        private LogViewerWindow Clone()
+        {
+            LogViewerWindow newWindow = new(_traceSource);
+            newWindow._findBuffer = _findBuffer;
+            return newWindow;
+        }
+
         private static Vector4 LevelToColor(TraceLevel level)
         {
             return level == TraceLevel.Verbose ? new Vector4(0.75f, 0.75f, 0.75f, 1.0f)     // Gray
@@ -248,7 +299,7 @@ namespace InstantTraceViewerUI
         private int? FindText(string text)
         {
             int? setScrollIndex = null;
-            _traceSource.ReadUnderLock((generationId, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
             {
                 int i =
                     _findFoward ?
@@ -277,7 +328,7 @@ namespace InstantTraceViewerUI
             {
                 if (disposing)
                 {
-                    _traceSource.Dispose();
+                    _traceSource.ReleaseRef(this);
                 }
 
                 _isDisposed = true;
@@ -286,7 +337,6 @@ namespace InstantTraceViewerUI
 
         public void Dispose()
         {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
         }

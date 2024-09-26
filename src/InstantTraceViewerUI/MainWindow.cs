@@ -6,10 +6,16 @@ using ImGuiNET;
 
 namespace InstantTraceViewerUI
 {
-    internal class MainWindow : IDisposable
+    internal interface IUiCommands
+    {
+        void AddLogViewerWindow(LogViewerWindow logViewerWindow);
+    }
+
+    internal class MainWindow : IDisposable, IUiCommands
     {
         private Etw.OpenActiveSession _openActiveSession = new();
         private List<LogViewerWindow> _logViewerWindows = new();
+        private List<LogViewerWindow> _pendingNewLogViewWindows = new();
         private bool _showOpenActiveSession;
         private bool _isDisposed;
 
@@ -18,6 +24,12 @@ namespace InstantTraceViewerUI
         }
 
         public bool IsExitRequested { get; private set; }
+
+        public void AddLogViewerWindow(LogViewerWindow logViewerWindow)
+        {
+            // Can't add to _logViewerWindows since the collection might be enumerated during the add.
+            _pendingNewLogViewWindows.Add(logViewerWindow);
+        }
 
         public void Draw()
         {
@@ -28,14 +40,17 @@ namespace InstantTraceViewerUI
             // Force the (first) next window to be docked to fill window. Generally this is what people will want, rather than a smaller, floating window.
             ImGui.SetNextWindowDockID(dockId, ImGuiCond.FirstUseEver);
 
+            _logViewerWindows.AddRange(_pendingNewLogViewWindows);
+            _pendingNewLogViewWindows.Clear();
+
             foreach (var logViewerWindow in _logViewerWindows)
             {
-                logViewerWindow.DrawWindow();
+                logViewerWindow.DrawWindow(this);
             }
 
             if (_showOpenActiveSession)
             {
-                _openActiveSession.DrawWindow(ref _showOpenActiveSession, _logViewerWindows);
+                _openActiveSession.DrawWindow(this, ref _showOpenActiveSession);
             }
 
             // Clean up any closed windows. A window is determined to be closed during the DrawWindow call so this comes afterwards.

@@ -13,7 +13,7 @@ namespace InstantTraceViewerUI.Etw
         private IReadOnlyList<TraceEventSession> _activeSessions = null;
         private bool disposedValue;
 
-        public void DrawWindow(ref bool showOpenActiveSession, List<LogViewerWindow> logViewerWindows)
+        public void DrawWindow(IUiCommands uiCommands, ref bool showOpenActiveSession)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
@@ -63,7 +63,7 @@ namespace InstantTraceViewerUI.Etw
                                 {
                                     // Create a separate session object to have its own lifetime for IDisposable.
                                     var logViewerEtwSession = TraceEventSession.GetActiveSession(session.SessionName);
-                                    logViewerWindows.Add(new LogViewerWindow(new Etw.EtwTraceSource(logViewerEtwSession, logViewerEtwSession.SessionName)));
+                                    uiCommands.AddLogViewerWindow(new LogViewerWindow(new Etw.EtwTraceSource(logViewerEtwSession, logViewerEtwSession.SessionName)));
                                 }
                                 catch (Exception ex)
                                 {
@@ -84,7 +84,7 @@ namespace InstantTraceViewerUI.Etw
                             {
                                 try
                                 {
-                                    logViewerWindows.Add(new LogViewerWindow(Etw.EtwTraceSource.CreateEtlSession(session.FileName)));
+                                    uiCommands.AddLogViewerWindow(new LogViewerWindow(Etw.EtwTraceSource.CreateEtlSession(session.FileName)));
                                 }
                                 catch (Exception ex)
                                 {

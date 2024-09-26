@@ -10,7 +10,6 @@ using System.Threading;
 
 namespace InstantTraceViewerUI.Etw
 {
-
     internal partial class EtwTraceSource : ITraceSource
     {
         private static HashSet<int> SessionNums = new();
@@ -170,8 +169,6 @@ namespace InstantTraceViewerUI.Etw
             try
             {
                 _tableRecords.Clear();
-                _threadNames.Clear();
-                _processNames.Clear();
                 _generationId++;
                 GC.Collect();
             }
