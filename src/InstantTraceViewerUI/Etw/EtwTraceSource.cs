@@ -208,14 +208,14 @@ namespace InstantTraceViewerUI.Etw
                 }
             }
 
-            _pendingTableRecordsLock.EnterReadLock();
+            _tableRecordsLock.EnterReadLock();
             try
             {
                 callback(_generationId, _tableRecords);
             }
             finally
             {
-                _pendingTableRecordsLock.ExitReadLock();
+                _tableRecordsLock.ExitReadLock();
             }
         }
 
