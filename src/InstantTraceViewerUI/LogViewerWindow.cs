@@ -46,7 +46,7 @@ namespace InstantTraceViewerUI
         private int _visibleRowsGenerationId = -1;
 
         private HashSet<int> _selectedRowIndices = new HashSet<int>();
-        private int? _lastSelectedIndex;
+        private int? _lastSelectedVisibleRowIndex;
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
         private bool _isDisposed;
@@ -177,15 +177,15 @@ namespace InstantTraceViewerUI
                             ImGui.TableNextColumn();
 
                             // Create an empty selectable that spans the full row to enable row selection.
-                            bool isSelected = _selectedRowIndices.Contains(i);
-                            if (ImGui.Selectable($"##TableRow_{i}", isSelected, ImGuiSelectableFlags.SpanAllColumns))
+                            bool isSelected = _selectedRowIndices.Contains(visibleRowIndex);
+                            if (ImGui.Selectable($"##TableRow_{visibleRowIndex}", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                             {
                                 if (ImGui.GetIO().KeyShift)
                                 {
-                                    if (_lastSelectedIndex.HasValue)
+                                    if (_lastSelectedVisibleRowIndex.HasValue)
                                     {
                                         _selectedRowIndices.Clear();
-                                        for (int j = System.Math.Min(i, _lastSelectedIndex.Value); j <= System.Math.Max(i, _lastSelectedIndex.Value); j++)
+                                        for (int j = System.Math.Min(visibleRowIndex, _lastSelectedVisibleRowIndex.Value); j <= System.Math.Max(visibleRowIndex, _lastSelectedVisibleRowIndex.Value); j++)
                                         {
                                             _selectedRowIndices.Add(j);
                                         }
@@ -195,20 +195,20 @@ namespace InstantTraceViewerUI
                                 {
                                     if (isSelected)
                                     {
-                                        _selectedRowIndices.Remove(i);
+                                        _selectedRowIndices.Remove(visibleRowIndex);
                                     }
                                     else
                                     {
-                                        _selectedRowIndices.Add(i);
+                                        _selectedRowIndices.Add(visibleRowIndex);
                                     }
 
-                                    _lastSelectedIndex = i;
+                                    _lastSelectedVisibleRowIndex = visibleRowIndex;
                                 }
                                 else
                                 {
                                     _selectedRowIndices.Clear();
-                                    _selectedRowIndices.Add(i);
-                                    _lastSelectedIndex = i;
+                                    _selectedRowIndices.Add(visibleRowIndex);
+                                    _lastSelectedVisibleRowIndex = visibleRowIndex;
                                 }
                             }
                             ImGui.SameLine();
@@ -265,7 +265,7 @@ namespace InstantTraceViewerUI
             if (ImGui.Button("Clear"))
             {
                 _traceSource.TraceSource.Clear();
-                _lastSelectedIndex = null;
+                _lastSelectedVisibleRowIndex = null;
                 _selectedRowIndices.Clear();
             }
 
@@ -297,14 +297,14 @@ namespace InstantTraceViewerUI
 
             if (!string.IsNullOrEmpty(_findBuffer))
             {
-                if (ImGui.Shortcut(ImGuiKey.F3))
-                {
-                    _findFoward = true;
-                    findRequested = true;
-                }
-                else if (ImGui.Shortcut(ImGuiKey.F3 | ImGuiKey.ModShift))
+                if (ImGui.IsKeyPressed(ImGuiKey.F3) && ImGui.IsKeyDown(ImGuiKey.ModShift))
                 {
                     _findFoward = false;
+                    findRequested = true;
+                }
+                else if (ImGui.IsKeyPressed(ImGuiKey.F3))
+                {
+                    _findFoward = true;
                     findRequested = true;
                 }
 
@@ -336,22 +336,27 @@ namespace InstantTraceViewerUI
             int? setScrollIndex = null;
             _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
             {
-                int i =
+                int visibleRowIndex =
                     _findFoward ?
-                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value + 1 : 0) :
-                       (_lastSelectedIndex.HasValue ? _lastSelectedIndex.Value - 1 : traceRecords.Count - 1);
-                while (i >= 0 && i < traceRecords.Count)
+                       (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value + 1 : 0) :
+                       (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : traceRecords.Count - 1);
+                while (visibleRowIndex >= 0 && visibleRowIndex < _visibleRows.Count)
                 {
-                    if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
+                    int i = _visibleRows[visibleRowIndex];
+
+                    if (traceRecords[i].Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                        traceRecords[i].Name.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                        _traceSource.TraceSource.GetProcessName(traceRecords[i].ProcessId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                        _traceSource.TraceSource.GetThreadName(traceRecords[i].ThreadId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
                     {
-                        setScrollIndex = i;
-                        _lastSelectedIndex = i;
+                        setScrollIndex = visibleRowIndex;
+                        _lastSelectedVisibleRowIndex = visibleRowIndex;
                         _selectedRowIndices.Clear();
-                        _selectedRowIndices.Add(i);
+                        _selectedRowIndices.Add(visibleRowIndex);
                         break;
                     }
 
-                    i = (_findFoward ? i + 1 : i - 1);
+                    visibleRowIndex = (_findFoward ? visibleRowIndex + 1 : visibleRowIndex - 1);
                 }
             });
             return setScrollIndex;
