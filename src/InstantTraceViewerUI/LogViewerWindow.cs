@@ -34,13 +34,16 @@ namespace InstantTraceViewerUI
         }
     }
 
-
     internal class LogViewerWindow : IDisposable
     {
         private static int _nextWindowId = 1;
 
         private readonly SharedTraceSource _traceSource;
         private readonly int _windowId;
+
+        private readonly List<int> _visibleRows = new();
+        private int _nextTraceSourceRowIndex = 0;
+        private int _visibleRowsGenerationId = -1;
 
         private HashSet<int> _selectedRowIndices = new HashSet<int>();
         private int? _lastSelectedIndex;
@@ -63,12 +66,37 @@ namespace InstantTraceViewerUI
 
         public bool IsClosed => _isDisposed;
 
+        private void UpdateVisibleRows()
+        {
+            // TODO: This may be slow if generation id changes and millions of rows need to be reprocessed. It should run on a background thread.
+            //       We should then be careful to minimize locking to avoid blocking the UI thread by doing one quick AddRange at the end.
+            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+            {
+                if (generationId != _visibleRowsGenerationId)
+                {
+                    _visibleRows.Clear();
+                    _nextTraceSourceRowIndex = 0;
+                }
+
+                for (int i = _nextTraceSourceRowIndex; i < traceRecords.Count; i++)
+                {
+                    // TODO: Only add if filter matches.
+                    _visibleRows.Add(i);
+                }
+
+                _visibleRowsGenerationId = generationId;
+                _nextTraceSourceRowIndex = traceRecords.Count;
+            });
+        }
+
         public void DrawWindow(IUiCommands uiCommands)
         {
             if (IsClosed)
             {
                 return;
             }
+
+            UpdateVisibleRows();
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
@@ -114,17 +142,24 @@ namespace InstantTraceViewerUI
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
                 _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
                 {
-                    recordCount = traceRecords.Count;
-                    clipper.Begin(traceRecords.Count);
+                    if (_visibleRowsGenerationId != generationId)
+                    {
+                        return; // We're out of date. The next update will refresh us.
+                    }
+
+                    recordCount = _visibleRows.Count;
+                    clipper.Begin(_visibleRows.Count);
                     while (clipper.Step())
                     {
-                        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                        for (int visibleRowIndex = clipper.DisplayStart; visibleRowIndex < clipper.DisplayEnd; visibleRowIndex++)
                         {
                             // Don't bother to scroll to the selected index if it's already in view.
-                            if (i == setScrollIndex)
+                            if (visibleRowIndex == setScrollIndex)
                             {
                                 setScrollIndex = null;
                             }
+
+                            int i = _visibleRows[visibleRowIndex];
 
                             ImGui.TableNextRow();
 

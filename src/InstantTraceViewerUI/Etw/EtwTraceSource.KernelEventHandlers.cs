@@ -1,5 +1,6 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
+using System.Collections.Generic;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -28,11 +29,16 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnThreadEvent(ThreadTraceData data)
         {
-            if (!string.IsNullOrEmpty(data.ThreadName))
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
+                if (!string.IsNullOrEmpty(data.ThreadName))
                 {
                     _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
+                }
+                else
+                {
+                    // In case a thread id is reused, we want to make sure we don't have stale data. We need to use a timestamp if we want to keep old and new names around.
+                    _threadNames.TryRemove(data.ThreadID, out _);
                 }
             }
 
@@ -83,9 +89,11 @@ namespace InstantTraceViewerUI.Etw
                 return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
             }
 
+#if false
             var newRecord = CreateBaseTraceRecord(data);
             newRecord.Message = $"ParentPid:{data.ParentID} CommandLine:{data.CommandLine}";
             AddEvent(newRecord);
+#endif
         }
     }
 }
