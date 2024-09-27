@@ -14,6 +14,20 @@ using Veldrid.Sdl2;
 
 namespace InstantTraceViewerUI.ImGuiRendering
 {
+    // Things missing from Veldrid.Sdl2.Sdl2Native
+    internal class Sdl2NativeExt
+    {
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private unsafe delegate int SDL_GetDisplayUsableBounds_t(int displayIndex, Rectangle* rect);
+        private static SDL_GetDisplayUsableBounds_t p_sdl_GetDisplayUsableBounds_t = Sdl2Native.LoadFunction<SDL_GetDisplayUsableBounds_t>("SDL_GetDisplayBounds");
+        public unsafe static int SDL_GetDisplayUsableBounds(int displayIndex, Rectangle* rect) => p_sdl_GetDisplayUsableBounds_t(displayIndex, rect);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private unsafe delegate int SDL_GetGlobalMouseState_t(int* x, int* y);
+        private static SDL_GetGlobalMouseState_t p_sdl_GetGlobalMouseState = Sdl2Native.LoadFunction<SDL_GetGlobalMouseState_t>("SDL_GetGlobalMouseState");
+        public unsafe static int SDL_GetGlobalMouseState(int* x, int* y) => p_sdl_GetGlobalMouseState(x, y);
+    }
+
     /// <summary>
     /// A modified version of Veldrid.ImGui's ImGuiRenderer.
     /// Manages input for ImGui and handles rendering ImGui's DrawLists with Veldrid.
@@ -40,6 +54,19 @@ namespace InstantTraceViewerUI.ImGuiRendering
         private ResourceSet _mainResourceSet;
         private ResourceSet _fontTextureResourceSet;
 
+        private Dictionary<ImGuiMouseCursor, SDL_Cursor> _mouseCursors = new Dictionary<ImGuiMouseCursor, SDL_Cursor>
+        {
+            { ImGuiMouseCursor.Arrow, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.Arrow) },
+            { ImGuiMouseCursor.TextInput, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.IBeam) },
+            { ImGuiMouseCursor.ResizeAll, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.Wait) },
+            { ImGuiMouseCursor.ResizeNS, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.SizeNS) },
+            { ImGuiMouseCursor.ResizeEW, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.SizeWE) },
+            { ImGuiMouseCursor.ResizeNESW, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.SizeNESW) },
+            { ImGuiMouseCursor.ResizeNWSE, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.SizeNWSE) },
+            { ImGuiMouseCursor.Hand, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.Hand) },
+            { ImGuiMouseCursor.NotAllowed, Sdl2Native.SDL_CreateSystemCursor(SDL_SystemCursor.No) },
+        };
+
         private nint _fontAtlasID = 1;
         private bool _controlDown;
         private bool _shiftDown;
@@ -51,10 +78,8 @@ namespace InstantTraceViewerUI.ImGuiRendering
         private Vector2 _scaleFactor = Vector2.One;
 
         // Image trackers
-        private readonly Dictionary<TextureView, ResourceSetInfo> _setsByView
-            = new Dictionary<TextureView, ResourceSetInfo>();
-        private readonly Dictionary<Texture, TextureView> _autoViewsByTexture
-            = new Dictionary<Texture, TextureView>();
+        private readonly Dictionary<TextureView, ResourceSetInfo> _setsByView = new Dictionary<TextureView, ResourceSetInfo>();
+        private readonly Dictionary<Texture, TextureView> _autoViewsByTexture = new Dictionary<Texture, TextureView>();
         private readonly Dictionary<nint, ResourceSetInfo> _viewsById = new Dictionary<nint, ResourceSetInfo>();
         private readonly List<IDisposable> _ownedResources = new List<IDisposable>();
         private readonly VeldridImGuiWindow _mainViewportWindow;
@@ -221,27 +246,10 @@ namespace InstantTraceViewerUI.ImGuiRendering
             *outSize = new Vector2(bounds.Width, bounds.Height);
         }
 
-        private delegate void SDL_RaiseWindow_t(nint sdl2Window);
-        private static SDL_RaiseWindow_t p_sdl_RaiseWindow;
-
-        private unsafe delegate uint SDL_GetGlobalMouseState_t(int* x, int* y);
-        private static SDL_GetGlobalMouseState_t p_sdl_GetGlobalMouseState;
-
-        private unsafe delegate int SDL_GetDisplayUsableBounds_t(int displayIndex, Rectangle* rect);
-        private static SDL_GetDisplayUsableBounds_t p_sdl_GetDisplayUsableBounds_t;
-
-        private delegate int SDL_GetNumVideoDisplays_t();
-        private static SDL_GetNumVideoDisplays_t p_sdl_GetNumVideoDisplays;
-
         private void SetWindowFocus(ImGuiViewportPtr vp)
         {
-            if (p_sdl_RaiseWindow == null)
-            {
-                p_sdl_RaiseWindow = Sdl2Native.LoadFunction<SDL_RaiseWindow_t>("SDL_RaiseWindow");
-            }
-
             VeldridImGuiWindow window = (VeldridImGuiWindow)GCHandle.FromIntPtr(vp.PlatformUserData).Target;
-            p_sdl_RaiseWindow(window.Window.SdlWindowHandle);
+            Sdl2Native.SDL_RaiseWindow(window.Window.SdlWindowHandle);
         }
 
         private byte GetWindowFocus(ImGuiViewportPtr vp)
@@ -548,6 +556,18 @@ namespace InstantTraceViewerUI.ImGuiRendering
                 window.Update();
             }
 
+            var imguiCursor = ImGui.GetMouseCursor();
+            var io = ImGui.GetIO();
+            if (io.MouseDrawCursor || imguiCursor == ImGuiMouseCursor.None)
+            {
+                Sdl2Native.SDL_ShowCursor(0);
+            }
+            else
+            {
+                Sdl2Native.SDL_SetCursor(_mouseCursors.TryGetValue(imguiCursor, out SDL_Cursor sdlCursor) ? sdlCursor : _mouseCursors[ImGuiMouseCursor.Arrow]);
+                Sdl2Native.SDL_ShowCursor(1);
+            }
+
             UpdateMonitors();
 
             _frameBegun = true;
@@ -556,24 +576,16 @@ namespace InstantTraceViewerUI.ImGuiRendering
 
         private unsafe void UpdateMonitors()
         {
-            if (p_sdl_GetNumVideoDisplays == null)
-            {
-                p_sdl_GetNumVideoDisplays = Sdl2Native.LoadFunction<SDL_GetNumVideoDisplays_t>("SDL_GetNumVideoDisplays");
-            }
-            if (p_sdl_GetDisplayUsableBounds_t == null)
-            {
-                p_sdl_GetDisplayUsableBounds_t = Sdl2Native.LoadFunction<SDL_GetDisplayUsableBounds_t>("SDL_GetDisplayUsableBounds");
-            }
-
             ImGuiPlatformIOPtr platformIO = ImGui.GetPlatformIO();
             Marshal.FreeHGlobal(platformIO.NativePtr->Monitors.Data);
-            int numMonitors = p_sdl_GetNumVideoDisplays();
+            int numMonitors = Sdl2Native.SDL_GetNumVideoDisplays();
             nint data = Marshal.AllocHGlobal(Unsafe.SizeOf<ImGuiPlatformMonitor>() * numMonitors);
             platformIO.NativePtr->Monitors = new ImVector(numMonitors, numMonitors, data);
             for (int i = 0; i < numMonitors; i++)
             {
                 Rectangle r;
-                p_sdl_GetDisplayUsableBounds_t(i, &r);
+                Sdl2NativeExt.SDL_GetDisplayUsableBounds(i, &r);
+
                 ImGuiPlatformMonitorPtr monitor = platformIO.Monitors[i];
                 monitor.DpiScale = 1f;
                 monitor.MainPos = new Vector2(r.X, r.Y);
@@ -666,15 +678,10 @@ namespace InstantTraceViewerUI.ImGuiRendering
         {
             ImGuiIOPtr io = ImGui.GetIO();
 
-            if (p_sdl_GetGlobalMouseState == null)
-            {
-                p_sdl_GetGlobalMouseState = Sdl2Native.LoadFunction<SDL_GetGlobalMouseState_t>("SDL_GetGlobalMouseState");
-            }
-
             int x, y;
             unsafe
             {
-                uint buttons = p_sdl_GetGlobalMouseState(&x, &y);
+                int buttons = Sdl2NativeExt.SDL_GetGlobalMouseState(&x, &y);
                 io.MouseDown[0] = (buttons & 0b0001) != 0;
                 io.MouseDown[1] = (buttons & 0b0010) != 0;
                 io.MouseDown[2] = (buttons & 0b0100) != 0;
@@ -853,6 +860,11 @@ namespace InstantTraceViewerUI.ImGuiRendering
             foreach (IDisposable resource in _ownedResources)
             {
                 resource.Dispose();
+            }
+
+            foreach (var cur in _mouseCursors.Values)
+            {
+                Sdl2Native.SDL_FreeCursor(cur);
             }
         }
 
