@@ -1,6 +1,8 @@
-﻿using System;
-using System.Numerics;
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Text;
 using ImGuiNET;
 
 namespace InstantTraceViewerUI
@@ -81,7 +83,7 @@ namespace InstantTraceViewerUI
                 for (int i = _nextTraceSourceRowIndex; i < traceRecords.Count; i++)
                 {
                     // TODO: Only add if filter matches.
-                    _visibleRows.Add(i);
+                        _visibleRows.Add(i);
                 }
 
                 _visibleRowsGenerationId = generationId;
@@ -97,6 +99,12 @@ namespace InstantTraceViewerUI
             }
 
             UpdateVisibleRows();
+
+            if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+            {
+                _selectedRowIndices.Clear();
+                _lastSelectedVisibleRowIndex = null;
+            }
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
@@ -125,13 +133,13 @@ namespace InstantTraceViewerUI
                 ImGuiTableFlags.Hideable))
             {
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 110.0f);
                 ImGui.TableSetupColumn("Process", ImGuiTableColumnFlags.WidthFixed, 45.0f);
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 45.0f);
-                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
-                ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 80.0f);
+                ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 60.0f);
+                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 140.0f);
+                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 110.0f);
                 ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 
@@ -211,23 +219,29 @@ namespace InstantTraceViewerUI
                                     _lastSelectedVisibleRowIndex = visibleRowIndex;
                                 }
                             }
+
                             ImGui.SameLine();
+                            ImGui.TextUnformatted(_traceSource.TraceSource.GetProcessName(traceRecords[i].ProcessId));
+
+                            ImGui.TableNextColumn();
+                            ImGui.TextUnformatted(_traceSource.TraceSource.GetThreadName(traceRecords[i].ThreadId));
+
+                            ImGui.TableNextColumn();
+                            ImGui.TextUnformatted(traceRecords[i].ProviderName);
+
+                            ImGui.TableNextColumn();
+                            ImGui.TextUnformatted(_traceSource.TraceSource.GetOpCodeName(traceRecords[i].OpCode));
+
+                            ImGui.TableNextColumn();
+                            ImGui.TextUnformatted(traceRecords[i].Level.ToString());
+
+                            ImGui.TableNextColumn();
+                            ImGui.TextUnformatted(traceRecords[i].Name);
+
+                            ImGui.TableNextColumn();
                             ImGui.TextUnformatted(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"));
 
                             ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.TraceSource.GetProcessName(traceRecords[i].ProcessId));
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.TraceSource.GetThreadName(traceRecords[i].ThreadId));
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].Level.ToString());
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.TraceSource.GetOpCodeName(traceRecords[i].OpCode));
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].ProviderName);
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].Name);
-                            ImGui.TableNextColumn();
-
                             var singleLineMessage = traceRecords[i].Message.Replace("\n", " ").Replace("\r", " ");
                             ImGui.TextUnformatted(singleLineMessage);
                         }
@@ -262,6 +276,14 @@ namespace InstantTraceViewerUI
 
         private void DrawToolStrip(IUiCommands uiCommands, ref int? setScrollIndex)
         {
+            ImGui.BeginDisabled(!_selectedRowIndices.Any());
+            if (ImGui.Button("Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
+            {
+                CopySelectedRows();
+            }
+            ImGui.EndDisabled();
+
+            ImGui.SameLine();
             if (ImGui.Button("Clear"))
             {
                 _traceSource.TraceSource.Clear();
@@ -329,6 +351,22 @@ namespace InstantTraceViewerUI
                    : level == TraceLevel.Error ? new Vector4(0.75f, 0.0f, 0.0f, 1.0f)       // Red
                    : level == TraceLevel.Critical ? new Vector4(0.60f, 0.0f, 0.0f, 1.0f)    // Dark Red
                                                    : new Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // White
+        }
+
+        private void CopySelectedRows()
+        {
+            StringBuilder copyText = new();
+
+            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+            {
+                foreach (var selectedRowIndex in _selectedRowIndices.OrderBy(i => i))
+                {
+                    int i = _visibleRows[selectedRowIndex];
+                    copyText.Append($"{traceRecords[i].Timestamp:HH:mm:ss.ffffff}\t{traceRecords[i].ProcessId}\t{traceRecords[i].ThreadId}\t{_traceSource.TraceSource.GetOpCodeName(traceRecords[i].OpCode)}\t{traceRecords[i].Level}\t{traceRecords[i].ProviderName}\t{traceRecords[i].Name}\t{traceRecords[i].Message}\n");
+                }
+            });
+
+            ImGui.SetClipboardText(copyText.ToString());
         }
 
         private int? FindText(string text)
