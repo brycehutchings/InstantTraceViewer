@@ -678,22 +678,15 @@ namespace InstantTraceViewerUI.ImGuiRendering
         {
             ImGuiIOPtr io = ImGui.GetIO();
 
-            int x, y;
             unsafe
             {
+                int x, y;
                 int buttons = Sdl2NativeExt.SDL_GetGlobalMouseState(&x, &y);
-                io.MouseDown[0] = (buttons & 0b0001) != 0;
-                io.MouseDown[1] = (buttons & 0b0010) != 0;
-                io.MouseDown[2] = (buttons & 0b0100) != 0;
-                io.MousePos = new Vector2(x, y);
+                io.AddMouseButtonEvent(0, (buttons & 0b0001) != 0);
+                io.AddMouseButtonEvent(1, (buttons & 0b0100) != 0);
+                io.AddMouseButtonEvent(2, (buttons & 0b0010) != 0);
+                io.AddMousePosEvent(x, y);
             }
-
-            //io.AddMousePosEvent(x, y);
-            //io.AddMouseButtonEvent(0, snapshot.IsMouseDown(MouseButton.Left));
-            //io.AddMouseButtonEvent(1, snapshot.IsMouseDown(MouseButton.Right));
-            //io.AddMouseButtonEvent(2, snapshot.IsMouseDown(MouseButton.Middle));
-            //io.AddMouseButtonEvent(3, snapshot.IsMouseDown(MouseButton.Button1));
-            //io.AddMouseButtonEvent(4, snapshot.IsMouseDown(MouseButton.Button2));
 
             io.AddMouseWheelEvent(0f, snapshot.WheelDelta);
             for (int i = 0; i < snapshot.KeyCharPresses.Count; i++)
