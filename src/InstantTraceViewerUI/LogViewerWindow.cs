@@ -72,7 +72,7 @@ namespace InstantTraceViewerUI
         {
             // TODO: This may be slow if generation id changes and millions of rows need to be reprocessed. It should run on a background thread.
             //       We should then be careful to minimize locking to avoid blocking the UI thread by doing one quick AddRange at the end.
-            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
             {
                 if (generationId != _visibleRowsGenerationId)
                 {
@@ -133,9 +133,9 @@ namespace InstantTraceViewerUI
                 ImGuiTableFlags.Hideable))
             {
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                ImGui.TableSetupColumn("Process", ImGuiTableColumnFlags.WidthFixed, 45.0f);
-                ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 45.0f);
-                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 80.0f);
+                ImGui.TableSetupColumn("Process", ImGuiTableColumnFlags.WidthFixed, 60.0f);
+                ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 60.0f);
+                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 100.0f);
                 ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 60.0f);
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 140.0f);
@@ -148,7 +148,7 @@ namespace InstantTraceViewerUI
                 int recordCount = 0;
                 TraceLevel? lastLevel = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+                _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
                 {
                     if (_visibleRowsGenerationId != generationId)
                     {
@@ -317,6 +317,19 @@ namespace InstantTraceViewerUI
                 findRequested = true;
             }
 
+            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
+            {
+                ImGui.SameLine();
+                ImGui.Text($"{traceRecords.Count:N0} Total");
+                if (errorCount > 0)
+                {
+                    ImGui.SameLine();
+                    ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(TraceLevel.Error));
+                    ImGui.TextUnformatted($"{errorCount:N0} Errors");
+                    ImGui.PopStyleColor();
+                }
+            });
+
             if (!string.IsNullOrEmpty(_findBuffer))
             {
                 if (ImGui.IsKeyPressed(ImGuiKey.F3) && ImGui.IsKeyDown(ImGuiKey.ModShift))
@@ -357,7 +370,7 @@ namespace InstantTraceViewerUI
         {
             StringBuilder copyText = new();
 
-            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
             {
                 foreach (var selectedRowIndex in _selectedRowIndices.OrderBy(i => i))
                 {
@@ -372,7 +385,7 @@ namespace InstantTraceViewerUI
         private int? FindText(string text)
         {
             int? setScrollIndex = null;
-            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
             {
                 int visibleRowIndex =
                     _findFoward ?
