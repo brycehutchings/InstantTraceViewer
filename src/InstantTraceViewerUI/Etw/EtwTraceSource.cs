@@ -153,14 +153,14 @@ namespace InstantTraceViewerUI.Etw
         {
             return
                 processId == -1 ? string.Empty :
-                _processNames.TryGetValue(processId, out string name) ? $"{name} ({processId})" : processId.ToString();
+                _processNames.TryGetValue(processId, out string name) ? $"{processId} ({name})" : processId.ToString();
         }
 
         public string GetThreadName(int threadId)
         {
             return
                 threadId == -1 ? string.Empty :
-                _threadNames.TryGetValue(threadId, out string name) ? $"{name} ({threadId})" : threadId.ToString();
+                _threadNames.TryGetValue(threadId, out string name) ? $"{threadId} ({name})" : threadId.ToString();
         }
 
         public void Clear()
