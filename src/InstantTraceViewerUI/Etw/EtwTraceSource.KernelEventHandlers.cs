@@ -1,4 +1,4 @@
-﻿using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 
 namespace InstantTraceViewerUI.Etw
@@ -65,7 +65,6 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
                 newRecord.Message = $"File:{obj.FileName} CreateOptions:{obj.CreateOptions} CreateDisposition:{obj.CreateDisposition} FileAttributes:{obj.FileAttributes} ShareAccess:{obj.ShareAccess}"; // IrpPtr:{obj.IrpPtr} FileObject:{obj.FileObject}";
                 AddEvent(newRecord);
             }
@@ -74,13 +73,12 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-opend
         private void Kernel_FileIOOperationEnd(FileIOOpEndTraceData obj)
         {
-#if true
+#if false
             // TODO: This is too noisy to have as its own event. It gives the result of a prior operation.
             // I think we should search backwards and augment the first event with the same IrpPtr with this NtStatus.
             return;
 #else
             var newRecord = CreateBaseTraceRecord(obj);
-            newRecord.Name = obj.EventName;
             newRecord.Message = $"NtStatus:{obj.NtStatus:X}"; // IrpPtr:{obj.IrpPtr}";
             AddEvent(newRecord);
 #endif
@@ -92,7 +90,6 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
                 newRecord.Message = $"File:{obj.FileName}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey} FileObject:{obj.FileObject}";
                 AddEvent(newRecord);
             }
@@ -104,7 +101,6 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
                 newRecord.Message = $"File:{obj.FileName}"; // FileKey:{obj.FileKey}";
                 AddEvent(newRecord);
             }
@@ -115,9 +111,9 @@ namespace InstantTraceViewerUI.Etw
         {
             if (!string.IsNullOrEmpty(obj.FileName))
             {
+                // TODO: How do we parse the IO request packet flags (obj.IoFlags)?
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
-                newRecord.Message = $"File:{obj.FileName}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
+                newRecord.Message = $"File:{obj.FileName} Offset:{obj.Offset} IoSize:{obj.IoSize}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
                 AddEvent(newRecord);
             }
         }
@@ -127,7 +123,6 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
                 newRecord.Message = $"File:{obj.FileName}"; // FileKey:{obj.FileKey}";
                 AddEvent(newRecord);
             }
@@ -139,8 +134,7 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
-                newRecord.Message = $"File:{obj.FileName}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
+                newRecord.Message = $"File:{obj.FileName} InfoClass={obj.InfoClass} ExtraInfo={obj.ExtraInfo}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
                 AddEvent(newRecord);
             }
         }
@@ -149,8 +143,7 @@ namespace InstantTraceViewerUI.Etw
         private void FileIO_DirEnum(FileIODirEnumTraceData obj)
         {
             var newRecord = CreateBaseTraceRecord(obj);
-            newRecord.Name = obj.EventName;
-            newRecord.Message = $"Directory:{obj.DirectoryName} File:{obj.FileName} IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
+            newRecord.Message = $"Directory:{obj.DirectoryName} File:{obj.FileName}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
             AddEvent(newRecord);
         }
 
