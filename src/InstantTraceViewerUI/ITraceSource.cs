@@ -39,7 +39,7 @@ namespace InstantTraceViewerUI
         public Guid RelatedActivityId;
     }
 
-    delegate void ReadTraceRecords(int generationId, int errorCount, IReadOnlyList<TraceRecord> records);
+    delegate void ReadTraceRecords(int generationId, IReadOnlyList<TraceRecord> records);
 
     internal interface ITraceSource : IDisposable
     {

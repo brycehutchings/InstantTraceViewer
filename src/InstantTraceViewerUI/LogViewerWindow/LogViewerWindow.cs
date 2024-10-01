@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -7,35 +8,6 @@ using ImGuiNET;
 
 namespace InstantTraceViewerUI
 {
-    // Allows multiple log viewer windows to share the same trace source.
-    internal class SharedTraceSource
-    {
-        private readonly HashSet<LogViewerWindow> _windows = new();
-
-        public SharedTraceSource(ITraceSource traceSource)
-        {
-            TraceSource = traceSource;
-        }
-
-        public ITraceSource TraceSource { get; private set; }
-
-        public SharedTraceSource AddRef(LogViewerWindow newWindow)
-        {
-            _windows.Add(newWindow);
-            return this;
-        }
-
-        public void ReleaseRef(LogViewerWindow newWindow)
-        {
-            _windows.Remove(newWindow);
-            if (_windows.Count == 0)
-            {
-                TraceSource.Dispose();
-                TraceSource = null;
-            }
-        }
-    }
-
     internal class LogViewerWindow : IDisposable
     {
         private static int _nextWindowId = 1;
@@ -43,12 +15,18 @@ namespace InstantTraceViewerUI
         private readonly SharedTraceSource _traceSource;
         private readonly int _windowId;
 
+        // ViewerRules determine which rows are visible.
+        private ViewerRules _viewerRules = new();
+
         private readonly List<int> _visibleRows = new();
         private int _nextTraceSourceRowIndex = 0;
+        private int _errorCount = 0;
         private int _visibleRowsGenerationId = -1;
 
+        // TODO: Right now these hold the index into _visibleRows but we should probably change it to hold the index into the trace source so that filtering rule changes keep the same underlying thing selected.
         private HashSet<int> _selectedRowIndices = new HashSet<int>();
         private int? _lastSelectedVisibleRowIndex;
+
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
         private bool _isDisposed;
@@ -68,27 +46,38 @@ namespace InstantTraceViewerUI
 
         public bool IsClosed => _isDisposed;
 
-        private void UpdateVisibleRows()
+        private void UpdateVisibleRows(int generationId, IReadOnlyList<TraceRecord> traceRecords)
         {
-            // TODO: This may be slow if generation id changes and millions of rows need to be reprocessed. It should run on a background thread.
-            //       We should then be careful to minimize locking to avoid blocking the UI thread by doing one quick AddRange at the end.
-            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
+            // TODO: This may be slow if generation id changes and millions of rows need to be reprocessed. At a minimum we should show a busy indicator.
+            //       Even better would be a progress bar. To make this work, we could process for XX milliseconds into a separate List and then AddRange with a short lock.
+            if (generationId != _visibleRowsGenerationId)
             {
-                if (generationId != _visibleRowsGenerationId)
-                {
-                    _visibleRows.Clear();
-                    _nextTraceSourceRowIndex = 0;
-                }
+                Debug.WriteLine("Rebuilding visible rows...");
+                _visibleRows.Clear();
+                _nextTraceSourceRowIndex = 0;
+                _errorCount = 0;
+            }
 
-                for (int i = _nextTraceSourceRowIndex; i < traceRecords.Count; i++)
+            for (int i = _nextTraceSourceRowIndex; i < traceRecords.Count; i++)
+            {
+                if (_viewerRules.VisibleRules.Count == 0 || _viewerRules.GetVisibleAction(traceRecords[i]) == TraceRecordRuleAction.Include)
                 {
-                    // TODO: Only add if filter matches.
-                        _visibleRows.Add(i);
-                }
+                    if (traceRecords[i].Level == TraceLevel.Error)
+                    {
+                        _errorCount++;
+                    }
 
-                _visibleRowsGenerationId = generationId;
-                _nextTraceSourceRowIndex = traceRecords.Count;
-            });
+                    _visibleRows.Add(i);
+                }
+            }
+
+            if (_nextTraceSourceRowIndex == 0)
+            {
+                Debug.WriteLine("Done rebuilding visible rows.");
+            }
+
+            _visibleRowsGenerationId = generationId;
+            _nextTraceSourceRowIndex = traceRecords.Count;
         }
 
         public void DrawWindow(IUiCommands uiCommands)
@@ -98,7 +87,7 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            UpdateVisibleRows();
+            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) => UpdateVisibleRows(generationId, traceRecords));
 
             if (ImGui.IsKeyPressed(ImGuiKey.Escape))
             {
@@ -146,14 +135,28 @@ namespace InstantTraceViewerUI
                 ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(2, 2)); // Tighten spacing
 
                 int recordCount = 0;
-                TraceLevel? lastLevel = null;
-                var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
+                Vector4? lastColor = null;
+
+                var setColor = (Vector4? color) =>
                 {
-                    if (_visibleRowsGenerationId != generationId)
+                    if (color != lastColor)
                     {
-                        return; // We're out of date. The next update will refresh us.
+                        if (lastColor.HasValue)
+                        {
+                            ImGui.PopStyleColor(); // ImGuiCol_Text changed.
+                        }
+                        if (color.HasValue)
+                        {
+                            ImGui.PushStyleColor(ImGuiCol.Text, color.Value);
+                        }
+                        lastColor = color;
                     }
+                };
+
+                var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
+                _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
+                {
+                    UpdateVisibleRows(generationId, traceRecords);
 
                     recordCount = _visibleRows.Count;
                     clipper.Begin(_visibleRows.Count);
@@ -169,24 +172,17 @@ namespace InstantTraceViewerUI
 
                             int i = _visibleRows[visibleRowIndex];
 
+                            ImGui.PushID(i);
+
                             ImGui.TableNextRow();
 
-                            // Update StyleColor if level changed.
-                            if (lastLevel != traceRecords[i].Level)
-                            {
-                                if (lastLevel.HasValue)
-                                {
-                                    ImGui.PopStyleColor(); // ImGuiCol_Text changed.
-                                }
-                                ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(traceRecords[i].Level));
-                                lastLevel = traceRecords[i].Level;
-                            }
+                            setColor(LevelToColor(traceRecords[i].Level));
 
                             ImGui.TableNextColumn();
 
                             // Create an empty selectable that spans the full row to enable row selection.
                             bool isSelected = _selectedRowIndices.Contains(visibleRowIndex);
-                            if (ImGui.Selectable($"##TableRow_{visibleRowIndex}", isSelected, ImGuiSelectableFlags.SpanAllColumns))
+                            if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                             {
                                 if (ImGui.GetIO().KeyShift)
                                 {
@@ -220,39 +216,78 @@ namespace InstantTraceViewerUI
                                 }
                             }
 
-                            ImGui.SameLine();
-                            ImGui.TextUnformatted(_traceSource.TraceSource.GetProcessName(traceRecords[i].ProcessId));
+                            int columnCount = 0;
+                            var addColumnData = (Func<TraceRecord, string> getDisplayText) =>
+                            {
+                                if (columnCount == 0)
+                                {
+                                    // The first column is already started with a special whole-row selectable.
+                                    ImGui.SameLine();
+                                }
+                                else
+                                {
+                                    ImGui.TableNextColumn();
+                                }
 
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.TraceSource.GetThreadName(traceRecords[i].ThreadId));
+                                columnCount++;
+                                string displayText = getDisplayText(traceRecords[i]);
+                                ImGui.TextUnformatted(displayText);
 
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].ProviderName);
+                                if (ImGui.BeginPopupContextItem($"tableViewPopup{columnCount}"))
+                                {
+                                    string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
 
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(_traceSource.TraceSource.GetOpCodeName(traceRecords[i].OpCode));
+                                    setColor(new Vector4(1, 1, 1, 1)); // TODO: Get color from theme
 
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].Level.ToString());
+                                    if (ImGui.MenuItem($"Highlight '{displayTextTruncated}'"))
+                                    {
+                                        _viewerRules.HighlightRules.Add(new TraceRecordHighlightRule(
+                                            Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
+                                            Color: new Vector4(1.0f, 1.0f, 0.0f, 1.0f)));
+                                        _visibleRowsGenerationId = -1;
+                                    }
+                                    if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
+                                    {
+                                        _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
+                                            Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
+                                            Action: TraceRecordRuleAction.Include));
+                                        _visibleRowsGenerationId = -1;
+                                    }
+                                    if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
+                                    {
+                                        _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
+                                            Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
+                                            Action: TraceRecordRuleAction.Exclude));
+                                        _visibleRowsGenerationId = -1;
+                                    }
+                                    ImGui.Separator();
+                                    if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
+                                    {
+                                        ImGui.SetClipboardText(displayText);
+                                    }
+                                    ImGui.EndPopup();
 
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].Name);
+                                    // Resume co r for remainder of row.
+                                    setColor(LevelToColor(traceRecords[i].Level));
+                                }
+                            };
 
-                            ImGui.TableNextColumn();
-                            ImGui.TextUnformatted(traceRecords[i].Timestamp.ToString("HH:mm:ss.ffffff"));
+                            addColumnData(r => _traceSource.TraceSource.GetProcessName(r.ProcessId));
+                            addColumnData(r => _traceSource.TraceSource.GetThreadName(r.ThreadId));
+                            addColumnData(r => r.ProviderName);
+                            addColumnData(r => _traceSource.TraceSource.GetOpCodeName(r.OpCode));
+                            addColumnData(r => r.Level.ToString());
+                            addColumnData(r => r.Name);
+                            addColumnData(r => r.Timestamp.ToString("HH:mm:ss.ffffff"));
+                            addColumnData(r => r.Message.Replace("\n", " ").Replace("\r", " "));
 
-                            ImGui.TableNextColumn();
-                            var singleLineMessage = traceRecords[i].Message.Replace("\n", " ").Replace("\r", " ");
-                            ImGui.TextUnformatted(singleLineMessage);
+                            ImGui.PopID(); // Row index
                         }
                     }
                     clipper.End();
                 });
 
-                if (lastLevel.HasValue)
-                {
-                    ImGui.PopStyleColor(); // ImGuiCol_Text
-                }
+                setColor(null);
 
                 ImGui.PopStyleVar(); // CellPadding
 
@@ -317,15 +352,24 @@ namespace InstantTraceViewerUI
                 findRequested = true;
             }
 
-            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
             {
+                // Must ensure visible rows are up to date in order to avoid race conditions when comparing counts.
+                UpdateVisibleRows(generationId, traceRecords);
+
                 ImGui.SameLine();
-                ImGui.Text($"{traceRecords.Count:N0} Total");
-                if (errorCount > 0)
+                ImGui.Text($"{_visibleRows.Count:N0} rows");
+                if (_visibleRows.Count != traceRecords.Count)
+                {
+                    ImGui.SameLine();
+                    ImGui.Text($"({traceRecords.Count - _visibleRows.Count:N0} excluded)");
+                }
+
+                if (_errorCount > 0)
                 {
                     ImGui.SameLine();
                     ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(TraceLevel.Error));
-                    ImGui.TextUnformatted($"{errorCount:N0} Errors");
+                    ImGui.TextUnformatted($"{_errorCount:N0} Errors");
                     ImGui.PopStyleColor();
                 }
             });
@@ -354,6 +398,7 @@ namespace InstantTraceViewerUI
         {
             LogViewerWindow newWindow = new(_traceSource);
             newWindow._findBuffer = _findBuffer;
+            newWindow._viewerRules = _viewerRules.Clone();
             return newWindow;
         }
 
@@ -370,7 +415,7 @@ namespace InstantTraceViewerUI
         {
             StringBuilder copyText = new();
 
-            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId,  traceRecords) =>
             {
                 foreach (var selectedRowIndex in _selectedRowIndices.OrderBy(i => i))
                 {
@@ -385,7 +430,7 @@ namespace InstantTraceViewerUI
         private int? FindText(string text)
         {
             int? setScrollIndex = null;
-            _traceSource.TraceSource.ReadUnderLock((generationId, errorCount, traceRecords) =>
+            _traceSource.TraceSource.ReadUnderLock((generationId, traceRecords) =>
             {
                 int visibleRowIndex =
                     _findFoward ?

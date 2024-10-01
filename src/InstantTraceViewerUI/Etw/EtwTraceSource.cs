@@ -28,7 +28,6 @@ namespace InstantTraceViewerUI.Etw
 
         private readonly ReaderWriterLockSlim _tableRecordsLock = new ReaderWriterLockSlim();
         private readonly List<TraceRecord> _tableRecords = new();
-        private int _errorCount = 0;
         private int _generationId = 1;
 
         private ConcurrentDictionary<int, string> _threadNames = new();
@@ -61,11 +60,6 @@ namespace InstantTraceViewerUI.Etw
             _pendingTableRecordsLock.EnterWriteLock();
             try
             {
-                if (record.Level == TraceLevel.Error || record.Level == TraceLevel.Critical)
-                {
-                    _errorCount++;
-                }
-
                 _pendingTableRecords.Add(record);
             }
             finally
@@ -176,7 +170,6 @@ namespace InstantTraceViewerUI.Etw
             {
                 _tableRecords.Clear();
                 _generationId++;
-                _errorCount = 0;
                 GC.Collect();
             }
             finally
@@ -218,7 +211,7 @@ namespace InstantTraceViewerUI.Etw
             _tableRecordsLock.EnterReadLock();
             try
             {
-                callback(_generationId, _errorCount, _tableRecords);
+                callback(_generationId, _tableRecords);
             }
             finally
             {
