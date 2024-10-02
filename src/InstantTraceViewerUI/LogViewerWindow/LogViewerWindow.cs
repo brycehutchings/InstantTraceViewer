@@ -56,9 +56,10 @@ namespace InstantTraceViewerUI
 
             // TODO: _filteredTraceRecords keeps a reference to traceRecords outside of the lock. This is actually safe
             // as long as no one else calls ReadUnderLock since this is the only time the collection is updated. Can I do better?
+            bool filteredViewRebuilt = false;
             _traceSource.TraceSource.ReadUnderLock((int generationId, IReadOnlyList<TraceRecord> traceRecords) =>
             {
-                _filteredTraceRecords.Update(_viewerRules, generationId, traceRecords);
+                filteredViewRebuilt = _filteredTraceRecords.Update(_viewerRules, generationId, traceRecords);
             });
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
@@ -66,7 +67,7 @@ namespace InstantTraceViewerUI
             bool opened = true;
             if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
             {
-                DrawWindowContents(uiCommands, _filteredTraceRecords);
+                DrawWindowContents(uiCommands, _filteredTraceRecords, filteredViewRebuilt);
             }
 
             ImGui.End();
@@ -77,10 +78,8 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords)
+        private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, bool filteredViewRebuilt)
         {
-            _topmostVisibleTraceRecordId = null;
-
             int? setScrollIndex = null;
             DrawToolStrip(uiCommands, visibleTraceRecords, ref setScrollIndex);
 
@@ -121,8 +120,26 @@ namespace InstantTraceViewerUI
                     }
                 };
 
+                // Maintain scroll position when the view was rebuilt. The scroll will happen after the table is drawn so that the row height can be used to calculate the scroll offset.
+                if (filteredViewRebuilt && _topmostVisibleTraceRecordId.HasValue)
+                {
+                    Debug.WriteLine("Trying to maintain scroll position...");
+
+                    // TODO: This could be a binary search.
+                    for (int i = 0; i < visibleTraceRecords.Count; i++)
+                    {
+                        if (visibleTraceRecords.GetRecordId(i) >= _topmostVisibleTraceRecordId)
+                        {
+                            Debug.WriteLine($"Scrolling to index {i} / {visibleTraceRecords.Count}");
+                            setScrollIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                _topmostVisibleTraceRecordId = null;
+
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                recordCount = visibleTraceRecords.Count;
                 clipper.Begin(visibleTraceRecords.Count);
                 while (clipper.Step())
                 {
@@ -137,7 +154,8 @@ namespace InstantTraceViewerUI
                         TraceRecord traceRecord = visibleTraceRecords[i];
                         int traceRecordId = visibleTraceRecords.GetRecordId(i);
 
-                        if (_topmostVisibleTraceRecordId == null)
+                        // ImGuiListClipper always does row 0 to calculate row height, so this must be ignored.
+                        if (_topmostVisibleTraceRecordId == null && i != 0)
                         {
                             _topmostVisibleTraceRecordId = traceRecordId;
                         }
@@ -262,7 +280,14 @@ namespace InstantTraceViewerUI
 
                 if (setScrollIndex.HasValue)
                 {
-                    ImGui.SetScrollY(setScrollIndex.Value / (float)recordCount * ImGui.GetScrollMaxY());
+                    float partialRowScroll = ((int)ImGui.GetScrollY() % (int)clipper.ItemsHeight);
+                    if (partialRowScroll > 0)
+                    {
+                        // Substract one row from the partial scroll so that we don't have a sliver of the row partially visible. But no need to do this if we're exactly aligned to the row.
+                        partialRowScroll -= clipper.ItemsHeight;
+                    }
+
+                    ImGui.SetScrollY(setScrollIndex.Value * clipper.ItemsHeight + partialRowScroll);
                 }
                 // ImGui has a bug with large scroll areas where you can't quite reach the MaxY with the scrollbar (e.g. ScrollY is 103545660 and ScrollMaxY is 103545670).
                 // So we use a percentage instead.
@@ -406,7 +431,7 @@ namespace InstantTraceViewerUI
                     setScrollIndex = visibleRowIndex;
                     _lastSelectedVisibleRowIndex = visibleRowIndex;
                     _selectedTraceRecordIds.Clear();
-                    _selectedTraceRecordIds.Add(visibleRowIndex);
+                    _selectedTraceRecordIds.Add(visibleTraceRecords.GetRecordId(visibleRowIndex));
                     break;
                 }
 

@@ -33,10 +33,12 @@ namespace InstantTraceViewerUI
 
         public int UnfilteredCount => _unfilteredCount;
 
-        public void Update(ViewerRules viewerRules, int generationId, IReadOnlyList<TraceRecord> traceRecords)
+        public bool Update(ViewerRules viewerRules, int generationId, IReadOnlyList<TraceRecord> traceRecords)
         {
-            if (generationId != _unfilteredTraceRecordGenerationId ||
-                viewerRules.GenerationId != _viewerRulesGenerationId)
+            bool rebuildFilteredView =
+                generationId != _unfilteredTraceRecordGenerationId ||
+                viewerRules.GenerationId != _viewerRulesGenerationId;
+            if (rebuildFilteredView)
             {
                 Debug.WriteLine("Rebuilding visible rows...");
                 _visibleRows.Clear();
@@ -44,7 +46,6 @@ namespace InstantTraceViewerUI
                 _errorCount = 0;
             }
 
-            int? scrollPosition = null;
             for (int i = _nextTraceSourceRowIndex; i < traceRecords.Count; i++)
             {
                 if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(traceRecords[i]) == TraceRecordRuleAction.Include)
@@ -58,7 +59,7 @@ namespace InstantTraceViewerUI
                 }
             }
 
-            if (_nextTraceSourceRowIndex == 0)
+            if (rebuildFilteredView)
             {
                 Debug.WriteLine("Done rebuilding visible rows.");
             }
@@ -68,6 +69,8 @@ namespace InstantTraceViewerUI
             _unfilteredTraceRecordGenerationId = generationId;
             _nextTraceSourceRowIndex = traceRecords.Count;
             _unfilteredCount = traceRecords.Count;
+
+            return rebuildFilteredView;
         }
     }
 }
