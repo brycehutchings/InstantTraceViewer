@@ -28,6 +28,8 @@ namespace InstantTraceViewerUI
 
         public List<TraceRecordHighlightRule> HighlightRules { get; set; } = new List<TraceRecordHighlightRule>();
 
+        public int GenerationId { get; set; } = 1;
+
         public TraceRecordRuleAction GetVisibleAction(TraceRecord record)
         {
             TraceRecordRuleAction defaultAction = TraceRecordRuleAction.Include;
