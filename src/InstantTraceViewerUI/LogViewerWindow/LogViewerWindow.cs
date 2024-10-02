@@ -80,8 +80,14 @@ namespace InstantTraceViewerUI
 
         private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, bool filteredViewRebuilt)
         {
-            int? setScrollIndex = null;
+            int? setScrollIndex = null;             // Row index to scroll to (it will be the topmost row that is visible).
+
             DrawToolStrip(uiCommands, visibleTraceRecords, ref setScrollIndex);
+
+            // If we are scrolling to show a line (like for CTRL+F), position the line ~1/3 of the way down.
+            // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
+            Vector2 remainingRegion = ImGui.GetContentRegionAvail();
+            int setScrollIncludePriorRowCount = (int)((remainingRegion.Y * 0.3f) / ImGui.GetTextLineHeightWithSpacing());
 
             if (ImGui.BeginTable("DebugPanelLogger", 8 /* columns */,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
@@ -101,7 +107,6 @@ namespace InstantTraceViewerUI
 
                 ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(2, 2)); // Tighten spacing
 
-                int recordCount = 0;
                 Vector4? lastColor = null;
 
                 var setColor = (Vector4? color) =>
@@ -132,6 +137,7 @@ namespace InstantTraceViewerUI
                         {
                             Debug.WriteLine($"Scrolling to index {i} / {visibleTraceRecords.Count}");
                             setScrollIndex = i;
+                            setScrollIncludePriorRowCount = 0; // We don't want things to move around when filtering changes.
                             break;
                         }
                     }
@@ -278,16 +284,13 @@ namespace InstantTraceViewerUI
 
                 ImGui.PopStyleVar(); // CellPadding
 
+                Vector2 size = ImGui.GetItemRectSize();
+
                 if (setScrollIndex.HasValue)
                 {
-                    float partialRowScroll = ((int)ImGui.GetScrollY() % (int)clipper.ItemsHeight);
-                    if (partialRowScroll > 0)
-                    {
-                        // Substract one row from the partial scroll so that we don't have a sliver of the row partially visible. But no need to do this if we're exactly aligned to the row.
-                        partialRowScroll -= clipper.ItemsHeight;
-                    }
-
-                    ImGui.SetScrollY(setScrollIndex.Value * clipper.ItemsHeight + partialRowScroll);
+                    // If we're trying to precisely maintain the content after the count has changed, we need to account for the partial row scroll.
+                    float partialRowScroll = setScrollIncludePriorRowCount == 0 ? ((int)ImGui.GetScrollY() % (int)clipper.ItemsHeight) : 0;
+                    ImGui.SetScrollY((setScrollIndex.Value - setScrollIncludePriorRowCount) * clipper.ItemsHeight + partialRowScroll);
                 }
                 // ImGui has a bug with large scroll areas where you can't quite reach the MaxY with the scrollbar (e.g. ScrollY is 103545660 and ScrollMaxY is 103545670).
                 // So we use a percentage instead.
@@ -319,6 +322,16 @@ namespace InstantTraceViewerUI
                 _lastSelectedVisibleRowIndex = null;
                 _selectedTraceRecordIds.Clear();
             }
+
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!_viewerRules.VisibleRules.Any());
+            string clearFilterSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
+            if (ImGui.Button($"Clear filters" + clearFilterSuffix))
+            {
+                _viewerRules.VisibleRules.Clear();
+                _viewerRules.GenerationId++;
+            }
+            ImGui.EndDisabled();
 
             ImGui.SameLine();
             if (ImGui.Button("Clone"))
