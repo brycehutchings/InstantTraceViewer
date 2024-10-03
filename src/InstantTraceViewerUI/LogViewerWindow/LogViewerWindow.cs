@@ -22,6 +22,9 @@ namespace InstantTraceViewerUI
         private int? _lastSelectedVisibleRowIndex;
         private int? _topmostVisibleTraceRecordId;
 
+        private int? _hoveredProcessId;
+        private int? _hoveredThreadId;
+
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
         private bool _isDisposed;
@@ -145,6 +148,7 @@ namespace InstantTraceViewerUI
 
                 _topmostVisibleTraceRecordId = null;
 
+                int? newHoveredProcessId = null, newHoveredThreadId = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
                 clipper.Begin(visibleTraceRecords.Count);
                 while (clipper.Step())
@@ -169,6 +173,15 @@ namespace InstantTraceViewerUI
                         ImGui.PushID(traceRecordId);
 
                         ImGui.TableNextRow();
+
+                        if (traceRecord.ProcessId == _hoveredProcessId)
+                        {
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.3f, 1.0f)), 0);
+                        }
+                        if (traceRecord.ThreadId == _hoveredThreadId)
+                        {
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.3f, 1.0f)), 1);
+                        }
 
                         setColor(LevelToColor(traceRecord.Level));
 
@@ -207,6 +220,20 @@ namespace InstantTraceViewerUI
                                 _selectedTraceRecordIds.Clear();
                                 _selectedTraceRecordIds.Add(traceRecordId);
                                 _lastSelectedVisibleRowIndex = i;
+                            }
+                        }
+
+                        // Selectable spans all columns so this makes it easy to tell if a row is hovered.
+                        if (ImGui.IsItemHovered(ImGuiHoveredFlags.None))
+                        {
+                            int hoveredCol = ImGui.TableGetHoveredColumn();
+                            if (hoveredCol == 0)
+                            {
+                                newHoveredProcessId = traceRecord.ProcessId;
+                            }
+                            else if (hoveredCol == 1)
+                            {
+                                newHoveredThreadId = traceRecord.ThreadId;
                             }
                         }
 
@@ -261,7 +288,7 @@ namespace InstantTraceViewerUI
                                 }
                                 ImGui.EndPopup();
 
-                                // Resume co r for remainder of row.
+                                // Resume color for remainder of row.
                                 setColor(LevelToColor(traceRecord.Level));
                             }
                         };
@@ -281,6 +308,9 @@ namespace InstantTraceViewerUI
                 clipper.End();
 
                 setColor(null);
+
+                _hoveredProcessId = newHoveredProcessId;
+                _hoveredThreadId = newHoveredThreadId;
 
                 ImGui.PopStyleVar(); // CellPadding
 
