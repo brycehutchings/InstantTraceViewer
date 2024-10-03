@@ -63,7 +63,11 @@ namespace InstantTraceViewerUI.Etw
                                 {
                                     // Create a separate session object to have its own lifetime for IDisposable.
                                     var logViewerEtwSession = TraceEventSession.GetActiveSession(session.SessionName);
-                                    uiCommands.AddLogViewerWindow(new LogViewerWindow(new Etw.EtwTraceSource(logViewerEtwSession, logViewerEtwSession.SessionName)));
+
+                                    // TraceEventSession doesn't seem to expose the enabled providers, so we will just assume the kernel provider is not enabled so we try to look up process names.
+                                    bool kernelProcessThreadProviderEnabled = false;
+
+                                    uiCommands.AddLogViewerWindow(new LogViewerWindow(new Etw.EtwTraceSource(logViewerEtwSession, kernelProcessThreadProviderEnabled, logViewerEtwSession.SessionName)));
                                 }
                                 catch (Exception ex)
                                 {

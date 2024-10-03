@@ -19,6 +19,7 @@ namespace InstantTraceViewerUI.Etw
 
         private readonly TraceEventSession _etwSession;
         private readonly ETWTraceEventSource _etwSource;
+        private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
         private readonly Thread _processingThread;
@@ -35,11 +36,12 @@ namespace InstantTraceViewerUI.Etw
 
         private bool isDisposed;
 
-        public EtwTraceSource(TraceEventSession etwSession, string displayName, int sessionNum = -1)
+        public EtwTraceSource(TraceEventSession etwSession, bool kernelProcessThreadProviderEnabled, string displayName, int sessionNum = -1)
         {
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
+            _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
@@ -50,6 +52,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = displayName;
             _etwSession = null;
             _etwSource = etwSource;
+            _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
@@ -105,8 +108,11 @@ namespace InstantTraceViewerUI.Etw
 
             try
             {
+                bool kernelProcessThreadProviderEnabled = false;
                 if (profile.KernelKeywords != KernelTraceEventParser.Keywords.None)
                 {
+                    // EnableKernelProvider will always enable Process and Thread events.
+                    kernelProcessThreadProviderEnabled = true;
                     etwSession.EnableKernelProvider(profile.KernelKeywords);
                 }
 
@@ -115,7 +121,7 @@ namespace InstantTraceViewerUI.Etw
                     etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
                 }
 
-                return new EtwTraceSource(etwSession, profile.DisplayName, sessionNum);
+                return new EtwTraceSource(etwSession, kernelProcessThreadProviderEnabled, profile.DisplayName, sessionNum);
             }
             catch
             {
@@ -143,9 +149,9 @@ namespace InstantTraceViewerUI.Etw
         public string GetOpCodeName(byte opCode)
         {
             return
-                opCode == 0 ?   string.Empty :
-                opCode == 10 ?  "Load" :
-                opCode == 11 ?  "Terminate" :
+                opCode == 0 ? string.Empty :
+                opCode == 10 ? "Load" :
+                opCode == 11 ? "Terminate" :
                                 ((TraceEventOpcode)opCode).ToString();
         }
 
@@ -153,7 +159,7 @@ namespace InstantTraceViewerUI.Etw
         {
             return
                 processId == -1 ? string.Empty :
-                _processNames.TryGetValue(processId, out string name) ? $"{processId} ({name})" : processId.ToString();
+                _processNames.TryGetValue(processId, out string name) && !string.IsNullOrEmpty(name) ? $"{processId} ({name})" : processId.ToString();
         }
 
         public string GetThreadName(int threadId)
@@ -194,6 +200,8 @@ namespace InstantTraceViewerUI.Etw
                 _pendingTableRecordsLock.ExitWriteLock();
             }
 
+            UpdateProcessNameTable(pendingTableRecordsLocal);
+
             // Now we can append on the new events.
             if (pendingTableRecordsLocal.Count > 0)
             {
@@ -216,6 +224,37 @@ namespace InstantTraceViewerUI.Etw
             finally
             {
                 _tableRecordsLock.ExitReadLock();
+            }
+        }
+
+        private void UpdateProcessNameTable(IReadOnlyList<TraceRecord> traceRecords)
+        {
+            // Microsoft.Diagnostics.Tracing will track process names when the Kernel provider is enabled, otherwise we need to do it.
+            // If this is not a realtime session, then no point in trying to look up process names--they could be from a different machine or be reused at this point.
+            if (!_etwSource.IsRealTime || _kernelProcessThreadProviderEnabled)
+            {
+                return;
+            }
+
+            foreach (var record in traceRecords)
+            {
+                _processNames.GetOrAdd(record.ProcessId, _ =>
+                {
+                    try
+                    {
+                        // We could go lower-level if it is useful and PInvoke QueryFullProcessImageName and open the process handle with PROCESS_QUERY_LIMITED_INFORMATION,
+                        // but since this is a realtime session, we're probably elevated already and shouldn't have problems. This would also avoid the need for a try-catch.
+                        using (var process = Process.GetProcessById(record.ProcessId))
+                        {
+                            return process.ProcessName;
+                        }
+                    }
+                    catch
+                    {
+                        Debug.WriteLine($"Failed to get process name for pid {record.ProcessId})");
+                        return null; // Avoid querying again.
+                    }
+                });
             }
         }
 
