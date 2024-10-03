@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -321,6 +321,9 @@ namespace InstantTraceViewerUI
                 _traceSource.TraceSource.Clear();
                 _lastSelectedVisibleRowIndex = null;
                 _selectedTraceRecordIds.Clear();
+
+                // Updating the filtered trace records so it will see the generation id changed and clear itself.
+                _traceSource.TraceSource.ReadUnderLock((int generationId, IReadOnlyList<TraceRecord> traceRecords) => _filteredTraceRecords.Update(_viewerRules, generationId, traceRecords));
             }
 
             ImGui.SameLine();
