@@ -12,11 +12,15 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
     <UseWindowsForms>True</UseWindowsForms>
+    <ApplicationIcon>Assets\Logo.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\DroidSans-Bold.ttf" />
     <None Remove="Assets\DroidSans.ttf" />
     <None Remove="Assets\Fonts\CascadiaMono.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\Logo.ico" />
   </ItemGroup>
 
   <ItemGroup>
