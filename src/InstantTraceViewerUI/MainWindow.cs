@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using ImGuiNET;
@@ -98,9 +99,13 @@ namespace InstantTraceViewerUI
                     if (ImGui.MenuItem("Open .WPRP (real-time) ..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = OpenFile("Windows Performance Recorder Profile (*.wprp)|*.wprp");
+                        string file = OpenFile("Windows Performance Recorder Profile (*.wprp)|*.wprp",
+                            Settings.WprpOpenLocation,
+                            (s) => Settings.WprpOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.AddRecentlyOpenedWprp(file);
+
                             var wprp = Etw.Wprp.Load(file);
 
                             // TODO: Show selector window of profiles and their providers. Allow user to uncheck things first.
@@ -114,7 +119,9 @@ namespace InstantTraceViewerUI
                     if (ImGui.MenuItem("Open .ETL ..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = OpenFile("ETL Trace File (*.etl)|*.etl");
+                        string file = OpenFile("ETL Trace File (*.etl)|*.etl",
+                            Settings.EtlOpenLocation,
+                            (s) => Settings.EtlOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
                         {
                             var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
@@ -127,6 +134,30 @@ namespace InstantTraceViewerUI
                         _showOpenActiveSession = true;
                     }
 
+                    IReadOnlyList<string> wprpMru = Settings.GetRecentlyOpenedWprp();
+                    if (wprpMru.Count > 0)
+                    {
+                        ImGui.Separator();
+                        if (ImGui.BeginMenu("Recently .WPRP files"))
+                        {
+                            foreach (var file in wprpMru)
+                            {
+                                if (ImGui.MenuItem(file))
+                                {
+                                    Settings.AddRecentlyOpenedWprp(file);
+
+                                    // TODO: Show selector window of profiles and their providers. Allow user to uncheck things first.
+                                    var wprp = Etw.Wprp.Load(file);
+                                    var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
+
+                                    _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                                }
+                            }
+
+                            ImGui.EndMenu();
+                        }
+                    }
+
                     ImGui.EndMenu();
                 }
             }
@@ -134,12 +165,15 @@ namespace InstantTraceViewerUI
             ImGui.EndMainMenuBar();
         }
 
-        private string OpenFile(string filter)
+        private string OpenFile(string filter, string initialDirectory, Action<string> saveInitialDirectory)
         {
             var dialog = new OpenFileDialog();
+            dialog.InitialDirectory = initialDirectory;
             dialog.Filter = filter;
             if (dialog.ShowDialog() == DialogResult.OK)
             {
+                saveInitialDirectory(Path.GetDirectoryName(dialog.FileName));
+
                 return dialog.FileName;
             }
 
