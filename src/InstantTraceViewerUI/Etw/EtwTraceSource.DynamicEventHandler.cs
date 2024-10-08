@@ -39,6 +39,11 @@ namespace InstantTraceViewerUI.Etw
                         }
                         continue;
                     }
+                    else if (i == 0 && data.PayloadNames[i] == "PartA_PrivTags" && data.PayloadValue(i) is long)
+                    {
+                        // Skip this field. It's for telemetry and not useful for a viewer.
+                        continue;
+                    }
 
                     // This format provider has no digit separators.
                     AppendField(sb, data.PayloadNames[i], data.PayloadString(i, CultureInfo.InvariantCulture));
