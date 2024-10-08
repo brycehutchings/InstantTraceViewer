@@ -132,8 +132,28 @@ namespace InstantTraceViewerUI.Etw
 
         private void SubscribeToKernelEvents()
         {
+            _etwSource.Kernel.StackWalkStack += OnStackWalkStack;
+
             //
-            // Thread
+            // Keywords.ContextSwitch
+            //
+            _etwSource.Kernel.ThreadCSwitch += OnThreadCSwitch;
+
+            //
+            // Keywords.Dispatcher
+            //
+            _etwSource.Kernel.DispatcherReadyThread += OnDispatcherReadyThread;
+
+            //
+            // Keywords.ImageLoad
+            //
+            _etwSource.Kernel.ImageLoad += OnImageLoadUnload;
+            _etwSource.Kernel.ImageUnload += OnImageLoadUnload;
+            _etwSource.Kernel.ImageDCStart += OnImageLoadUnload;
+            _etwSource.Kernel.ImageDCStop += OnImageLoadUnload;
+
+            //
+            // Keywords.Thread
             //
             _etwSource.Kernel.ThreadStart += OnThreadEvent;
             _etwSource.Kernel.ThreadStop += OnThreadEvent;
@@ -143,7 +163,7 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.ThreadSetName += OnThreadSetName;
 
             //
-            // Process
+            // Keywords.Process
             //
             _etwSource.Kernel.ProcessStart += OnProcessEvent;
             _etwSource.Kernel.ProcessStop += OnProcessEvent;
@@ -152,7 +172,7 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.ProcessDefunct += OnProcessEvent;
 
             //
-            // FileIO
+            // Keywords.FileIO (and Keywords.DiskFileIO for Filename?)
             //
             _etwSource.Kernel.FileIOMapFile += FileIO_MapFile;
             _etwSource.Kernel.FileIOUnmapFile += FileIO_MapFile;
@@ -182,6 +202,32 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIODirNotify += FileIO_DirEnum;
 
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
+        }
+
+        private void OnImageLoadUnload(ImageLoadTraceData obj)
+        {
+            var newRecord = CreateBaseTraceRecord(obj);
+
+            // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
+            DateTimeOffset timeDateStamp = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(obj.TimeDateStamp).ToLocalTime();
+
+            newRecord.Message = $"File:{obj.FileName} ImageBase:{obj.ImageBase} ImageSize:{obj.ImageSize} TimeDateStamp:{timeDateStamp:yyyy-MM-dd HH:mm:ss} CheckSum:{obj.ImageChecksum}";
+            AddEvent(newRecord);
+        }
+
+        private void OnStackWalkStack(StackWalkStackTraceData obj)
+        {
+            // Better for analysis or graphical visualization. Too noisy for logs.
+        }
+
+        private void OnThreadCSwitch(CSwitchTraceData obj)
+        {
+            // Better for analysis or graphical visualization. Too noisy for logs.
+        }
+
+        private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)
+        {
+            // Better for analysis or graphical visualization. Too noisy for logs.
         }
 
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-create

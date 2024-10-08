@@ -440,8 +440,8 @@ namespace InstantTraceViewerUI
         {
             return level == TraceLevel.Verbose ? new Vector4(0.75f, 0.75f, 0.75f, 1.0f)     // Gray
                    : level == TraceLevel.Warning ? new Vector4(1.0f, 0.65f, 0.0f, 1.0f)     // Orange
-                   : level == TraceLevel.Error ? new Vector4(0.75f, 0.0f, 0.0f, 1.0f)       // Red
-                   : level == TraceLevel.Critical ? new Vector4(0.60f, 0.0f, 0.0f, 1.0f)    // Dark Red
+                   : level == TraceLevel.Error ? new Vector4(0.9f, 0.0f, 0.0f, 1.0f)        // Red
+                   : level == TraceLevel.Critical ? new Vector4(0.70f, 0.0f, 0.0f, 1.0f)    // Dark Red
                                                    : new Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // White
         }
 
