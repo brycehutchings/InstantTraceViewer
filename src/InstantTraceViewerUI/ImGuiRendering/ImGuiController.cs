@@ -26,6 +26,11 @@ namespace InstantTraceViewerUI.ImGuiRendering
         private unsafe delegate int SDL_GetGlobalMouseState_t(int* x, int* y);
         private static SDL_GetGlobalMouseState_t p_sdl_GetGlobalMouseState = Sdl2Native.LoadFunction<SDL_GetGlobalMouseState_t>("SDL_GetGlobalMouseState");
         public unsafe static int SDL_GetGlobalMouseState(int* x, int* y) => p_sdl_GetGlobalMouseState(x, y);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private unsafe delegate SDL_Window SDL_GetMouseFocus_t();
+        private static SDL_GetMouseFocus_t p_sdl_GetMouseFocus = Sdl2Native.LoadFunction<SDL_GetMouseFocus_t>("SDL_GetMouseFocus");
+        public unsafe static SDL_Window SDL_GetMouseFocus() => p_sdl_GetMouseFocus();
     }
 
     /// <summary>
@@ -678,17 +683,27 @@ namespace InstantTraceViewerUI.ImGuiRendering
         {
             ImGuiIOPtr io = ImGui.GetIO();
 
-            unsafe
+            // Checking SDL_GetMouseFocus first ensures we only look at mouse state when the mouse is actually over one of our windows and not obstructed by another window.
+            SDL_Window mouseFocusWindow = Sdl2NativeExt.SDL_GetMouseFocus();
+            if (mouseFocusWindow != 0)
             {
-                int x, y;
-                int buttons = Sdl2NativeExt.SDL_GetGlobalMouseState(&x, &y);
-                io.AddMouseButtonEvent(0, (buttons & 0b0001) != 0);
-                io.AddMouseButtonEvent(1, (buttons & 0b0100) != 0);
-                io.AddMouseButtonEvent(2, (buttons & 0b0010) != 0);
-                io.AddMousePosEvent(x, y);
+                unsafe
+                {
+                    int x, y;
+                    int buttons = Sdl2NativeExt.SDL_GetGlobalMouseState(&x, &y);
+                    io.AddMouseButtonEvent(0, (buttons & 0b0001) != 0);
+                    io.AddMouseButtonEvent(1, (buttons & 0b0100) != 0);
+                    io.AddMouseButtonEvent(2, (buttons & 0b0010) != 0);
+                    io.AddMousePosEvent(x, y);
+                }
+
+                io.AddMouseWheelEvent(0f, snapshot.WheelDelta);
+            }
+            else
+            {
+                io.AddMousePosEvent(float.MinValue, float.MinValue);
             }
 
-            io.AddMouseWheelEvent(0f, snapshot.WheelDelta);
             for (int i = 0; i < snapshot.KeyCharPresses.Count; i++)
             {
                 io.AddInputCharacter(snapshot.KeyCharPresses[i]);
