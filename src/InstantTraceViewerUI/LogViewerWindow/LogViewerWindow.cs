@@ -224,9 +224,11 @@ namespace InstantTraceViewerUI
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
-                        if (ImGui.IsItemHovered(ImGuiHoveredFlags.None))
+                        bool isRowHovered = ImGui.IsItemHovered();
+                        int hoveredCol = ImGui.TableGetHoveredColumn();
+
+                        if (isRowHovered)
                         {
-                            int hoveredCol = ImGui.TableGetHoveredColumn();
                             if (hoveredCol == 0)
                             {
                                 newHoveredProcessId = traceRecord.ProcessId;
@@ -250,11 +252,15 @@ namespace InstantTraceViewerUI
                                 ImGui.TableNextColumn();
                             }
 
-                            columnCount++;
                             string displayText = getDisplayText(traceRecord);
                             ImGui.TextUnformatted(displayText);
 
-                            if (ImGui.BeginPopupContextItem($"tableViewPopup{columnCount}"))
+                            if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnCount)
+                            {
+                                ImGui.OpenPopup($"tableViewPopup{columnCount}");
+                            }
+
+                            if (ImGui.BeginPopup($"tableViewPopup{columnCount}", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
                             {
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
 
@@ -291,6 +297,8 @@ namespace InstantTraceViewerUI
                                 // Resume color for remainder of row.
                                 setColor(LevelToColor(traceRecord.Level));
                             }
+
+                            columnCount++;
                         };
 
                         addColumnData(r => _traceSource.TraceSource.GetProcessName(r.ProcessId));
