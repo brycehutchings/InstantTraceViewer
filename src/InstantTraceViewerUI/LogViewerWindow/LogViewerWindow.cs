@@ -51,12 +51,6 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            if (ImGui.IsKeyPressed(ImGuiKey.Escape))
-            {
-                _selectedTraceRecordIds.Clear();
-                _lastSelectedVisibleRowIndex = null;
-            }
-
             // TODO: _filteredTraceRecords keeps a reference to traceRecords outside of the lock. This is actually safe
             // as long as no one else calls ReadUnderLock since this is the only time the collection is updated. Can I do better?
             bool filteredViewRebuilt = false;
@@ -146,6 +140,9 @@ namespace InstantTraceViewerUI
                     }
                 }
 
+                var multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
+                ApplyMultiSelectRequests(visibleTraceRecords, multiselectIO);
+
                 _topmostVisibleTraceRecordId = null;
 
                 int? newHoveredProcessId = null, newHoveredThreadId = null;
@@ -189,38 +186,10 @@ namespace InstantTraceViewerUI
 
                         // Create an empty selectable that spans the full row to enable row selection.
                         bool isSelected = _selectedTraceRecordIds.Contains(traceRecordId);
+                        ImGui.SetNextItemSelectionUserData(traceRecordId);
                         if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                         {
-                            if (ImGui.GetIO().KeyShift)
-                            {
-                                if (_lastSelectedVisibleRowIndex.HasValue)
-                                {
-                                    _selectedTraceRecordIds.Clear();
-                                    for (int j = System.Math.Min(i, _lastSelectedVisibleRowIndex.Value); j <= System.Math.Max(i, _lastSelectedVisibleRowIndex.Value); j++)
-                                    {
-                                        _selectedTraceRecordIds.Add(visibleTraceRecords.GetRecordId(j));
-                                    }
-                                }
-                            }
-                            else if (ImGui.GetIO().KeyCtrl)
-                            {
-                                if (isSelected)
-                                {
-                                    _selectedTraceRecordIds.Remove(traceRecordId);
-                                }
-                                else
-                                {
-                                    _selectedTraceRecordIds.Add(traceRecordId);
-                                }
-
                                 _lastSelectedVisibleRowIndex = i;
-                            }
-                            else
-                            {
-                                _selectedTraceRecordIds.Clear();
-                                _selectedTraceRecordIds.Add(traceRecordId);
-                                _lastSelectedVisibleRowIndex = i;
-                            }
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
@@ -317,6 +286,9 @@ namespace InstantTraceViewerUI
 
                 setColor(null);
 
+                ImGui.EndMultiSelect();
+                ApplyMultiSelectRequests(visibleTraceRecords, multiselectIO);
+
                 _hoveredProcessId = newHoveredProcessId;
                 _hoveredThreadId = newHoveredThreadId;
 
@@ -342,6 +314,36 @@ namespace InstantTraceViewerUI
                 ImGui.EndTable();
             }
 
+        }
+
+        private void ApplyMultiSelectRequests(FilteredTraceRecordCollection visibleTraceRecords, ImGuiMultiSelectIOPtr multiselectIO)
+        {
+            for (int reqIdx = 0; reqIdx < multiselectIO.Requests.Size; reqIdx++)
+            {
+                var req = multiselectIO.Requests[reqIdx];
+                if (req.Type == ImGuiSelectionRequestType.SetAll)
+                {
+                    req.RangeFirstItem = 0;
+                    req.RangeLastItem = visibleTraceRecords.Count - 1;
+                    req.RangeDirection = 1;
+                }
+
+                // RangeLastItem can be less than RangeFirstItem with RangeDirection = -1. 
+                // We don't care about order so ignore direction.
+                long start = Math.Min(req.RangeFirstItem, req.RangeLastItem);
+                long end = Math.Max(req.RangeFirstItem, req.RangeLastItem);
+                for (long i = start; i <= end; i++)
+                {
+                    if (req.Selected)
+                    {
+                        _selectedTraceRecordIds.Add((int)i);
+                    }
+                    else
+                    {
+                        _selectedTraceRecordIds.Remove((int)i);
+                    }
+                }
+            }
         }
 
         private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, ref int? setScrollIndex)
