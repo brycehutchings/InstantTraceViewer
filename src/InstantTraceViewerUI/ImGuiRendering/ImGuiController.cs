@@ -1,4 +1,4 @@
-﻿// This file is from ImGui.NET.SampleProgram (docking branch).
+// This file is from ImGui.NET.SampleProgram (docking branch).
 
 using System;
 using System.Collections.Generic;
@@ -39,6 +39,8 @@ namespace InstantTraceViewerUI.ImGuiRendering
     /// </summary>
     public class ImGuiController : IDisposable
     {
+        // DPI awareness is disabled in the app.manifest file. If you start looking into making this app DPI-aware, you'll need to
+        // re-enable that. Good luck.
         private const int FontSize = 16;
 
         private GraphicsDevice _gd;
