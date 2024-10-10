@@ -140,7 +140,7 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                var multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
+                ImGuiMultiSelectIOPtr multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
                 ApplyMultiSelectRequests(visibleTraceRecords, multiselectIO);
 
                 _topmostVisibleTraceRecordId = null;
@@ -184,9 +184,12 @@ namespace InstantTraceViewerUI
 
                         ImGui.TableNextColumn();
 
+                        // We must store the index instead of the id for the multiselect system so that when we handle selection ranges, we can
+                        // look up the ids which might be sparse.
+                        ImGui.SetNextItemSelectionUserData(i);
+
                         // Create an empty selectable that spans the full row to enable row selection.
                         bool isSelected = _selectedTraceRecordIds.Contains(traceRecordId);
-                        ImGui.SetNextItemSelectionUserData(traceRecordId);
                         if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                         {
                                 _lastSelectedVisibleRowIndex = i;
@@ -320,7 +323,7 @@ namespace InstantTraceViewerUI
         {
             for (int reqIdx = 0; reqIdx < multiselectIO.Requests.Size; reqIdx++)
             {
-                var req = multiselectIO.Requests[reqIdx];
+                ImGuiSelectionRequestPtr req = multiselectIO.Requests[reqIdx];
                 if (req.Type == ImGuiSelectionRequestType.SetAll)
                 {
                     req.RangeFirstItem = 0;
@@ -328,19 +331,19 @@ namespace InstantTraceViewerUI
                     req.RangeDirection = 1;
                 }
 
-                // RangeLastItem can be less than RangeFirstItem with RangeDirection = -1. 
-                // We don't care about order so ignore direction.
-                long start = Math.Min(req.RangeFirstItem, req.RangeLastItem);
-                long end = Math.Max(req.RangeFirstItem, req.RangeLastItem);
-                for (long i = start; i <= end; i++)
+                // RangeLastItem can be less than RangeFirstItem with RangeDirection = -1. We don't care about order so ignore direction.
+                long startIndex = Math.Min(req.RangeFirstItem, req.RangeLastItem);
+                long endIndex = Math.Max(req.RangeFirstItem, req.RangeLastItem);
+                for (long i = startIndex; i <= endIndex; i++)
                 {
+                    int recordId = visibleTraceRecords.GetRecordId((int)i);
                     if (req.Selected)
                     {
-                        _selectedTraceRecordIds.Add((int)i);
+                        _selectedTraceRecordIds.Add(recordId);
                     }
                     else
                     {
-                        _selectedTraceRecordIds.Remove((int)i);
+                        _selectedTraceRecordIds.Remove(recordId);
                     }
                 }
             }
