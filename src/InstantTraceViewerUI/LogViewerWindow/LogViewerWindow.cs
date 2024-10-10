@@ -10,6 +10,7 @@ namespace InstantTraceViewerUI
 {
     internal class LogViewerWindow : IDisposable
     {
+        private const string TimestampFormat = "HH:mm:ss.ffffff";
         private static int _nextWindowId = 1;
 
         private readonly SharedTraceSource _traceSource;
@@ -279,7 +280,7 @@ namespace InstantTraceViewerUI
                         addColumnData(r => _traceSource.TraceSource.GetOpCodeName(r.OpCode));
                         addColumnData(r => r.Level.ToString());
                         addColumnData(r => r.Name);
-                        addColumnData(r => r.Timestamp.ToString("HH:mm:ss.ffffff"));
+                        addColumnData(r => r.Timestamp.ToString(TimestampFormat));
                         addColumnData(r => r.Message.Replace("\n", " ").Replace("\r", " "));
 
                         ImGui.PopID(); // Trace record id
@@ -484,6 +485,10 @@ namespace InstantTraceViewerUI
 
                 if (traceRecord.Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     traceRecord.Name.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                    traceRecord.ProviderName.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                    traceRecord.Level.ToString().Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                    traceRecord.Timestamp.ToString(TimestampFormat).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                    _traceSource.TraceSource.GetOpCodeName(traceRecord.OpCode).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     _traceSource.TraceSource.GetProcessName(traceRecord.ProcessId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     _traceSource.TraceSource.GetThreadName(traceRecord.ThreadId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
                 {
