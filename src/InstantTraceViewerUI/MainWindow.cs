@@ -20,8 +20,22 @@ namespace InstantTraceViewerUI
         private bool _showOpenActiveSession;
         private bool _isDisposed;
 
-        public MainWindow()
+        public MainWindow(string[] args)
         {
+            if (args.Length == 1 && Path.Exists(args[0]))
+            {
+                if (Path.GetExtension(args[0]) == ".etl")
+                {
+                    var etlSession = Etw.EtwTraceSource.CreateEtlSession(args[0]);
+                    _logViewerWindows.Add(new LogViewerWindow(etlSession));
+                }
+                else if (Path.GetExtension(args[0]) == ".wprp")
+                {
+                    var wprp = Etw.Wprp.Load(args[0]);
+                    var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
+                    _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                }
+            }
         }
 
         public bool IsExitRequested { get; private set; }
