@@ -26,6 +26,8 @@ namespace InstantTraceViewerUI
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
 
+        private HeatmapWindow _heatmapWindow = null;
+
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
         private bool _isDisposed;
@@ -61,6 +63,7 @@ namespace InstantTraceViewerUI
             });
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
+            ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
 
             bool opened = true;
             if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
@@ -69,6 +72,11 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.End();
+
+            if (_heatmapWindow != null && !_heatmapWindow.DrawWindow(uiCommands, _filteredTraceRecords))
+            {
+                _heatmapWindow = null;
+            }
 
             if (!opened)
             {
@@ -248,14 +256,14 @@ namespace InstantTraceViewerUI
                                 }
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
-                                    _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
+                                    _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
                                         Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
                                         Action: TraceRecordRuleAction.Include));
                                     _viewerRules.GenerationId++;
                                 }
                                 if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
                                 {
-                                    _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
+                                    _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
                                         Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
                                         Action: TraceRecordRuleAction.Exclude));
                                     _viewerRules.GenerationId++;
@@ -377,6 +385,14 @@ namespace InstantTraceViewerUI
             {
                 _viewerRules.VisibleRules.Clear();
                 _viewerRules.GenerationId++;
+            }
+            ImGui.EndDisabled();
+
+            ImGui.SameLine();
+            ImGui.BeginDisabled(_heatmapWindow != null);
+            if (ImGui.Button("Heatmap"))
+            {
+                _heatmapWindow = new HeatmapWindow(_traceSource.TraceSource.DisplayName);
             }
             ImGui.EndDisabled();
 
