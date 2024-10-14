@@ -81,7 +81,7 @@ namespace InstantTraceViewerUI
                 for (int e = 0; e < UnderlineHeight; e++)
                 {
                     startX = startSectionIndex * PixelsPerSection - barWiden;
-                    int endX = endSectionIndex * PixelsPerSection + barWiden + 1;
+                    int endX = endSectionIndex * PixelsPerSection + barWiden;
                     drawList.AddLine(topLeft + new Vector2(startX, barHeight + e), topLeft + new Vector2(endX, barHeight + e), ImGui.GetColorU32(new Vector4(1, 1, 1, 1)));
                     if (endX - startX < UnderlineHeight * 2)
                     {
