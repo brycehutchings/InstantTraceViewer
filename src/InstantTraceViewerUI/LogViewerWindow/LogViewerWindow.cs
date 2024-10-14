@@ -22,7 +22,9 @@ namespace InstantTraceViewerUI
         private HashSet<int> _selectedTraceRecordIds = new HashSet<int>();
         private int? _lastSelectedVisibleRowIndex;
         private int? _topmostVisibleTraceRecordId;
-        private int? _bottommostVisibleTraceRecordId;
+
+        private int? _topmostVisibleTraceRecordIndex;
+        private int? _bottommostVisibleTraceRecordIndex;
 
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
@@ -74,15 +76,14 @@ namespace InstantTraceViewerUI
 
             ImGui.End();
 
-{
             if (_heatmapWindow != null)
                 {
-                    DateTime? startWindow = _topmostVisibleTraceRecordId.HasValue ? _filteredTraceRecords[_topmostVisibleTraceRecordId.Value].Timestamp : null;
-                    DateTime? endWindow = _bottommostVisibleTraceRecordId.HasValue ? _filteredTraceRecords[_bottommostVisibleTraceRecordId.Value].Timestamp : null;
+// When excluding rows, the topmost/bottommost record 
+                    DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue ? _filteredTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
+                    DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue ? _filteredTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
                     if (!_heatmapWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
             {
                 _heatmapWindow = null;
-}
                 }
             }
 
@@ -161,7 +162,8 @@ namespace InstantTraceViewerUI
                 ApplyMultiSelectRequests(visibleTraceRecords, multiselectIO);
 
                 _topmostVisibleTraceRecordId = null;
-                _bottommostVisibleTraceRecordId = null;
+                _topmostVisibleTraceRecordIndex = null;
+                _bottommostVisibleTraceRecordIndex = null;
 
                 int? newHoveredProcessId = null, newHoveredThreadId = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
@@ -180,12 +182,18 @@ namespace InstantTraceViewerUI
                         int traceRecordId = visibleTraceRecords.GetRecordId(i);
 
                         // ImGuiListClipper always does row 0 to calculate row height, so this must be ignored.
-                        if (_topmostVisibleTraceRecordId == null && i != 0)
+if (i != 0) {
+                        if (_topmostVisibleTraceRecordId == null)
                         {
                             _topmostVisibleTraceRecordId = traceRecordId;
+}
+                            if (_topmostVisibleTraceRecordIndex == null)
+                            {
+                                _topmostVisibleTraceRecordIndex = i;
+                            }
                         }
 
-                        _bottommostVisibleTraceRecordId = traceRecordId;
+                        _bottommostVisibleTraceRecordIndex = i;
 
                         ImGui.PushID(traceRecordId);
 

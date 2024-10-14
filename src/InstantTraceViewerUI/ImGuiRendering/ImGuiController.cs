@@ -686,8 +686,11 @@ namespace InstantTraceViewerUI.ImGuiRendering
             ImGuiIOPtr io = ImGui.GetIO();
 
             // Checking SDL_GetMouseFocus first ensures we only look at mouse state when the mouse is actually over one of our windows and not obstructed by another window.
+            // FIXME: This is disabled now because it also causes problems with corner-resizing undocked windows and scrolling when the mouse leaves the window.
+#if CHECK_WINDOW_FOCUS
             SDL_Window mouseFocusWindow = Sdl2NativeExt.SDL_GetMouseFocus();
             if (mouseFocusWindow != 0)
+#endif
             {
                 unsafe
                 {
@@ -701,10 +704,12 @@ namespace InstantTraceViewerUI.ImGuiRendering
 
                 io.AddMouseWheelEvent(0f, snapshot.WheelDelta);
             }
+#if CHECK_WINDOW_FOCUS
             else
             {
                 io.AddMousePosEvent(float.MinValue, float.MinValue);
             }
+#endif
 
             for (int i = 0; i < snapshot.KeyCharPresses.Count; i++)
             {
