@@ -22,6 +22,7 @@ namespace InstantTraceViewerUI
         private HashSet<int> _selectedTraceRecordIds = new HashSet<int>();
         private int? _lastSelectedVisibleRowIndex;
         private int? _topmostVisibleTraceRecordId;
+        private int? _bottommostVisibleTraceRecordId;
 
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
@@ -73,9 +74,16 @@ namespace InstantTraceViewerUI
 
             ImGui.End();
 
-            if (_heatmapWindow != null && !_heatmapWindow.DrawWindow(uiCommands, _filteredTraceRecords))
+{
+            if (_heatmapWindow != null)
+                {
+                    DateTime? startWindow = _topmostVisibleTraceRecordId.HasValue ? _filteredTraceRecords[_topmostVisibleTraceRecordId.Value].Timestamp : null;
+                    DateTime? endWindow = _bottommostVisibleTraceRecordId.HasValue ? _filteredTraceRecords[_bottommostVisibleTraceRecordId.Value].Timestamp : null;
+                    if (!_heatmapWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
             {
                 _heatmapWindow = null;
+}
+                }
             }
 
             if (!opened)
@@ -153,6 +161,7 @@ namespace InstantTraceViewerUI
                 ApplyMultiSelectRequests(visibleTraceRecords, multiselectIO);
 
                 _topmostVisibleTraceRecordId = null;
+                _bottommostVisibleTraceRecordId = null;
 
                 int? newHoveredProcessId = null, newHoveredThreadId = null;
                 var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
@@ -175,6 +184,8 @@ namespace InstantTraceViewerUI
                         {
                             _topmostVisibleTraceRecordId = traceRecordId;
                         }
+
+                        _bottommostVisibleTraceRecordId = traceRecordId;
 
                         ImGui.PushID(traceRecordId);
 

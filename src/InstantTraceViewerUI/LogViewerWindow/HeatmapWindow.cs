@@ -15,6 +15,8 @@ namespace InstantTraceViewerUI
 
         private int _lastVisibleTraceRecordCount = 0;
         private uint[] _colorHeatmap;
+        private DateTime _startTime;
+        private DateTime _endTime;
         private bool _open = true;
 
         public HeatmapWindow(string name)
@@ -23,7 +25,7 @@ namespace InstantTraceViewerUI
             _windowId = _nextWindowId++;
         }
 
-        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords)
+        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
@@ -41,12 +43,26 @@ namespace InstantTraceViewerUI
 
                     Vector2 topLeft = ImGui.GetCursorScreenPos();
 
-                    ImGui.Dummy(new Vector2(heatmapPixelWidth, 20));
+                    int barHeight = 30;
+
+                    ImGui.Dummy(new Vector2(heatmapPixelWidth, barHeight));
 
                     ImDrawListPtr drawList = ImGui.GetWindowDrawList();
                     for (int i = 0; i < _colorHeatmap.Length; i++)
                     {
-                        drawList.AddLine(topLeft + new Vector2(i, 0), topLeft + new Vector2(i, 20), _colorHeatmap[i]);
+                        drawList.AddLine(topLeft + new Vector2(i, 0), topLeft + new Vector2(i, barHeight), _colorHeatmap[i]);
+                    }
+
+                    // Underline the area that is visible in the log viewer.
+                    if (startWindow != null && endWindow != null)
+                    {
+                        int startWindowX = (int)Math.Floor(PercentFromTimestamp(startWindow.Value) * heatmapPixelWidth);
+                        int endWindowX = (int)Math.Floor(PercentFromTimestamp(endWindow.Value) * heatmapPixelWidth);
+
+                        for (int e = 0; e < 5; e++) // Underline bar height
+                        {
+                            drawList.AddLine(topLeft + new Vector2(startWindowX - e, barHeight + e), topLeft + new Vector2(endWindowX + e + 1, barHeight + e), ImGui.GetColorU32(new Vector4(1, 1, 0, 1)));
+                        }
                     }
                 }
             }
@@ -56,17 +72,19 @@ namespace InstantTraceViewerUI
             return _open;
         }
 
+        private float PercentFromTimestamp(DateTime timestamp) => (float)(timestamp - _startTime).Ticks / (_endTime - _startTime).Ticks;
+
         private void ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollection visibleTraceRecords)
         {
-            DateTime startTime = visibleTraceRecords.First().Timestamp;
-            DateTime endTime = visibleTraceRecords.Last().Timestamp;
+            _startTime = visibleTraceRecords.First().Timestamp;
+            _endTime = visibleTraceRecords.Last().Timestamp;
 
             int[] errorCounts = new int[sectionCount];
             int[] warningCounts = new int[sectionCount];
             int[] verboseCounts = new int[sectionCount];
             int[] otherCounts = new int[sectionCount];
 
-            long ticksPerSection = (endTime - startTime).Ticks / sectionCount;
+            long ticksPerSection = (_endTime - _startTime).Ticks / sectionCount;
 
             if (ticksPerSection == 0) // Avoid div-by-zero.
             {
@@ -77,7 +95,7 @@ namespace InstantTraceViewerUI
             for (int i = 0; i < visibleTraceRecords.Count; i++)
             {
                 TraceRecord traceRecord = visibleTraceRecords[i];
-                int sectionIndex = (int)((traceRecord.Timestamp - startTime).Ticks / ticksPerSection);
+                int sectionIndex = (int)((traceRecord.Timestamp - _startTime).Ticks / ticksPerSection);
 
                 // Due to rounding errors the sectionIndex can go too high. Protect against too low in case there is a rogue event that is not in chronological order.
                 sectionIndex = Math.Clamp(sectionIndex, 0, sectionCount - 1);
