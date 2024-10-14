@@ -2,7 +2,6 @@
 using System;
 using System.Linq;
 using System.Numerics;
-using Veldrid.MetalBindings;
 
 namespace InstantTraceViewerUI
 {
@@ -77,17 +76,32 @@ namespace InstantTraceViewerUI
                 int startSectionIndex = SectionIndexFromTimestamp(startWindow.Value);
                 int endSectionIndex = SectionIndexFromTimestamp(endWindow.Value);
 
+                int startX = 0;
                 int barWiden = 0;
                 for (int e = 0; e < UnderlineHeight; e++)
                 {
-                    int startX = startSectionIndex * PixelsPerSection - barWiden;
+                    startX = startSectionIndex * PixelsPerSection - barWiden;
                     int endX = endSectionIndex * PixelsPerSection + barWiden + 1;
                     drawList.AddLine(topLeft + new Vector2(startX, barHeight + e), topLeft + new Vector2(endX, barHeight + e), ImGui.GetColorU32(new Vector4(1, 1, 1, 1)));
-                    if (endX - startX < UnderlineHeight)
+                    if (endX - startX < UnderlineHeight * 2)
                     {
                         barWiden++; // Bar widens out like a trapezoid but stops once it is at least as wide as it is thick.
                     }
                 }
+
+                string startTimeOffsetStr = (startWindow.Value - visibleTraceRecords.First().Timestamp).ToString("'+'mm':'ss'.'ffffff");
+                float startTimeOffsetStrWidth = ImGui.CalcTextSize(startTimeOffsetStr).X;
+                float barWidth = ImGui.GetContentRegionAvail().X;
+                Vector2 cursorPos = ImGui.GetCursorPos();
+                if (cursorPos.X + startX + startTimeOffsetStrWidth > barWidth)
+                {
+                    ImGui.SetCursorPos(new Vector2(cursorPos.X + barWidth - startTimeOffsetStrWidth, cursorPos.Y - 5));
+                }
+                else
+                {
+                    ImGui.SetCursorPos(cursorPos + new Vector2(startX, -5));
+                }
+                ImGui.Text(startTimeOffsetStr);
             }
         }
 
