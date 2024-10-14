@@ -89,7 +89,7 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                string startTimeOffsetStr = (startWindow.Value - visibleTraceRecords.First().Timestamp).ToString("'+'mm':'ss'.'ffffff");
+                string startTimeOffsetStr = GetSmartDurationString(startWindow.Value - visibleTraceRecords.First().Timestamp);
                 float startTimeOffsetStrWidth = ImGui.CalcTextSize(startTimeOffsetStr).X;
                 float barWidth = ImGui.GetContentRegionAvail().X;
                 Vector2 cursorPos = ImGui.GetCursorPos();
@@ -190,6 +190,18 @@ namespace InstantTraceViewerUI
                 }
 
                 _colorHeatmap[i] = ImGui.GetColorU32(color);
+            }
+        }
+
+        private string GetSmartDurationString(TimeSpan timeSpan)
+        {
+            if (timeSpan.TotalSeconds >= 60)
+            {
+                return $"{(int)timeSpan.TotalMinutes}m {timeSpan.TotalSeconds - (int)timeSpan.TotalMinutes * 60:0.000000}s";
+            }
+            else
+            {
+                return $"{timeSpan.TotalSeconds:0.000000}s";
             }
         }
     }
