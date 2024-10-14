@@ -181,20 +181,6 @@ namespace InstantTraceViewerUI
                         TraceRecord traceRecord = visibleTraceRecords[i];
                         int traceRecordId = visibleTraceRecords.GetRecordId(i);
 
-                        // ImGuiListClipper always does row 0 to calculate row height, so this must be ignored.
-if (i != 0) {
-                        if (_topmostVisibleTraceRecordId == null)
-                        {
-                            _topmostVisibleTraceRecordId = traceRecordId;
-}
-                            if (_topmostVisibleTraceRecordIndex == null)
-                            {
-                                _topmostVisibleTraceRecordIndex = i;
-                            }
-                        }
-
-                        _bottommostVisibleTraceRecordIndex = i;
-
                         ImGui.PushID(traceRecordId);
 
                         ImGui.TableNextRow();
@@ -221,6 +207,20 @@ if (i != 0) {
                         if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                         {
                                 _lastSelectedVisibleRowIndex = i;
+                        }
+
+                        if (ImGui.IsItemVisible())
+                        {
+                            if (_topmostVisibleTraceRecordId == null)
+                            {
+                                _topmostVisibleTraceRecordId = traceRecordId;
+                            }
+                            if (_topmostVisibleTraceRecordIndex == null)
+                            {
+                                _topmostVisibleTraceRecordIndex = i;
+                            }
+
+                            _bottommostVisibleTraceRecordIndex = i;
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
