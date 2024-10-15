@@ -11,13 +11,9 @@
     </application>
   </compatibility>
 
-  <!--
-    DPI awareness is disabled until we can do it properly with ImGui (scale up font size, ScaleAllSizes on style, etc).
-    I've tried this and the result is not quite right (for example, fixed sized columns are not scaled up).
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
     </windowsSettings>
   </application>
-  -->
 </assembly>

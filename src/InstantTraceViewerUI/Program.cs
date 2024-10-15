@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using ImGuiNET;
@@ -21,53 +22,65 @@ namespace InstantTraceViewerUI
 
             ImGui.SetCurrentContext(imguiContext);
 
-            LoadFont();
+            LoadFontAndScaleSizes();
 
-            // Increase scrollbar size to make it easier to use.
-            ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, 18.0f);
-
-            using var mainWindow = new MainWindow(args);
-
-            while (true)
+            using (MainWindow mainWindow = new(args))
             {
-                if (!NativeInterop.WindowBeginNextFrame(out bool quit) || quit)
+                while (true)
                 {
-                    break;
-                }
+                    if (!NativeInterop.WindowBeginNextFrame(out bool quit) || quit)
+                    {
+                        break;
+                    }
 
 #if PRIMARY_DOCKED_WINDOW
-                    uint dockId = ImGui.DockSpaceOverViewport(0, new ImGuiViewportPtr(nint.Zero), ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.AutoHideTabBar);
+                uint dockId = ImGui.DockSpaceOverViewport(0, new ImGuiViewportPtr(nint.Zero), ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.AutoHideTabBar);
 
-                    // Force the next window to be docked.
-                    ImGui.SetNextWindowDockID(dockId);
-                    ImGuiWindowFlags flags = ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings;
-                    if (ImGui.Begin("Window", flags))
-                    {
-                        ImGui.Text("Hello World");
-                    }
-#endif
-                mainWindow.Draw();
-
-                if (mainWindow.IsExitRequested)
+                // Force the next window to be docked.
+                ImGui.SetNextWindowDockID(dockId);
+                ImGuiWindowFlags flags = ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings;
+                if (ImGui.Begin("Window", flags))
                 {
-                    break;
+                    ImGui.Text("Hello World");
                 }
+#endif
+                    mainWindow.Draw();
 
-                if (!NativeInterop.WindowEndNextFrame())
-                {
-                    break;
+                    if (mainWindow.IsExitRequested)
+                    {
+                        break;
+                    }
+
+                    if (!NativeInterop.WindowEndNextFrame())
+                    {
+                        break;
+                    }
                 }
             }
 
-            ImGui.PopStyleVar(); // ScrollbarSize
+            // FIXME: There is currently an unknown issue with heap free of the font atlas when cleaning up Imgui resources.
+            // Since the process is going away anyway, might as well just terminate self. This is a temporary workaround and
+            // it results in exit code 0xffffffff :-(.
+            Process.GetCurrentProcess().Kill();
 
             NativeInterop.WindowCleanup();
 
             return 0;
         }
 
-        private static unsafe void LoadFont()
+        private static unsafe void LoadFontAndScaleSizes()
         {
+            float dpiScale = 1.0f;
+            // For now, use the scale of the primary monitor
+            ImPtrVector<ImGuiPlatformMonitorPtr> monitors = ImGui.GetPlatformIO().Monitors;
+            if (monitors.Size > 0)
+            {
+                dpiScale = monitors[0].DpiScale;
+
+                ImGui.GetStyle().ScrollbarSize = 18;
+                ImGui.GetStyle().ScaleAllSizes(dpiScale);
+            }
+
 #if USE_PIXEL_PERFECT_FONT
             // ImGui also embeds a 13 pixel high pixel-perfect font (ProggyClean). It is sharper but on the small side.
             ImGui.GetIO().Fonts.AddFontDefault();
@@ -76,12 +89,13 @@ namespace InstantTraceViewerUI
             // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
             fixed (byte* ttfFontBytesPtr = ttfFontBytes)
             {
-                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
+                // ImGui Q&A recommends rounding down font size after applying DPI scaling.
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, (float)Math.Floor(FontSize * dpiScale));
             }
 #endif
         }
 
-        private static  byte[] GetEmbeddedResourceBytes(string resourceName)
+        private static byte[] GetEmbeddedResourceBytes(string resourceName)
         {
             Assembly assembly = typeof(Program).Assembly;
             using (Stream s = assembly.GetManifestResourceStream(resourceName))
