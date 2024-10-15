@@ -58,11 +58,6 @@ namespace InstantTraceViewerUI
                 }
             }
 
-            // FIXME: There is currently an unknown issue with heap free of the font atlas when cleaning up Imgui resources.
-            // Since the process is going away anyway, might as well just terminate self. This is a temporary workaround and
-            // it results in exit code 0xffffffff :-(.
-            Process.GetCurrentProcess().Kill();
-
             NativeInterop.WindowCleanup();
 
             return 0;
@@ -90,7 +85,11 @@ namespace InstantTraceViewerUI
             fixed (byte* ttfFontBytesPtr = ttfFontBytes)
             {
                 // ImGui Q&A recommends rounding down font size after applying DPI scaling.
-                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, (float)Math.Floor(FontSize * dpiScale));
+                float scaledFontSize = (float)Math.Floor(FontSize * dpiScale);
+
+                ImFontConfigPtr fontCfg = ImGuiNative.ImFontConfig_ImFontConfig();
+                fontCfg.FontDataOwnedByAtlas = false; // https://github.com/ocornut/imgui/issues/220
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, scaledFontSize, fontCfg);
             }
 #endif
         }
