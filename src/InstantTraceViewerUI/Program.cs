@@ -1,10 +1,16 @@
 ﻿using System;
+using System.IO;
+using System.Reflection;
 using ImGuiNET;
 
 namespace InstantTraceViewerUI
 {
     internal class Program
     {
+        // DPI awareness is disabled in the app.manifest file. If you start looking into making this app DPI-aware, you'll need to
+        // re-enable that. Good luck.
+        private const int FontSize = 16;
+
         [STAThread] // For WinForms file browser usage :-\
         public static int Main(string[] args)
         {
@@ -14,6 +20,8 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SetCurrentContext(imguiContext);
+
+            LoadFont();
 
             // Increase scrollbar size to make it easier to use.
             ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, 18.0f);
@@ -56,6 +64,32 @@ namespace InstantTraceViewerUI
             NativeInterop.WindowCleanup();
 
             return 0;
+        }
+
+        private static unsafe void LoadFont()
+        {
+#if USE_PIXEL_PERFECT_FONT
+            // ImGui also embeds a 13 pixel high pixel-perfect font (ProggyClean). It is sharper but on the small side.
+            ImGui.GetIO().Fonts.AddFontDefault();
+#else
+            byte[] ttfFontBytes = GetEmbeddedResourceBytes("DroidSans.ttf");
+            // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
+            fixed (byte* ttfFontBytesPtr = ttfFontBytes)
+            {
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, FontSize);
+            }
+#endif
+        }
+
+        private static  byte[] GetEmbeddedResourceBytes(string resourceName)
+        {
+            Assembly assembly = typeof(Program).Assembly;
+            using (Stream s = assembly.GetManifestResourceStream(resourceName))
+            {
+                byte[] ret = new byte[s.Length];
+                s.Read(ret, 0, (int)s.Length);
+                return ret;
+            }
         }
     }
 }
