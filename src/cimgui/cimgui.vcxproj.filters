@@ -23,6 +23,9 @@
     <ClCompile Include="..\..\ThirdParty\imgui\backends\imgui_impl_win32.cpp">
       <Filter>imgui\Backends</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\imgui\misc\freetype\imgui_freetype.cpp">
+      <Filter>imgui\Freetype</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\ThirdParty\cimgui\cimgui.h" />
@@ -51,6 +54,9 @@
       <Filter>imgui\Backends</Filter>
     </ClInclude>
     <ClInclude Include="imconfig_custom.h" />
+    <ClInclude Include="..\..\ThirdParty\imgui\misc\freetype\imgui_freetype.h">
+      <Filter>imgui\Freetype</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="imgui">
@@ -59,8 +65,16 @@
     <Filter Include="imgui\Backends">
       <UniqueIdentifier>{c9bd597f-a4d5-4891-8257-fa3794fed907}</UniqueIdentifier>
     </Filter>
+    <Filter Include="imgui\Freetype">
+      <UniqueIdentifier>{eb796f73-48ab-477b-89a3-a95f376dad94}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\ThirdParty\imgui\misc\freetype\README.md">
+      <Filter>imgui\Freetype</Filter>
+    </None>
   </ItemGroup>
 </Project>

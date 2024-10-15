@@ -7,3 +7,6 @@
 [submodule "ThirdParty/ImGuiNET"]
 	path = ThirdParty/ImGuiNET
 	url = https://github.com/ImGuiNET/ImGui.NET
+[submodule "ThirdParty/freetype"]
+	path = ThirdParty/freetype
+	url = https://github.com/freetype/freetype

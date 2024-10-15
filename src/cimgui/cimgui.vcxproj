@@ -27,6 +27,7 @@
     <ClCompile Include="..\..\ThirdParty\imgui\imgui_draw.cpp" />
     <ClCompile Include="..\..\ThirdParty\imgui\imgui_tables.cpp" />
     <ClCompile Include="..\..\ThirdParty\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\..\ThirdParty\imgui\misc\freetype\imgui_freetype.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\ThirdParty\cimgui\cimgui.h" />
@@ -38,10 +39,19 @@
     <ClInclude Include="..\..\ThirdParty\imgui\imstb_rectpack.h" />
     <ClInclude Include="..\..\ThirdParty\imgui\imstb_textedit.h" />
     <ClInclude Include="..\..\ThirdParty\imgui\imstb_truetype.h" />
+    <ClInclude Include="..\..\ThirdParty\imgui\misc\freetype\imgui_freetype.h" />
     <ClInclude Include="imconfig_custom.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\ThirdParty\imgui\misc\freetype\README.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\ThirdParty\freetype\builds\windows\vc2010\freetype.vcxproj">
+      <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -83,7 +93,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\imgui;..\..\ThirdParty\freetype\include</AdditionalIncludeDirectories>
       <AdditionalOptions>"/DIMGUI_USER_CONFIG=&lt;imconfig_custom.h&gt;" %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
@@ -103,7 +113,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\imgui;..\..\ThirdParty\freetype\include</AdditionalIncludeDirectories>
       <AdditionalOptions>"/DIMGUI_USER_CONFIG=&lt;imconfig_custom.h&gt;" %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>

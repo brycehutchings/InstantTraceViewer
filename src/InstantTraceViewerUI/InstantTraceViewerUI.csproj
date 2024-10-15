@@ -36,6 +36,9 @@
     <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\InstantTraceViewerNative.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="$(SolutionDir)\ThirdParty\freetype\objs\$(Platform)\$(Configuration)\freetype.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
