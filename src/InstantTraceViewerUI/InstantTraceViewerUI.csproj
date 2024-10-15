@@ -24,13 +24,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ImGui.NET" Version="1.91.0.1" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.15" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
-    <PackageReference Include="Veldrid" Version="4.9.0" />
-    <PackageReference Include="Veldrid.SDL2" Version="4.9.0" />
-    <PackageReference Include="Veldrid.StartupUtilities" Version="4.9.0" />
     <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\cimgui.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\InstantTraceViewerNative.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -40,17 +45,10 @@
     <EmbeddedResource Include="Assets\Fonts\DroidSans.ttf">
       <LogicalName>DroidSans.ttf</LogicalName>
     </EmbeddedResource>
-    <EmbeddedResource Include="Assets\HLSL\imgui-frag.hlsl">
-      <LogicalName>imgui-frag.hlsl</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Assets\HLSL\imgui-frag.hlsl.bytes">
-      <LogicalName>imgui-frag.hlsl.bytes</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Assets\HLSL\imgui-vertex.hlsl">
-      <LogicalName>imgui-vertex.hlsl</LogicalName>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Assets\HLSL\imgui-vertex.hlsl.bytes">
-      <LogicalName>imgui-vertex.hlsl.bytes</LogicalName>
-    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\ThirdParty\ImGuiNET\src\ImGui.NET\ImGui.NET.csproj" />
+    <ProjectReference Include="..\InstantTraceViewerNative\InstantTraceViewerNative.vcxproj" />
   </ItemGroup>
 </Project>

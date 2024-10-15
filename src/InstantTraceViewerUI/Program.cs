@@ -1,10 +1,5 @@
 ﻿using System;
-using System.Diagnostics;
 using ImGuiNET;
-using InstantTraceViewerUI.ImGuiRendering;
-using Veldrid;
-using Veldrid.Sdl2;
-using Veldrid.StartupUtilities;
 
 namespace InstantTraceViewerUI
 {
@@ -13,42 +8,24 @@ namespace InstantTraceViewerUI
         [STAThread] // For WinForms file browser usage :-\
         public static int Main(string[] args)
         {
-            Sdl2Window window;
-            GraphicsDevice graphicsDevice;
-            VeldridStartup.CreateWindowAndGraphicsDevice(
-                new WindowCreateInfo(100, 100, 1280, 720, Veldrid.WindowState.Normal, "Instant Trace Viewer"),
-                out window,
-                out graphicsDevice);
-
-            using (graphicsDevice)
+            if (!NativeInterop.WindowInitialize(out nint imguiContext))
             {
-                using CommandList commandLine = graphicsDevice.ResourceFactory.CreateCommandList();
+                return 1;
+            }
 
-                using ImGuiController controller = new ImGuiController(graphicsDevice, window, graphicsDevice.MainSwapchain.Framebuffer.OutputDescription, window.Width, window.Height);
+            ImGui.SetCurrentContext(imguiContext);
 
-                // Increase scrollbar size to make it easier to use.
-                ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, 18.0f);
+            // Increase scrollbar size to make it easier to use.
+            ImGui.PushStyleVar(ImGuiStyleVar.ScrollbarSize, 18.0f);
 
-                window.Resized += () =>
+            using var mainWindow = new MainWindow(args);
+
+            while (true)
+            {
+                if (!NativeInterop.WindowBeginNextFrame(out bool quit) || quit)
                 {
-                    graphicsDevice.MainSwapchain.Resize((uint)window.Width, (uint)window.Height);
-                    controller.WindowResized(window.Width, window.Height);
-                };
-
-                var frameTiming = Stopwatch.StartNew();
-                using var mainWindow = new MainWindow(args);
-
-                while (window.Exists)
-                {
-                    InputSnapshot input = window.PumpEvents();
-                    if (!window.Exists)
-                    {
-                        break;
-                    }
-
-                    float deltaSeconds = (float)frameTiming.Elapsed.TotalSeconds;
-                    frameTiming.Restart();
-                    controller.Update(deltaSeconds, input);
+                    break;
+                }
 
 #if PRIMARY_DOCKED_WINDOW
                     uint dockId = ImGui.DockSpaceOverViewport(0, new ImGuiViewportPtr(nint.Zero), ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.AutoHideTabBar);
@@ -61,27 +38,22 @@ namespace InstantTraceViewerUI
                         ImGui.Text("Hello World");
                     }
 #endif
-                    mainWindow.Draw();
+                mainWindow.Draw();
 
-                    if (mainWindow.IsExitRequested)
-                    {
-                        break;
-                    }
-
-                    commandLine.Begin();
-                    commandLine.SetFramebuffer(graphicsDevice.MainSwapchain.Framebuffer);
-                    commandLine.ClearColorTarget(0, RgbaFloat.Black);
-                    controller.Render(graphicsDevice, commandLine);
-                    commandLine.End();
-                    graphicsDevice.SubmitCommands(commandLine);
-                    graphicsDevice.SwapBuffers(graphicsDevice.MainSwapchain);
-                    controller.SwapExtraWindows(graphicsDevice);
+                if (mainWindow.IsExitRequested)
+                {
+                    break;
                 }
 
-                ImGui.PopStyleVar(); // ScrollbarSize
-
-                graphicsDevice.WaitForIdle();
+                if (!NativeInterop.WindowEndNextFrame())
+                {
+                    break;
+                }
             }
+
+            ImGui.PopStyleVar(); // ScrollbarSize
+
+            NativeInterop.WindowCleanup();
 
             return 0;
         }

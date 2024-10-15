@@ -1,0 +1,9 @@
+[submodule "ThirdParty/cimgui"]
+	path = ThirdParty/cimgui
+	url = https://github.com/cimgui/cimgui
+[submodule "ThirdParty/imgui"]
+	path = ThirdParty/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "ThirdParty/ImGuiNET"]
+	path = ThirdParty/ImGuiNET
+	url = https://github.com/ImGuiNET/ImGui.NET
