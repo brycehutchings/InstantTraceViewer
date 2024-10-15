@@ -29,8 +29,8 @@ namespace InstantTraceViewerUI
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
 
-        private HeatmapWindow _heatmapInline = null;
-        private HeatmapWindow _heatmapWindow = null;
+        private TimelineWindow _timelineInline = null;
+        private TimelineWindow _timelineWindow = null;
 
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
@@ -77,16 +77,16 @@ namespace InstantTraceViewerUI
 
             ImGui.End();
 
-            if (_heatmapWindow != null)
+            if (_timelineWindow != null)
                 {
-// When excluding rows, the topmost/bottommost record 
+// The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
                 DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
                     _filteredTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
                 DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
                     _filteredTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
-                    if (!_heatmapWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
+                    if (!_timelineWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
             {
-                _heatmapWindow = null;
+                _timelineWindow = null;
                 }
             }
 
@@ -102,14 +102,14 @@ namespace InstantTraceViewerUI
 
             DrawToolStrip(uiCommands, visibleTraceRecords, ref setScrollIndex);
 
-            if (_heatmapInline != null)
+            if (_timelineInline != null)
             {
                 // The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
                 DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
                     _filteredTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
                 DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
                     _filteredTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
-                _heatmapInline.DrawHeatmapGraph(_filteredTraceRecords, startWindow, endWindow);
+                _timelineInline.DrawTimelineGraph(_filteredTraceRecords, startWindow, endWindow);
             }
 
             // If we are scrolling to show a line (like for CTRL+F), position the line ~1/3 of the way down.
@@ -421,10 +421,10 @@ namespace InstantTraceViewerUI
             ImGui.EndDisabled();
 
             ImGui.SameLine();
-                        if (ImGui.Button("Heatmap"))
+                        if (ImGui.Button("Timeline"))
             {
-// Toggle inline heatmap.
-                _heatmapInline = (_heatmapInline == null) ? new HeatmapWindow(_traceSource.TraceSource.DisplayName) : null;
+// Toggle inline timeline graph.
+                _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
             }
 
             ImGui.SameLine();

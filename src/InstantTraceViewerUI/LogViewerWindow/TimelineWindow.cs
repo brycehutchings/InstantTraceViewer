@@ -5,24 +5,24 @@ using System.Numerics;
 
 namespace InstantTraceViewerUI
 {
-    internal class HeatmapWindow
+    internal class TimelineWindow
     {
         private const int PixelsPerSection = 2; // 1 pixel thick lines are too hard to see.
         private const int UnderlineHeight = 5;
 
         private static int _nextWindowId = 1;
-        private const string PopupName = "Heatmap";
+        private const string PopupName = "Timeline";
 
         private readonly string _name;
         private readonly int _windowId;
 
         private int _lastVisibleTraceRecordCount = 0;
-        private uint[] _colorHeatmap;
+        private uint[] _timelineColors;
         private DateTime _startTime;
         private DateTime _endTime;
         private bool _open = true;
 
-        public HeatmapWindow(string name)
+        public TimelineWindow(string name)
         {
             _name = name;
             _windowId = _nextWindowId++;
@@ -33,9 +33,9 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{PopupName} - {_name}###Heatmap_{_windowId}", ref _open))
+            if (ImGui.Begin($"{PopupName} - {_name}###Timeline_{_windowId}", ref _open))
             {
-                DrawHeatmapGraph(visibleTraceRecords, startWindow, endWindow);
+                DrawTimelineGraph(visibleTraceRecords, startWindow, endWindow);
             }
 
             ImGui.End();
@@ -43,7 +43,7 @@ namespace InstantTraceViewerUI
             return _open;
         }
 
-        public void DrawHeatmapGraph(FilteredTraceRecordCollection visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
+        public void DrawTimelineGraph(FilteredTraceRecordCollection visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
         {
             int sectionCount = (int)ImGui.GetContentRegionAvail().X / PixelsPerSection;
 
@@ -52,7 +52,7 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            if (_colorHeatmap == null || _colorHeatmap.Length != sectionCount || _lastVisibleTraceRecordCount != visibleTraceRecords.Count)
+            if (_timelineColors == null || _timelineColors.Length != sectionCount || _lastVisibleTraceRecordCount != visibleTraceRecords.Count)
             {
                 ProcessTraceRecords(sectionCount, visibleTraceRecords);
             }
@@ -60,14 +60,14 @@ namespace InstantTraceViewerUI
             Vector2 topLeft = ImGui.GetCursorScreenPos();
 
             int barHeight = 30;
-            int heatmapPixelWidth = sectionCount * PixelsPerSection;
+            int timelinePixelWidth = sectionCount * PixelsPerSection;
 
-            ImGui.Dummy(new Vector2(heatmapPixelWidth, barHeight + UnderlineHeight));
+            ImGui.Dummy(new Vector2(timelinePixelWidth, barHeight + UnderlineHeight));
 
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-            for (int i = 0; i < _colorHeatmap.Length; i++)
+            for (int i = 0; i < _timelineColors.Length; i++)
             {
-                drawList.AddRectFilled(topLeft + new Vector2(i * PixelsPerSection, 0), topLeft + new Vector2((i + 1) * PixelsPerSection, barHeight), _colorHeatmap[i]);
+                drawList.AddRectFilled(topLeft + new Vector2(i * PixelsPerSection, 0), topLeft + new Vector2((i + 1) * PixelsPerSection, barHeight), _timelineColors[i]);
             }
 
             // Underline the area that is visible in the log viewer.
@@ -81,7 +81,7 @@ namespace InstantTraceViewerUI
                 for (int e = 0; e < UnderlineHeight; e++)
                 {
                     startX = startSectionIndex * PixelsPerSection - barWiden;
-                    int endX = endSectionIndex * PixelsPerSection + barWiden;
+                    int endX = (endSectionIndex + 1) * PixelsPerSection + barWiden;
                     drawList.AddLine(topLeft + new Vector2(startX, barHeight + e), topLeft + new Vector2(endX, barHeight + e), ImGui.GetColorU32(new Vector4(1, 1, 1, 1)));
                     if (endX - startX < UnderlineHeight * 2)
                     {
@@ -105,7 +105,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private int SectionIndexFromTimestamp(DateTime timestamp) => (int)((timestamp - _startTime).Ticks / ((_endTime - _startTime).Ticks / _colorHeatmap.Length));
+        private int SectionIndexFromTimestamp(DateTime timestamp) => (int)((timestamp - _startTime).Ticks / ((_endTime - _startTime).Ticks / _timelineColors.Length));
 
         private void ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollection visibleTraceRecords)
         {
@@ -159,7 +159,7 @@ namespace InstantTraceViewerUI
             int maxOthers = otherCounts.Max();
             int maxNonError = Math.Max(maxVerboses, maxOthers);
 
-            _colorHeatmap = new uint[sectionCount];
+            _timelineColors = new uint[sectionCount];
             _lastVisibleTraceRecordCount = visibleTraceRecords.Count;
 
             for (int i = 0; i < sectionCount; i++)
@@ -189,7 +189,7 @@ namespace InstantTraceViewerUI
                     color = new Vector4(1 * channelIntensity, 0, 0, 1);
                 }
 
-                _colorHeatmap[i] = ImGui.GetColorU32(color);
+                _timelineColors[i] = ImGui.GetColorU32(color);
             }
         }
 
