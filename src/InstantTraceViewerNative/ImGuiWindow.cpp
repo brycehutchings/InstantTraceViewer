@@ -26,9 +26,15 @@ extern "C" bool __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** 
         return false; // Already initialized.
     }
 
-    //ImGui_ImplWin32_EnableDpiAwareness();
+    g_windowClass.cbSize = sizeof(g_windowClass);
+    g_windowClass.style = CS_CLASSDC;
+    g_windowClass.lpfnWndProc = WndProc;
+    g_windowClass.hInstance = GetModuleHandle(nullptr);
+    g_windowClass.lpszClassName = L"Instant Trace Viewer";
 
-    g_windowClass = { sizeof(g_windowClass), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"Instant Trace Viewer", nullptr };
+    // Use the icon for the exe as the window icon. Dotnet embeds the icon with ID 32512.
+    g_windowClass.hIcon = LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(32512));
+
     ::RegisterClassExW(&g_windowClass);
 
     g_hwnd = ::CreateWindowW(g_windowClass.lpszClassName, L"Instant Trace Viewer", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, g_windowClass.hInstance, nullptr);
