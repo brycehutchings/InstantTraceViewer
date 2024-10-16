@@ -18,8 +18,9 @@ namespace InstantTraceViewerUI
 
             ImGui.SetCurrentContext(imguiContext);
 
-            Settings.FontType? lastSetFont = null;
+            FontType? lastSetFont = null;
             int? lastSetFontSize = null;
+            ImGuiTheme? lastThemeSet = null;
 
             using (MainWindow mainWindow = new(args))
             {
@@ -31,6 +32,20 @@ namespace InstantTraceViewerUI
                         LoadFontAndScaleSizes();
                         lastSetFont = Settings.Font;
                         lastSetFontSize = Settings.FontSize;
+                    }
+
+                    if (lastThemeSet != Settings.Theme)
+                    {
+                        if (Settings.Theme == ImGuiTheme.Dark)
+                        {
+                            ImGui.StyleColorsDark();
+                        }
+                        else
+                        {
+                            ImGui.StyleColorsLight();
+                        }
+                        AppTheme.UpdateTheme();
+                        lastThemeSet = Settings.Theme;
                     }
 
                     if (!NativeInterop.WindowBeginNextFrame(out bool quit) || quit)
@@ -86,16 +101,22 @@ namespace InstantTraceViewerUI
             bool needsRebuild = ImGui.GetIO().Fonts.TexID != nint.Zero;
             ImGui.GetIO().Fonts.Clear();
 
-            Settings.FontType font = Settings.Font;
-            if (font == Settings.FontType.ProggyClean)
+            FontType font = Settings.Font;
+            if (font == FontType.ProggyClean)
             {
                 ImGui.GetIO().Fonts.AddFontDefault();
             }
             else
             {
-                byte[] ttfFontBytes = GetEmbeddedResourceBytes(
-                    font == Settings.FontType.CascadiaMono ? "CascadiaMono.ttf" : "DroidSans.ttf");
-                // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
+                string systemFontPath = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                string segoeUiPath = Path.Combine(systemFontPath, "segoeui.ttf");
+                string segoeUiVariablePath = Path.Combine(systemFontPath, "SegUIVar.ttf"); // Windows 11 font with better legibility.
+
+                byte[] ttfFontBytes =
+                    font == FontType.SegoeUI && File.Exists(segoeUiVariablePath) ? File.ReadAllBytes(segoeUiVariablePath) :
+                    font == FontType.SegoeUI && File.Exists(segoeUiPath) ? File.ReadAllBytes(segoeUiPath) : // Fallback to old segoe ui font if the new one is not available.
+                    font == FontType.CascadiaMono ? GetEmbeddedResourceBytes("CascadiaMono.ttf") :
+                    GetEmbeddedResourceBytes("DroidSans.ttf");
                 fixed (byte* ttfFontBytesPtr = ttfFontBytes)
                 {
                     // ImGui Q&A recommends rounding down font size after applying DPI scaling.

@@ -202,14 +202,15 @@ namespace InstantTraceViewerUI
 
                         if (traceRecord.ProcessId == _hoveredProcessId)
                         {
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.3f, 1.0f)), 0);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 0);
                         }
                         if (traceRecord.ThreadId == _hoveredThreadId)
                         {
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.3f, 0.3f, 1.0f)), 1);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 1);
                         }
 
-                        setColor(LevelToColor(traceRecord.Level));
+                        Vector4 rowColor = LevelToColor(traceRecord.Level);
+                        setColor(rowColor);
 
                         ImGui.TableNextColumn();
 
@@ -279,7 +280,7 @@ namespace InstantTraceViewerUI
                             {
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
 
-                                setColor(new Vector4(1, 1, 1, 1)); // TODO: Get color from theme
+                                setColor(null);
 
                                 if (ImGui.MenuItem($"Highlight '{displayTextTruncated}'"))
                                 {
@@ -290,13 +291,15 @@ namespace InstantTraceViewerUI
                                 }
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
-                                    _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
+// Include rules go last to ensure anything already excluded stays excluded.
+                                    _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
                                         Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
                                         Action: TraceRecordRuleAction.Include));
                                     _viewerRules.GenerationId++;
                                 }
                                 if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
                                 {
+// Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
                                     _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
                                         Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
                                         Action: TraceRecordRuleAction.Exclude));
@@ -309,9 +312,8 @@ namespace InstantTraceViewerUI
                                 }
                                 ImGui.EndPopup();
 
-                                // Resume color for remainder of row.
-                                setColor(LevelToColor(traceRecord.Level));
-                            }
+                                setColor(rowColor); // Resume color for remainder of row.
+                                                            }
 
                             columnCount++;
                         };
@@ -501,11 +503,11 @@ namespace InstantTraceViewerUI
 
         private static Vector4 LevelToColor(TraceLevel level)
         {
-            return level == TraceLevel.Verbose ? new Vector4(0.75f, 0.75f, 0.75f, 1.0f)     // Gray
-                   : level == TraceLevel.Warning ? new Vector4(1.0f, 0.65f, 0.0f, 1.0f)     // Orange
-                   : level == TraceLevel.Error ? new Vector4(0.9f, 0.0f, 0.0f, 1.0f)        // Red
-                   : level == TraceLevel.Critical ? new Vector4(0.70f, 0.0f, 0.0f, 1.0f)    // Dark Red
-                                                   : new Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // White
+            return level == TraceLevel.Verbose ? AppTheme.VerboseColor
+                   : level == TraceLevel.Warning ? AppTheme.WarningColor
+                   : level == TraceLevel.Error ? AppTheme.ErrorColor
+                   : level == TraceLevel.Critical ? AppTheme.CriticalColor
+                                                   : AppTheme.InfoColor;
         }
 
         private void CopySelectedRows(FilteredTraceRecordCollection visibleTraceRecords)

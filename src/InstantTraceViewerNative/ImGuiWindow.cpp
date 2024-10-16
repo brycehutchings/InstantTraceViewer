@@ -59,10 +59,6 @@ extern "C" bool __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** 
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-    //ImGui::StyleColorsLight();
-
     ImGui_ImplWin32_Init(g_hwnd);
     ImGui_ImplDX11_Init(g_d3dDevice, g_d3dDeviceContext);
 

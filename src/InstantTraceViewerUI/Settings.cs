@@ -6,31 +6,42 @@ using System.Linq;
 
 namespace InstantTraceViewerUI
 {
+    internal enum FontType
+    {
+        SegoeUI,
+        DroidSans,
+        CascadiaMono,
+        ProggyClean
+    }
+
     internal static class Settings
     {
-        public static FontType? _cachedFont;
-        public static int? _cachedFontSize;
+        private static RegistryKey Key = Registry.CurrentUser.CreateSubKey(@"Software\InstantTraceViewerUI", true /* writable */);
 
-        internal enum FontType
+        private static FontType _cachedFont;
+        private static int _cachedFontSize;
+        private static ImGuiTheme _imguiTheme;
+
+        static Settings()
         {
-            DroidSans,
-            CascadiaMono,
-            ProggyClean
+            _cachedFont = Enum.TryParse(Key.GetValue("Font", null) as string, out FontType font) ? font : FontType.SegoeUI;
+            _cachedFontSize = (int)Key.GetValue("FontSize", 17);
+            _imguiTheme = Enum.TryParse(Key.GetValue("Theme", null) as string, out ImGuiTheme theme) ? theme : ImGuiTheme.Light;
         }
 
-        private static RegistryKey Key = Registry.CurrentUser.CreateSubKey(@"Software\InstantTraceViewerUI", true /* writable */);
+        public static ImGuiTheme Theme
+        {
+            get => _imguiTheme;
+            set
+            {
+                _imguiTheme = value;
+                Key.SetValue("Theme", value.ToString());
+            }
+        }
 
         public static FontType Font
         {
-            get
-            {
-                if (!_cachedFont.HasValue)
-                {
-                    _cachedFont = Enum.TryParse<FontType>(Key.GetValue("Font", null) as string, out FontType font)
-                        ? font : FontType.DroidSans;
-                }
-                return _cachedFont.Value;
-            }
+            get =>  _cachedFont;
             set
             {
                 _cachedFont = value;
@@ -40,14 +51,7 @@ namespace InstantTraceViewerUI
 
         public static int FontSize
         {
-            get
-            {
-                if (!_cachedFontSize.HasValue)
-                {
-                    _cachedFontSize = Key.GetValue("FontSize", 16) as int?;
-                }
-                return _cachedFontSize.Value;
-            }
+            get => _cachedFontSize;
             set
             {
                 _cachedFontSize = value;

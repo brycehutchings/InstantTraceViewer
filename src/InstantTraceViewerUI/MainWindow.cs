@@ -92,28 +92,46 @@ namespace InstantTraceViewerUI
                 {
                     if (ImGui.BeginMenu("Settings"))
                     {
-                        Settings.FontType font = Settings.Font;
-                        if (ImGui.BeginMenu("Font"))
+                        ImGuiTheme theme = Settings.Theme;
+                        if (ImGui.BeginMenu("Theme"))
                         {
-                            if (ImGui.MenuItem("Droid Sans", "", font == Settings.FontType.DroidSans))
+                            if (ImGui.MenuItem("Light", "", theme == ImGuiTheme.Light))
                             {
-                                Settings.Font = Settings.FontType.DroidSans;
+                                Settings.Theme = ImGuiTheme.Light;
                             }
-                            else if (ImGui.MenuItem("Cascadia Mono (fixed)", "", font == Settings.FontType.CascadiaMono))
+                            else if (ImGui.MenuItem("Dark", "", theme == ImGuiTheme.Dark))
                             {
-                                Settings.Font = Settings.FontType.CascadiaMono;
-                            }
-                            else if (ImGui.MenuItem("Proggy Clean (13px fixed)", "", font == Settings.FontType.ProggyClean))
-                            {
-                                Settings.Font = Settings.FontType.ProggyClean;
+                                Settings.Theme = ImGuiTheme.Dark;
                             }
                             ImGui.EndMenu();
                         }
 
-                        ImGui.BeginDisabled(Settings.Font == Settings.FontType.ProggyClean);
+                        FontType font = Settings.Font;
+                        if (ImGui.BeginMenu("Font"))
+                        {
+                            if (ImGui.MenuItem("Segoe UI", "", font == FontType.SegoeUI))
+                            {
+                                Settings.Font = FontType.SegoeUI;
+                            }
+                            else if (ImGui.MenuItem("Droid Sans", "", font == FontType.DroidSans))
+                            {
+                                Settings.Font = FontType.DroidSans;
+                            }
+                            else if (ImGui.MenuItem("Cascadia Mono (fixed)", "", font == FontType.CascadiaMono))
+                            {
+                                Settings.Font = FontType.CascadiaMono;
+                            }
+                            else if (ImGui.MenuItem("Proggy Clean (13px fixed)", "", font == FontType.ProggyClean))
+                            {
+                                Settings.Font = FontType.ProggyClean;
+                            }
+                            ImGui.EndMenu();
+                        }
+
+                        ImGui.BeginDisabled(Settings.Font == FontType.ProggyClean);
                         if (ImGui.BeginMenu("Font size"))
                         {
-                            foreach (int fontSize in new[] { 12, 14, 16, 18, 20, 22, 24 })
+                            foreach (int fontSize in new[] { 12, 14, 16, 17, 18, 20, 22, 24 })
                             {
                                 if (ImGui.MenuItem(fontSize.ToString(), "", Settings.FontSize == fontSize))
                                 {
