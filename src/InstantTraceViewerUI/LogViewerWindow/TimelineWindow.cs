@@ -76,19 +76,21 @@ namespace InstantTraceViewerUI
                 int startSectionIndex = SectionIndexFromTimestamp(startWindow.Value);
                 int endSectionIndex = SectionIndexFromTimestamp(endWindow.Value);
 
+                uint underlineColor = ImGui.GetColorU32(ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
                 int startX = 0;
                 int barWiden = 0;
                 for (int e = 0; e < UnderlineHeight; e++)
                 {
                     startX = startSectionIndex * PixelsPerSection - barWiden;
                     int endX = (endSectionIndex + 1) * PixelsPerSection + barWiden;
-                    drawList.AddLine(topLeft + new Vector2(startX, barHeight + e), topLeft + new Vector2(endX, barHeight + e), ImGui.GetColorU32(new Vector4(1, 1, 1, 1)));
+                    drawList.AddLine(topLeft + new Vector2(startX, barHeight + e), topLeft + new Vector2(endX, barHeight + e), underlineColor);
                     if (endX - startX < UnderlineHeight * 2)
                     {
                         barWiden++; // Bar widens out like a trapezoid but stops once it is at least as wide as it is thick.
                     }
                 }
 
+                // Render text showing the time offset from the start of the visible trace records.
                 string startTimeOffsetStr = GetSmartDurationString(startWindow.Value - visibleTraceRecords.First().Timestamp);
                 float startTimeOffsetStrWidth = ImGui.CalcTextSize(startTimeOffsetStr).X;
                 float barWidth = ImGui.GetContentRegionAvail().X;
