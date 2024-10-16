@@ -2,6 +2,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
 #include <d3d11.h>
+#include <shellapi.h>
 
 static HWND g_hwnd{ nullptr };
 static WNDCLASSEXW g_windowClass{};
@@ -128,7 +129,8 @@ extern "C" bool __declspec(dllexport) __stdcall WindowBeginNextFrame(bool* quit)
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
-    // ImGui::ShowDemoWindow(&show_demo_window);
+    // static bool s_showDemoWindow = true;
+    // ImGui::ShowDemoWindow(&s_showDemoWindow);
 
     return true;
 }
@@ -171,6 +173,13 @@ extern "C" bool __declspec(dllexport) __stdcall WindowCleanup()
 
 
     return true;
+}
+
+extern "C" void __declspec(dllexport) __stdcall RebuildFontAtlas()
+{
+    // This function is marked static and can't be used, so we use a bigger hammer to avoid forking the ImGui backend.
+    // ImGui_ImplDX11_CreateFontsTexture();
+    ImGui_ImplDX11_CreateDeviceObjects();
 }
 
 //

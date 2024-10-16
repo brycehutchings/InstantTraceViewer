@@ -8,10 +8,6 @@ namespace InstantTraceViewerUI
 {
     internal class Program
     {
-        // DPI awareness is disabled in the app.manifest file. If you start looking into making this app DPI-aware, you'll need to
-        // re-enable that. Good luck.
-        private const int FontSize = 16;
-
         [STAThread] // For WinForms file browser usage :-\
         public static int Main(string[] args)
         {
@@ -22,12 +18,21 @@ namespace InstantTraceViewerUI
 
             ImGui.SetCurrentContext(imguiContext);
 
-            LoadFontAndScaleSizes();
+            Settings.FontType? lastSetFont = null;
+            int? lastSetFontSize = null;
 
             using (MainWindow mainWindow = new(args))
             {
                 while (true)
                 {
+                    // Font can only change outside of Begin/End frame.
+                    if (lastSetFont != Settings.Font || lastSetFontSize != Settings.FontSize)
+                    {
+                        LoadFontAndScaleSizes();
+                        lastSetFont = Settings.Font;
+                        lastSetFontSize = Settings.FontSize;
+                    }
+
                     if (!NativeInterop.WindowBeginNextFrame(out bool quit) || quit)
                     {
                         break;
@@ -65,6 +70,8 @@ namespace InstantTraceViewerUI
 
         private static unsafe void LoadFontAndScaleSizes()
         {
+            Debug.WriteLine("Loading and building font atlas...");
+
             float dpiScale = 1.0f;
             // For now, use the scale of the primary monitor
             ImPtrVector<ImGuiPlatformMonitorPtr> monitors = ImGui.GetPlatformIO().Monitors;
@@ -76,22 +83,35 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().ScaleAllSizes(dpiScale);
             }
 
-#if USE_PIXEL_PERFECT_FONT
-            // ImGui also embeds a 13 pixel high pixel-perfect font (ProggyClean). It is sharper but on the small side.
-            ImGui.GetIO().Fonts.AddFontDefault();
-#else
-            byte[] ttfFontBytes = GetEmbeddedResourceBytes("DroidSans.ttf");
-            // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
-            fixed (byte* ttfFontBytesPtr = ttfFontBytes)
-            {
-                // ImGui Q&A recommends rounding down font size after applying DPI scaling.
-                float scaledFontSize = (float)Math.Floor(FontSize * dpiScale);
+            bool needsRebuild = ImGui.GetIO().Fonts.TexID != nint.Zero;
+            ImGui.GetIO().Fonts.Clear();
 
-                ImFontConfigPtr fontCfg = ImGuiNative.ImFontConfig_ImFontConfig();
-                fontCfg.FontDataOwnedByAtlas = false; // https://github.com/ocornut/imgui/issues/220
-                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, scaledFontSize, fontCfg);
+            Settings.FontType font = Settings.Font;
+            if (font == Settings.FontType.ProggyClean)
+            {
+                ImGui.GetIO().Fonts.AddFontDefault();
             }
-#endif
+            else
+            {
+                byte[] ttfFontBytes = GetEmbeddedResourceBytes(
+                    font == Settings.FontType.CascadiaMono ? "CascadiaMono.ttf" : "DroidSans.ttf");
+                // byte[] ttfFontBytes = GetEmbeddedResourceBytes("CascadiaMono.ttf");
+                fixed (byte* ttfFontBytesPtr = ttfFontBytes)
+                {
+                    // ImGui Q&A recommends rounding down font size after applying DPI scaling.
+                    float scaledFontSize = (float)Math.Floor(Settings.FontSize * dpiScale);
+
+                    ImFontConfigPtr fontCfg = ImGuiNative.ImFontConfig_ImFontConfig();
+                    fontCfg.FontDataOwnedByAtlas = false; // https://github.com/ocornut/imgui/issues/220
+                    ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, scaledFontSize, fontCfg);
+                }
+            }
+
+            if (needsRebuild)
+            {
+                ImGui.GetIO().Fonts.Build();
+                NativeInterop.RebuildFontAtlas(); // Reupload the font texture to the GPU
+            }
         }
 
         private static byte[] GetEmbeddedResourceBytes(string resourceName)

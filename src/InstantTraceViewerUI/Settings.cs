@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,7 +8,52 @@ namespace InstantTraceViewerUI
 {
     internal static class Settings
     {
+        public static FontType? _cachedFont;
+        public static int? _cachedFontSize;
+
+        internal enum FontType
+        {
+            DroidSans,
+            CascadiaMono,
+            ProggyClean
+        }
+
         private static RegistryKey Key = Registry.CurrentUser.CreateSubKey(@"Software\InstantTraceViewerUI", true /* writable */);
+
+        public static FontType Font
+        {
+            get
+            {
+                if (!_cachedFont.HasValue)
+                {
+                    _cachedFont = Enum.TryParse<FontType>(Key.GetValue("Font", null) as string, out FontType font)
+                        ? font : FontType.DroidSans;
+                }
+                return _cachedFont.Value;
+            }
+            set
+            {
+                _cachedFont = value;
+                Key.SetValue("Font", value.ToString());
+            }
+        }
+
+        public static int FontSize
+        {
+            get
+            {
+                if (!_cachedFontSize.HasValue)
+                {
+                    _cachedFontSize = Key.GetValue("FontSize", 16) as int?;
+                }
+                return _cachedFontSize.Value;
+            }
+            set
+            {
+                _cachedFontSize = value;
+                Key.SetValue("FontSize", value);
+            }
+        }
 
         public static string WprpOpenLocation
         {

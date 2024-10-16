@@ -15,5 +15,8 @@ namespace InstantTraceViewerUI
 
         [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern bool WindowCleanup();
+
+        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern void RebuildFontAtlas();
     }
 }

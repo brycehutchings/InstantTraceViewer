@@ -92,8 +92,38 @@ namespace InstantTraceViewerUI
                 {
                     if (ImGui.BeginMenu("Settings"))
                     {
-                        // TODO: Font size, padding, etc.
-                        ImGui.MenuItem("TODO ;-)");
+                        Settings.FontType font = Settings.Font;
+                        if (ImGui.BeginMenu("Font"))
+                        {
+                            if (ImGui.MenuItem("Droid Sans", "", font == Settings.FontType.DroidSans))
+                            {
+                                Settings.Font = Settings.FontType.DroidSans;
+                            }
+                            else if (ImGui.MenuItem("Cascadia Mono (fixed)", "", font == Settings.FontType.CascadiaMono))
+                            {
+                                Settings.Font = Settings.FontType.CascadiaMono;
+                            }
+                            else if (ImGui.MenuItem("Proggy Clean (13px fixed)", "", font == Settings.FontType.ProggyClean))
+                            {
+                                Settings.Font = Settings.FontType.ProggyClean;
+                            }
+                            ImGui.EndMenu();
+                        }
+
+                        ImGui.BeginDisabled(Settings.Font == Settings.FontType.ProggyClean);
+                        if (ImGui.BeginMenu("Font size"))
+                        {
+                            foreach (int fontSize in new[] { 12, 14, 16, 18, 20, 22, 24 })
+                            {
+                                if (ImGui.MenuItem(fontSize.ToString(), "", Settings.FontSize == fontSize))
+                                {
+                                    Settings.FontSize = fontSize;
+                                }
+                            }
+                            ImGui.EndMenu();
+                        }
+                        ImGui.EndDisabled();
+
                         ImGui.EndMenu();
                     }
 
