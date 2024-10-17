@@ -28,8 +28,19 @@ namespace InstantTraceViewerUI
 
         public static void UpdateTheme()
         {
+            // Adjust the dark theme to match VSCode/VS/Teams color. Instead of harsh pure black background, a dark gray is used.
+            if (Settings.Theme == ImGuiTheme.Dark)
+            {
+                ImGui.GetStyle().Colors[(int)ImGuiCol.WindowBg] = ImGui.ColorConvertU32ToFloat4(0xff1f1f1f);
+                ImGui.GetStyle().Colors[(int)ImGuiCol.ScrollbarBg] = ImGui.ColorConvertU32ToFloat4(0xff1f1f1f);
+
+                ImGui.GetStyle().Colors[(int)ImGuiCol.ChildBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
+                ImGui.GetStyle().Colors[(int)ImGuiCol.PopupBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
+                ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
+            }
+
             InfoColor = ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
-            VerboseColor = InterpolateColor(0.6f, ImGuiCol.Text, ImGuiCol.WindowBg);
+            VerboseColor = InterpolateColor(0.4f, ImGuiCol.Text, ImGuiCol.WindowBg);
             MatchingRowBgColor = AdjustColorAlpha(ImGuiCol.TableRowBgAlt, 3.0f);
             WarningColor = new Vector4(1.0f, 0.65f, 0.0f, 1.0f);      // Orange
             ErrorColor = new Vector4(0.9f, 0.0f, 0.0f, 1.0f);         // Red
