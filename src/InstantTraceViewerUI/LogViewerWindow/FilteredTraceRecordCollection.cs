@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 
 namespace InstantTraceViewerUI
 {
@@ -25,8 +26,9 @@ namespace InstantTraceViewerUI
 
         public int Count => _visibleRows.Count;
 
-        public IEnumerator<TraceRecord> GetEnumerator() => throw new NotImplementedException();
-        IEnumerator IEnumerable.GetEnumerator() => throw new NotImplementedException();
+        public IEnumerator<TraceRecord> GetEnumerator() => _visibleRows.Select(i => _unfilteredTraceRecords[i]).GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         #endregion
 
         public int ErrorCount => _errorCount;
