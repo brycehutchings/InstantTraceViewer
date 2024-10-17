@@ -36,7 +36,14 @@ namespace InstantTraceViewerUI
 
                 ImGui.GetStyle().Colors[(int)ImGuiCol.ChildBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
                 ImGui.GetStyle().Colors[(int)ImGuiCol.PopupBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
-                ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
+
+                // Make alternate row color have less contrast. Goes from 6% to 3% alpha tint.
+                ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(1, 1, 1, 0.03f);
+            }
+            else
+            {
+                // Make alternate row color have less contrast. Goes from 9% to 4.5% alpha tint.
+                ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(0.3f, 0.3f, 0.3f, 0.045f);
             }
 
             InfoColor = ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
