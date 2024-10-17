@@ -28,6 +28,52 @@
     <ClCompile Include="..\..\ThirdParty\cimgui\imgui\imgui_tables.cpp" />
     <ClCompile Include="..\..\ThirdParty\cimgui\imgui\imgui_widgets.cpp" />
     <ClCompile Include="..\..\ThirdParty\cimgui\imgui\misc\freetype\imgui_freetype.cpp" />
+    <ClCompile Include="..\..\ThirdParty\freetype\builds\windows\ftdebug.c">
+      <DisableLanguageExtensions>false</DisableLanguageExtensions>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\builds\windows\ftsystem.c">
+      <DisableLanguageExtensions>false</DisableLanguageExtensions>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\autofit\autofit.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbase.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbbox.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbdf.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbitmap.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftcid.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftfstype.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftgasp.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftglyph.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftgxval.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftinit.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftmm.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftotval.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftpatent.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftpfr.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftstroke.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftsynth.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\fttype1.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftwinfnt.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\bdf\bdf.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\cache\ftcache.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\cff\cff.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\cid\type1cid.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\dlg\dlgwrap.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\gzip\ftgzip.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\lzw\ftlzw.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\pcf\pcf.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\pfr\pfr.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\psaux\psaux.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\pshinter\pshinter.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\psnames\psmodule.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\raster\raster.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\sdf\sdf.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\sfnt\sfnt.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\smooth\smooth.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\svg\svg.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\truetype\truetype.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\type1\type1.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\type42\type42.c" />
+    <ClCompile Include="..\..\ThirdParty\freetype\src\winfonts\winfnt.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\ThirdParty\cimgui\cimgui.h" />
@@ -47,11 +93,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\ThirdParty\cimgui\imgui\misc\freetype\README.md" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\ThirdParty\freetype\builds\windows\vc2010\freetype.vcxproj">
-      <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
-    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -88,13 +129,14 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;CIMGUI_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;FT_DEBUG_LEVEL_ERROR;FT_DEBUG_LEVEL_TRACE;FT2_BUILD_LIBRARY;_DEBUG;CIMGUI_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\cimgui;..\..\ThirdParty\cimgui\imgui;..\..\ThirdParty\freetype\include</AdditionalIncludeDirectories>
       <AdditionalOptions>"/DIMGUI_USER_CONFIG=&lt;imconfig_custom.h&gt;" %(AdditionalOptions)</AdditionalOptions>
+      <DisableSpecificWarnings>4267;4244</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -108,13 +150,14 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;CIMGUI_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;FT_DEBUG_LEVEL_ERROR;FT_DEBUG_LEVEL_TRACE;FT2_BUILD_LIBRARY;NDEBUG;CIMGUI_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\cimgui;..\..\ThirdParty\cimgui\imgui;..\..\ThirdParty\freetype\include</AdditionalIncludeDirectories>
       <AdditionalOptions>"/DIMGUI_USER_CONFIG=&lt;imconfig_custom.h&gt;" %(AdditionalOptions)</AdditionalOptions>
+      <DisableSpecificWarnings>4267;4244</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

@@ -26,6 +26,132 @@
     <ClCompile Include="..\..\ThirdParty\cimgui\imgui\backends\imgui_impl_win32.cpp">
       <Filter>imgui\Backends</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\autofit\autofit.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\bdf\bdf.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\cff\cff.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\dlg\dlgwrap.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbase.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\cache\ftcache.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\builds\windows\ftdebug.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\gzip\ftgzip.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftinit.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\lzw\ftlzw.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\builds\windows\ftsystem.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\pcf\pcf.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\pfr\pfr.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\psaux\psaux.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\pshinter\pshinter.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\psnames\psmodule.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\raster\raster.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\sdf\sdf.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\sfnt\sfnt.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\smooth\smooth.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\svg\svg.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\truetype\truetype.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\type1\type1.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\cid\type1cid.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\type42\type42.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\winfonts\winfnt.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbbox.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbdf.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftbitmap.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftcid.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftfstype.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftgasp.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftglyph.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftgxval.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftmm.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftotval.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftpatent.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftpfr.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftstroke.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftsynth.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\fttype1.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\ThirdParty\freetype\src\base\ftwinfnt.c">
+      <Filter>freetype</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\ThirdParty\cimgui\cimgui.h" />
@@ -68,6 +194,12 @@
     <Filter Include="imgui\Freetype">
       <UniqueIdentifier>{291d7889-e87c-461c-9dc1-c941d4db79e6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="freetype">
+      <UniqueIdentifier>{600c33c5-a73f-490c-b4dd-3105f38963a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="freetype\FT_MODULES">
+      <UniqueIdentifier>{ec1c7eed-ea89-4135-ba25-a167f779c6c3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt" />
@@ -76,5 +208,10 @@
     <None Include="..\..\ThirdParty\cimgui\imgui\misc\freetype\README.md">
       <Filter>imgui\Freetype</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\..\ThirdParty\freetype\src\base\ftver.rc">
+      <Filter>freetype</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
