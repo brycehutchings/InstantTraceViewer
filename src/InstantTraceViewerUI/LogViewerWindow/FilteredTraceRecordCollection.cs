@@ -10,49 +10,47 @@ namespace InstantTraceViewerUI
     {
         private readonly List<int> _visibleRows = new();
 
-        private IReadOnlyList<TraceRecord> _unfilteredTraceRecords;
-        private int _nextTraceSourceRowIndex = 0;
+        private TraceRecordSnapshot _unfilteredSnapshot = new TraceRecordSnapshot();
+
         private int _errorCount = 0;
-        private int _unfilteredCount = 0;
-        private int _unfilteredTraceRecordGenerationId = -1;
         private int _viewerRulesGenerationId = -1;
 
         #region IReadOnlyList<TraceRecord>
-        public TraceRecord this[int index] => _unfilteredTraceRecords[GetRecordId(index)];
+        public TraceRecord this[int index] => _unfilteredSnapshot.Records[GetRecordId(index)];
 
         public int GetRecordId(int index) => _visibleRows[index];
 
-        public TraceRecord GetRecordFromId(int recordId) => _unfilteredTraceRecords[recordId];
+        public TraceRecord GetRecordFromId(int recordId) => _unfilteredSnapshot.Records[recordId];
 
         public int Count => _visibleRows.Count;
 
-        public IEnumerator<TraceRecord> GetEnumerator() => _visibleRows.Select(i => _unfilteredTraceRecords[i]).GetEnumerator();
+        public IEnumerator<TraceRecord> GetEnumerator() => _visibleRows.Select(i => _unfilteredSnapshot.Records[i]).GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         #endregion
 
         public int ErrorCount => _errorCount;
 
-        public int UnfilteredCount => _unfilteredCount;
+        public int UnfilteredCount => _unfilteredSnapshot.Records.Count;
 
-        public bool Update(ViewerRules viewerRules, int generationId, IReadOnlyList<TraceRecord> traceRecords)
+        public bool Update(ViewerRules viewerRules, TraceRecordSnapshot newSnapshot)
         {
             bool rebuildFilteredView =
-                generationId != _unfilteredTraceRecordGenerationId ||
+                newSnapshot.GenerationId != _unfilteredSnapshot.GenerationId ||
                 viewerRules.GenerationId != _viewerRulesGenerationId;
             if (rebuildFilteredView)
             {
                 Debug.WriteLine("Rebuilding visible rows...");
                 _visibleRows.Clear();
-                _nextTraceSourceRowIndex = 0;
+                _unfilteredSnapshot = new TraceRecordSnapshot();
                 _errorCount = 0;
             }
 
-            for (int i = _nextTraceSourceRowIndex; i < traceRecords.Count; i++)
+            for (int i = _unfilteredSnapshot.Records.Count; i < newSnapshot.Records.Count; i++)
             {
-                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(traceRecords[i]) == TraceRecordRuleAction.Include)
+                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(newSnapshot.Records[i]) == TraceRecordRuleAction.Include)
                 {
-                    if (traceRecords[i].Level == TraceLevel.Error)
+                    if (newSnapshot.Records[i].Level == TraceLevel.Error)
                     {
                         _errorCount++;
                     }
@@ -66,11 +64,8 @@ namespace InstantTraceViewerUI
                 Debug.WriteLine("Done rebuilding visible rows.");
             }
 
+            _unfilteredSnapshot = newSnapshot;
             _viewerRulesGenerationId = viewerRules.GenerationId;
-            _unfilteredTraceRecords = traceRecords;
-            _unfilteredTraceRecordGenerationId = generationId;
-            _nextTraceSourceRowIndex = traceRecords.Count;
-            _unfilteredCount = traceRecords.Count;
 
             return rebuildFilteredView;
         }

@@ -39,7 +39,17 @@ namespace InstantTraceViewerUI
         public Guid RelatedActivityId;
     }
 
-    delegate void ReadTraceRecords(int generationId, IReadOnlyList<TraceRecord> records);
+    struct TraceRecordSnapshot
+    {
+        public TraceRecordSnapshot()
+        {
+            Records = Array.Empty<TraceRecord>();
+            GenerationId = -1;
+        }
+
+        public IReadOnlyList<TraceRecord> Records;
+        public int GenerationId;
+    }
 
     internal interface ITraceSource : IDisposable
     {
@@ -53,6 +63,6 @@ namespace InstantTraceViewerUI
 
         void Clear();
 
-        void ReadUnderLock(ReadTraceRecords callback);
+        TraceRecordSnapshot CreateSnapshot();
     }
 }

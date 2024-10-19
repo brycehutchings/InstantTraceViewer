@@ -1,9 +1,10 @@
-﻿using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -27,8 +28,7 @@ namespace InstantTraceViewerUI.Etw
         private readonly ReaderWriterLockSlim _pendingTableRecordsLock = new ReaderWriterLockSlim();
         private List<TraceRecord> _pendingTableRecords = new();
 
-        private readonly ReaderWriterLockSlim _tableRecordsLock = new ReaderWriterLockSlim();
-        private readonly List<TraceRecord> _tableRecords = new();
+        private readonly ImmutableList<TraceRecord>.Builder _tableRecords = ImmutableList.CreateBuilder<TraceRecord>();
         private int _generationId = 1;
 
         private ConcurrentDictionary<int, string> _threadNames = new();
@@ -170,21 +170,14 @@ namespace InstantTraceViewerUI.Etw
         }
 
         public void Clear()
-        {
-            _tableRecordsLock.EnterWriteLock();
-            try
-            {
+                    {
                 _tableRecords.Clear();
-                _generationId++;
-                GC.Collect();
-            }
-            finally
-            {
-                _tableRecordsLock.ExitWriteLock();
-            }
-        }
+                _generationId++; // TODO: Should really do the two operations atomically.
 
-        public void ReadUnderLock(ReadTraceRecords callback)
+                GC.Collect();
+                    }
+
+        public TraceRecordSnapshot CreateSnapshot()
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTableRecords' list.
             // It is important to not block the ETW event callback or events might get dropped.
@@ -204,27 +197,15 @@ namespace InstantTraceViewerUI.Etw
 
             // Now we can append on the new events.
             if (pendingTableRecordsLocal.Count > 0)
-            {
-                _tableRecordsLock.EnterWriteLock();
-                try
-                {
+                            {
                     _tableRecords.AddRange(pendingTableRecordsLocal);
                 }
-                finally
-                {
-                    _tableRecordsLock.ExitWriteLock();
-                }
-            }
-
-            _tableRecordsLock.EnterReadLock();
-            try
+                
+            return new TraceRecordSnapshot
             {
-                callback(_generationId, _tableRecords);
-            }
-            finally
-            {
-                _tableRecordsLock.ExitReadLock();
-            }
+                GenerationId = _generationId,
+                Records = _tableRecords.ToImmutableList()
+            };
         }
 
         private void UpdateProcessNameTable(IReadOnlyList<TraceRecord> traceRecords)

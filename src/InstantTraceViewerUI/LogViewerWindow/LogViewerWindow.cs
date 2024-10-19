@@ -58,13 +58,9 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            // TODO: _filteredTraceRecords keeps a reference to traceRecords outside of the lock. This is actually safe
-            // as long as no one else calls ReadUnderLock since this is the only time the collection is updated. Can I do better?
-            bool filteredViewRebuilt = false;
-            _traceSource.TraceSource.ReadUnderLock((int generationId, IReadOnlyList<TraceRecord> traceRecords) =>
-            {
-                filteredViewRebuilt = _filteredTraceRecords.Update(_viewerRules, generationId, traceRecords);
-            });
+            TraceRecordSnapshot snapshot = _traceSource.TraceSource.CreateSnapshot();
+
+            bool filteredViewRebuilt = _filteredTraceRecords.Update(_viewerRules, snapshot);
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -429,7 +425,7 @@ namespace InstantTraceViewerUI
                 _selectedTraceRecordIds.Clear();
 
                 // Updating the filtered trace records so it will see the generation id changed and clear itself.
-                _traceSource.TraceSource.ReadUnderLock((int generationId, IReadOnlyList<TraceRecord> traceRecords) => _filteredTraceRecords.Update(_viewerRules, generationId, traceRecords));
+                _filteredTraceRecords.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
             }
 
             ImGui.SameLine();
