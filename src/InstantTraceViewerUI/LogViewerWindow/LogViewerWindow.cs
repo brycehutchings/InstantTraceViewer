@@ -443,10 +443,18 @@ namespace InstantTraceViewerUI
             ImGui.EndDisabled();
 
             ImGui.SameLine();
-                        if (ImGui.Button("Timeline"))
+                        if (ImGui.Button("Visualization"))
             {
-// Toggle inline timeline graph.
+// Popup menu
+                ImGui.OpenPopup("Visualization");
+            }
+            if (ImGui.BeginPopup("Visualization"))
+            {
+                if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
+                {
                 _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
+}
+                ImGui.EndPopup();
             }
 
             ImGui.SameLine();
