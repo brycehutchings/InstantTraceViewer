@@ -2,6 +2,8 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InstantTraceViewerUI
 {
@@ -16,11 +18,19 @@ namespace InstantTraceViewerUI
         private readonly string _name;
         private readonly int _windowId;
 
-        private int _lastVisibleTraceRecordCount = 0;
-        private uint[] _timelineColors;
-        private DateTime _startTime;
-        private DateTime _endTime;
         private bool _open = true;
+
+        // The data that is computed on a background thread and rendered on the UI thread.
+        class ComputedTimeline
+        {
+            public int LastFilteredTraceRecordCount;
+            public uint[] ColorsBars;
+            public DateTime StartTime;
+            public DateTime EndTime;
+        }
+
+        private ComputedTimeline _computedTimeline;
+        private Task<ComputedTimeline> _nextComputedTimelineTask;
 
         public TimelineWindow(string name)
         {
@@ -46,15 +56,34 @@ namespace InstantTraceViewerUI
         public void DrawTimelineGraph(FilteredTraceRecordCollection visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
         {
             int sectionCount = (int)ImGui.GetContentRegionAvail().X / PixelsPerSection;
-
             if (sectionCount <= 0 || visibleTraceRecords.Count == 0)
             {
                 return;
             }
 
-            if (_timelineColors == null || _timelineColors.Length != sectionCount || _lastVisibleTraceRecordCount != visibleTraceRecords.Count)
+            // If the background processing of the timeline is complete, update to use it.
+            if (_nextComputedTimelineTask != null && _nextComputedTimelineTask.IsCompleted)
             {
-                ProcessTraceRecords(sectionCount, visibleTraceRecords);
+                _computedTimeline = _nextComputedTimelineTask.Result;
+                _nextComputedTimelineTask = null;
+            }
+
+            ComputedTimeline computedTimelineSnapshot = _computedTimeline;
+
+            // If the background processing of the timeline is not running and the snapshot is out of date, start a new background task.
+            if (_nextComputedTimelineTask == null)
+            {
+                if (computedTimelineSnapshot == null || computedTimelineSnapshot.ColorsBars.Length != sectionCount || computedTimelineSnapshot.LastFilteredTraceRecordCount != visibleTraceRecords.Count)
+                {
+                    // Create a new background task to process the trace records. A clone of the visibleTraceRecords is used since it is otherwise mutated every frame on the UI thread.
+                    var visibleTraceRecordsClone = visibleTraceRecords.Clone();
+                    _nextComputedTimelineTask = Task.Run(() => ProcessTraceRecords(sectionCount, visibleTraceRecordsClone));
+                }
+            }
+
+            if (computedTimelineSnapshot == null)
+            {
+                return;
             }
 
             Vector2 topLeft = ImGui.GetCursorScreenPos();
@@ -65,9 +94,9 @@ namespace InstantTraceViewerUI
             ImGui.Dummy(new Vector2(timelinePixelWidth, barHeight + UnderlineHeight));
 
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-            for (int i = 0; i < _timelineColors.Length; i++)
+            for (int i = 0; i < computedTimelineSnapshot.ColorsBars.Length; i++)
             {
-                drawList.AddRectFilled(topLeft + new Vector2(i * PixelsPerSection, 0), topLeft + new Vector2((i + 1) * PixelsPerSection, barHeight), _timelineColors[i]);
+                drawList.AddRectFilled(topLeft + new Vector2(i * PixelsPerSection, 0), topLeft + new Vector2((i + 1) * PixelsPerSection, barHeight), computedTimelineSnapshot.ColorsBars[i]);
             }
 
             // Underline the area that is visible in the log viewer.
@@ -107,19 +136,20 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private int SectionIndexFromTimestamp(DateTime timestamp) => (int)((timestamp - _startTime).Ticks / ((_endTime - _startTime).Ticks / _timelineColors.Length));
+        private int SectionIndexFromTimestamp(DateTime timestamp) => (int)((timestamp - _computedTimeline.StartTime).Ticks / ((_computedTimeline.EndTime - _computedTimeline.StartTime).Ticks / _computedTimeline.ColorsBars.Length));
 
-        private void ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollection visibleTraceRecords)
+        static private ComputedTimeline ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollection visibleTraceRecords)
         {
-            _startTime = visibleTraceRecords.First().Timestamp;
-            _endTime = visibleTraceRecords.Last().Timestamp;
+            ComputedTimeline newComputedTimeline = new();
+            newComputedTimeline.StartTime = visibleTraceRecords.First().Timestamp;
+            newComputedTimeline.EndTime = visibleTraceRecords.Last().Timestamp;
 
             int[] errorCounts = new int[sectionCount];
             int[] warningCounts = new int[sectionCount];
             int[] verboseCounts = new int[sectionCount];
             int[] otherCounts = new int[sectionCount];
 
-            long ticksPerSection = (_endTime - _startTime).Ticks / sectionCount;
+            long ticksPerSection = (newComputedTimeline.EndTime - newComputedTimeline.StartTime).Ticks / sectionCount;
 
             if (ticksPerSection == 0) // Avoid div-by-zero.
             {
@@ -130,7 +160,7 @@ namespace InstantTraceViewerUI
             for (int i = 0; i < visibleTraceRecords.Count; i++)
             {
                 TraceRecord traceRecord = visibleTraceRecords[i];
-                int sectionIndex = (int)((traceRecord.Timestamp - _startTime).Ticks / ticksPerSection);
+                int sectionIndex = (int)((traceRecord.Timestamp - newComputedTimeline.StartTime).Ticks / ticksPerSection);
 
                 // Due to rounding errors the sectionIndex can go too high. Protect against too low in case there is a rogue event that is not in chronological order.
                 sectionIndex = Math.Clamp(sectionIndex, 0, sectionCount - 1);
@@ -161,8 +191,8 @@ namespace InstantTraceViewerUI
             int maxOthers = otherCounts.Max();
             int maxNonError = Math.Max(maxVerboses, maxOthers);
 
-            _timelineColors = new uint[sectionCount];
-            _lastVisibleTraceRecordCount = visibleTraceRecords.Count;
+            newComputedTimeline.ColorsBars = new uint[sectionCount];
+            newComputedTimeline.LastFilteredTraceRecordCount = visibleTraceRecords.Count;
 
             for (int i = 0; i < sectionCount; i++)
             {
@@ -191,8 +221,10 @@ namespace InstantTraceViewerUI
                     color = new Vector4(1 * channelIntensity, 0, 0, 1);
                 }
 
-                _timelineColors[i] = ImGui.GetColorU32(color);
+                newComputedTimeline.ColorsBars[i] = ImGui.GetColorU32(color);
             }
+
+            return newComputedTimeline;
         }
 
         private string GetSmartDurationString(TimeSpan timeSpan)

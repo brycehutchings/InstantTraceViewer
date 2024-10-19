@@ -1,17 +1,18 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 
 namespace InstantTraceViewerUI
 {
+    // This object is a view of a list of trace records, filtered by the user's rules. It can update itself
+    // incrementally to avoid having to rebuild the view from scratch every frame.
+    // It is mutable, and is not thread-safe. If something needs to operate on it, it should be cloned first.
     class FilteredTraceRecordCollection : IReadOnlyList<TraceRecord>
     {
-        private readonly List<int> _visibleRows = new();
-
+        private ImmutableList<int>.Builder _visibleRows = ImmutableList.CreateBuilder<int>();
         private TraceRecordSnapshot _unfilteredSnapshot = new TraceRecordSnapshot();
-
         private int _errorCount = 0;
         private int _viewerRulesGenerationId = -1;
 
@@ -68,6 +69,18 @@ namespace InstantTraceViewerUI
             _viewerRulesGenerationId = viewerRules.GenerationId;
 
             return rebuildFilteredView;
+        }
+
+        // This is not thread-safe. It must be called on the main thread.
+        public FilteredTraceRecordCollection Clone()
+        {
+            return new FilteredTraceRecordCollection
+            {
+                _unfilteredSnapshot = _unfilteredSnapshot,
+                _visibleRows = _visibleRows.ToImmutableList().ToBuilder(),
+                _errorCount = _errorCount,
+                _viewerRulesGenerationId = _viewerRulesGenerationId
+            };
         }
     }
 }

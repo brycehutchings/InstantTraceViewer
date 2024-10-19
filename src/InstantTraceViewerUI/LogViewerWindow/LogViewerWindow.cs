@@ -58,9 +58,7 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            TraceRecordSnapshot snapshot = _traceSource.TraceSource.CreateSnapshot();
-
-            bool filteredViewRebuilt = _filteredTraceRecords.Update(_viewerRules, snapshot);
+            bool filteredViewRebuilt = _filteredTraceRecords.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -156,6 +154,7 @@ namespace InstantTraceViewerUI
                 {
                     Debug.WriteLine("Trying to maintain scroll position...");
 
+                    // Find the first row that was the topmost visible row or whichever comes next and scroll to this.
                     // TODO: This could be a binary search.
                     for (int i = 0; i < visibleTraceRecords.Count; i++)
                     {
