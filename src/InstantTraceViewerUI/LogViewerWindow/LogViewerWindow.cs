@@ -327,6 +327,24 @@ namespace InstantTraceViewerUI
                         addColumnData(r => r.Timestamp.ToString(TimestampFormat));
                         addColumnData(r => r.Message.Replace("\n", " ").Replace("\r", " "));
 
+                        // Double-click on the message cell will pop up a read-only edit box so the user can read long messages or copy parts of the text.
+                        if (!string.IsNullOrEmpty(traceRecord.Message))
+                        {
+                            if (isRowHovered && hoveredCol == 7 /* Message */ && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                            {
+                                ImGui.OpenPopup("MessagePopup");
+                            }
+                            if (ImGui.BeginPopup("MessagePopup", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
+                            {
+                                string message = traceRecord.Message;
+                                setColor(null);
+                                ImGui.InputTextMultiline("##Message", ref message, 0, new Vector2(500, ImGui.GetTextLineHeight() * 4),
+                                    ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
+                                setColor(rowColor); // Resume color
+                                ImGui.EndPopup();
+                            }
+                        }
+
                         ImGui.PopID(); // Trace record id
                     }
                 }
