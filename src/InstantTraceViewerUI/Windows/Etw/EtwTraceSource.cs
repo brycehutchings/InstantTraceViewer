@@ -1,4 +1,4 @@
-using Microsoft.Diagnostics.Tracing;
+﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
@@ -25,10 +25,11 @@ namespace InstantTraceViewerUI.Etw
         private readonly int _sessionNum;
         private readonly Thread _processingThread;
 
-        private readonly ReaderWriterLockSlim _pendingTableRecordsLock = new ReaderWriterLockSlim();
-        private List<TraceRecord> _pendingTableRecords = new();
+        private readonly ReaderWriterLockSlim _pendingTraceRecordsLock = new ReaderWriterLockSlim();
+        private List<TraceRecord> _pendingTraceRecords = new();
 
-        private readonly ImmutableList<TraceRecord>.Builder _tableRecords = ImmutableList.CreateBuilder<TraceRecord>();
+        private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
+        private readonly ImmutableList<TraceRecord>.Builder _traceRecords = ImmutableList.CreateBuilder<TraceRecord>();
         private int _generationId = 1;
 
         private ConcurrentDictionary<int, string> _threadNames = new();
@@ -60,14 +61,14 @@ namespace InstantTraceViewerUI.Etw
 
         private void AddEvent(TraceRecord record)
         {
-            _pendingTableRecordsLock.EnterWriteLock();
+            _pendingTraceRecordsLock.EnterWriteLock();
             try
             {
-                _pendingTableRecords.Add(record);
+                _pendingTraceRecords.Add(record);
             }
             finally
             {
-                _pendingTableRecordsLock.ExitWriteLock();
+                _pendingTraceRecordsLock.ExitWriteLock();
             }
         }
 
@@ -109,6 +110,8 @@ namespace InstantTraceViewerUI.Etw
             try
             {
                 bool kernelProcessThreadProviderEnabled = false;
+
+#if true
                 if (profile.KernelKeywords != KernelTraceEventParser.Keywords.None)
                 {
                     // EnableKernelProvider will always enable Process and Thread events.
@@ -120,7 +123,15 @@ namespace InstantTraceViewerUI.Etw
                 {
                     etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
                 }
+#else
+                TraceEventSession etwSession = new(KernelTraceEventParser.KernelSessionName); //new($"{SessionNamePrefix}{sessionNum}");
 
+                kernelProcessThreadProviderEnabled = true;
+                etwSession.EnableKernelProvider(KernelTraceEventParser.Keywords.PMCProfile | KernelTraceEventParser.Keywords.Process);
+                var profileSources = TraceEventProfileSources.GetInfo();
+
+                TraceEventProfileSources.Set(profileSources["Timer"].ID, profileSources["Timer"].Interval);
+#endif
                 return new EtwTraceSource(etwSession, kernelProcessThreadProviderEnabled, profile.DisplayName, sessionNum);
             }
             catch
@@ -170,42 +181,58 @@ namespace InstantTraceViewerUI.Etw
         }
 
         public void Clear()
-                    {
-                _tableRecords.Clear();
-                _generationId++; // TODO: Should really do the two operations atomically.
-
-                GC.Collect();
-                    }
-
-        public TraceRecordSnapshot CreateSnapshot()
         {
-            // By moving out the pending records, there is only brief contention on the 'pendingTableRecords' list.
-            // It is important to not block the ETW event callback or events might get dropped.
-            List<TraceRecord> pendingTableRecordsLocal;
-            _pendingTableRecordsLock.EnterWriteLock();
+            _traceRecordsLock.EnterWriteLock();
             try
             {
-                pendingTableRecordsLocal = _pendingTableRecords;
-                _pendingTableRecords = new();
+                _traceRecords.Clear();
+                _generationId++;
             }
             finally
             {
-                _pendingTableRecordsLock.ExitWriteLock();
+                _traceRecordsLock.ExitWriteLock();
             }
 
-            UpdateProcessNameTable(pendingTableRecordsLocal);
+            GC.Collect();
+        }
 
-            // Now we can append on the new events.
-            if (pendingTableRecordsLocal.Count > 0)
-                            {
-                    _tableRecords.AddRange(pendingTableRecordsLocal);
-                }
-                
-            return new TraceRecordSnapshot
+        public TraceRecordSnapshot CreateSnapshot()
+        {
+            // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.
+            // It is important to not block the ETW event callback or events might get dropped.
+            List<TraceRecord> pendingTraceRecordsLocal;
+            _pendingTraceRecordsLock.EnterWriteLock();
+            try
             {
-                GenerationId = _generationId,
-                Records = _tableRecords.ToImmutableList()
-            };
+                pendingTraceRecordsLocal = _pendingTraceRecords;
+                _pendingTraceRecords = new();
+            }
+            finally
+            {
+                _pendingTraceRecordsLock.ExitWriteLock();
+            }
+
+            UpdateProcessNameTable(pendingTraceRecordsLocal);
+
+            _traceRecordsLock.EnterWriteLock();
+            try
+            {
+                // Now we can append on the new events.
+                if (pendingTraceRecordsLocal.Count > 0)
+                {
+                    _traceRecords.AddRange(pendingTraceRecordsLocal);
+                }
+
+                return new TraceRecordSnapshot
+                {
+                    GenerationId = _generationId,
+                    Records = _traceRecords.ToImmutableList()
+                };
+            }
+            finally
+            {
+                _traceRecordsLock.ExitWriteLock();
+            }
         }
 
         private void UpdateProcessNameTable(IReadOnlyList<TraceRecord> traceRecords)

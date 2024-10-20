@@ -428,14 +428,23 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
+if (ImGui.Button("Filter"))
+            {
+                ImGui.OpenPopup("Filter");
+            }
+            if (ImGui.BeginPopup("Filter"))
+            {
             ImGui.BeginDisabled(!_viewerRules.VisibleRules.Any());
             string clearFilterSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
-            if (ImGui.Button($"Clear filters" + clearFilterSuffix))
+            if (ImGui.MenuItem($"Clear filters" + clearFilterSuffix))
             {
                 _viewerRules.VisibleRules.Clear();
                 _viewerRules.GenerationId++;
             }
             ImGui.EndDisabled();
+
+                ImGui.EndPopup();
+            }
 
             ImGui.SameLine();
                         if (ImGui.Button("Visualization"))

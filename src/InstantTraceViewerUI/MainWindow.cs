@@ -2,7 +2,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Windows.Forms;
+using AdvancedSharpAdbClient;
+using AdvancedSharpAdbClient.Models;
 using ImGuiNET;
 
 namespace InstantTraceViewerUI
@@ -14,6 +17,10 @@ namespace InstantTraceViewerUI
 
     internal class MainWindow : IDisposable, IUiCommands
     {
+        private readonly AdbClient _adbClient = new AdbClient();
+        private IReadOnlyList<DeviceData> _adbDevices = null;
+        private Exception _adbDevicesException = null;
+
         private Etw.OpenActiveSession _openActiveSession = new();
         private List<LogViewerWindow> _logViewerWindows = new();
         private List<LogViewerWindow> _pendingNewLogViewWindows = new();
@@ -218,6 +225,56 @@ namespace InstantTraceViewerUI
 
                             ImGui.EndMenu();
                         }
+                    }
+
+                    ImGui.EndMenu();
+                }
+
+                ImGui.SetNextItemShortcut(ImGuiKey.A | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                if (ImGui.BeginMenu("Android"))
+                {
+                    if (_adbDevices == null && _adbDevicesException == null)
+                    {
+                        try
+                        {
+                            _adbDevices = _adbClient.GetDevices().ToList();
+                        }
+                        catch (SocketException ex)
+                        {
+                            _adbDevicesException = ex;
+                            _adbDevices = Array.Empty<DeviceData>();
+                        }
+                    }
+
+                    if (_adbDevicesException != null)
+                    {
+                        // TODO: See if adb.exe is in the PATH and offer to start the server.
+                        ImGui.Text("ADB server not running");
+                    }
+                    else if (_adbDevices.Count == 0)
+                    {
+                        ImGui.Text("No devices found");
+                    }
+
+                    foreach (var device in _adbDevices)
+                    {
+                        if (ImGui.BeginMenu($"{device.Name} {device.Model} {device.Serial}"))
+                        {
+                            if (ImGui.MenuItem("Open logcat"))
+                            {
+                                var logcat = new LogcatTraceSource(_adbClient, device);
+                                _logViewerWindows.Add(new LogViewerWindow(logcat));
+                            }
+                            ImGui.EndMenu();
+                        }
+                    }
+
+                    ImGui.Separator();
+
+                    if (ImGui.MenuItem("Refresh devices"))
+                    {
+                        _adbDevices = null;
+                        _adbDevicesException = null;
                     }
 
                     ImGui.EndMenu();
