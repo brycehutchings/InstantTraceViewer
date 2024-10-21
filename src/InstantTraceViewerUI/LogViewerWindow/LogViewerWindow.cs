@@ -8,11 +8,12 @@ using ImGuiNET;
 
 namespace InstantTraceViewerUI
 {
-    internal class LogViewerWindow : IDisposable
+    unsafe internal class LogViewerWindow : IDisposable
     {
         private const string TimestampFormat = "HH:mm:ss.ffffff";
         private static int _nextWindowId = 1;
 
+        private readonly ImGuiListClipperPtr _tableClipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
         private readonly SharedTraceSource _traceSource;
         private readonly int _windowId;
 
@@ -109,7 +110,6 @@ namespace InstantTraceViewerUI
             // If we are scrolling to show a line (like for CTRL+F), position the line ~1/3 of the way down.
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
-            int setScrollIncludePriorRowCount = (int)((remainingRegion.Y * 0.3f) / ImGui.GetTextLineHeightWithSpacing());
 
             if (ImGui.BeginTable("DebugPanelLogger", 8 /* columns */,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
@@ -161,8 +161,9 @@ namespace InstantTraceViewerUI
                         if (visibleTraceRecords.GetRecordId(i) >= _topmostVisibleTraceRecordId)
                         {
                             Debug.WriteLine($"Scrolling to index {i} / {visibleTraceRecords.Count}");
-                            setScrollIndex = i;
-                            setScrollIncludePriorRowCount = 0; // We don't want things to move around when filtering changes.
+                            // If we're trying to precisely maintain the content after the count has changed, we need to account for the partial row scroll.
+                            float partialRowScroll = (int)ImGui.GetScrollY() % (int)_tableClipper.ItemsHeight;
+                            ImGui.SetScrollY(i * _tableClipper.ItemsHeight + partialRowScroll);
                             break;
                         }
                     }
@@ -176,11 +177,10 @@ namespace InstantTraceViewerUI
                 _bottommostVisibleTraceRecordIndex = null;
 
                 int? newHoveredProcessId = null, newHoveredThreadId = null;
-                var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                clipper.Begin(visibleTraceRecords.Count);
-                while (clipper.Step())
+                _tableClipper.Begin(visibleTraceRecords.Count);
+                while (_tableClipper.Step())
                 {
-                    for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
+                    for (int i = _tableClipper.DisplayStart; i < _tableClipper.DisplayEnd; i++)
                     {
                         // Don't bother to scroll to the selected index if it's already in view.
                         if (i == setScrollIndex)
@@ -277,6 +277,8 @@ namespace InstantTraceViewerUI
 
                                 setColor(null);
 
+                                // TODO: Highlight not implemented
+                                /*
                                 if (ImGui.MenuItem($"Highlight '{displayTextTruncated}'"))
                                 {
                                     _viewerRules.HighlightRules.Add(new TraceRecordHighlightRule(
@@ -284,6 +286,7 @@ namespace InstantTraceViewerUI
                                         Color: new Vector4(1.0f, 1.0f, 0.0f, 1.0f)));
                                     _viewerRules.GenerationId++;
                                 }
+                                */
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
 // Include rules go last to ensure anything already excluded stays excluded.
@@ -343,7 +346,7 @@ namespace InstantTraceViewerUI
                         ImGui.PopID(); // Trace record id
                     }
                 }
-                clipper.End();
+                _tableClipper.End();
 
                 setColor(null);
 
@@ -355,13 +358,12 @@ namespace InstantTraceViewerUI
 
                 ImGui.PopStyleVar(); // CellPadding
 
-                Vector2 size = ImGui.GetItemRectSize();
-
                 if (setScrollIndex.HasValue)
                 {
                     // If we're trying to precisely maintain the content after the count has changed, we need to account for the partial row scroll.
-                    float partialRowScroll = setScrollIncludePriorRowCount == 0 ? ((int)ImGui.GetScrollY() % (int)clipper.ItemsHeight) : 0;
-                    ImGui.SetScrollY((setScrollIndex.Value - setScrollIncludePriorRowCount) * clipper.ItemsHeight + partialRowScroll);
+                    int setScrollIncludePriorRowCount = (int)((remainingRegion.Y * 0.3f) / _tableClipper.ItemsHeight);
+                    float partialRowScroll = setScrollIncludePriorRowCount == 0 ? ((int)ImGui.GetScrollY() % (int)_tableClipper.ItemsHeight) : 0;
+                    ImGui.SetScrollY((setScrollIndex.Value - setScrollIncludePriorRowCount) * _tableClipper.ItemsHeight + partialRowScroll);
                 }
                 // ImGui has a bug with large scroll areas where you can't quite reach the MaxY with the scrollbar (e.g. ScrollY is 103545660 and ScrollMaxY is 103545670).
                 // So we use a percentage instead.
@@ -374,7 +376,6 @@ namespace InstantTraceViewerUI
 
                 ImGui.EndTable();
             }
-
         }
 
         private void ApplyMultiSelectRequests(FilteredTraceRecordCollection visibleTraceRecords, ImGuiMultiSelectIOPtr multiselectIO)
@@ -591,6 +592,7 @@ if (ImGui.Button("Filter"))
             {
                 if (disposing)
                 {
+                    _tableClipper.Destroy();
                     _traceSource.ReleaseRef(this);
                 }
 
