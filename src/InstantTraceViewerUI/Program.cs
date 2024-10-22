@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
@@ -11,7 +11,7 @@ namespace InstantTraceViewerUI
         [STAThread] // For WinForms file browser usage :-\
         public static int Main(string[] args)
         {
-            if (!NativeInterop.WindowInitialize(out nint imguiContext))
+            if (NativeInterop.WindowInitialize(out nint imguiContext) != 0)
             {
                 return 1;
             }
@@ -48,9 +48,20 @@ namespace InstantTraceViewerUI
                         lastThemeSet = Settings.Theme;
                     }
 
-                    if (!NativeInterop.WindowBeginNextFrame(out bool quit) || quit)
+                    if (NativeInterop.WindowBeginNextFrame(out int quit, out int occluded) != 0)
                     {
                         break;
+                    }
+
+                    if (quit != 0)
+                    {
+                        break;
+                    }
+                    
+                    if (occluded != 0)
+                    {
+                        System.Threading.Thread.Sleep(10);
+                        continue;
                     }
 
 #if PRIMARY_DOCKED_WINDOW
@@ -71,7 +82,7 @@ namespace InstantTraceViewerUI
                         break;
                     }
 
-                    if (!NativeInterop.WindowEndNextFrame())
+                    if (NativeInterop.WindowEndNextFrame() != 0)
                     {
                         break;
                     }

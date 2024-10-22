@@ -20,11 +20,11 @@ HRESULT CreateRenderTarget();
 void CleanupRenderTarget();
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-extern "C" bool __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** imguiContext)
+extern "C" int __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** imguiContext) noexcept
 {
     if (g_hwnd)
     {
-        return false; // Already initialized.
+        return 1; // Already initialized. Error.
     }
 
     g_windowClass.cbSize = sizeof(g_windowClass);
@@ -44,7 +44,7 @@ extern "C" bool __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** 
     {
         CleanupDeviceD3D();
         ::UnregisterClassW(g_windowClass.lpszClassName, g_windowClass.hInstance);
-        return false;
+        return 1; // Error
     }
 
     ::ShowWindow(g_hwnd, SW_SHOWDEFAULT);
@@ -78,12 +78,15 @@ extern "C" bool __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** 
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
     //IM_ASSERT(font != nullptr);
 
-    return true;
+    return 0;
 }
 
 // Returns true if frame is being presented and False if frame is not being presented (e.g. window is minimized).
-extern "C" bool __declspec(dllexport) __stdcall WindowBeginNextFrame(bool* quit)
+extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, int* occluded) noexcept
 {
+    *occluded = 0;
+    *quit = 0;
+
     // Poll and handle messages (inputs, window resize, etc.)
     // See the WndProc() function below for our to dispatch events to the Win32 backend.
     MSG msg;
@@ -99,14 +102,14 @@ extern "C" bool __declspec(dllexport) __stdcall WindowBeginNextFrame(bool* quit)
 
     if (*quit)
     {
-        return false;
+        return 0;
     }
 
     // Handle window being minimized or screen locked
     if (g_swapChainOccluded && g_swapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
     {
-        ::Sleep(10);
-        return false;
+        *occluded = 1;
+        return 0;
     }
 
     g_swapChainOccluded = false;
@@ -128,10 +131,10 @@ extern "C" bool __declspec(dllexport) __stdcall WindowBeginNextFrame(bool* quit)
     // static bool s_showDemoWindow = true;
     // ImGui::ShowDemoWindow(&s_showDemoWindow);
 
-    return true;
+    return 0;
 }
 
-extern "C" bool __declspec(dllexport) __stdcall WindowEndNextFrame()
+extern "C" int __declspec(dllexport) __stdcall WindowEndNextFrame() noexcept
 {
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
@@ -154,10 +157,10 @@ extern "C" bool __declspec(dllexport) __stdcall WindowEndNextFrame()
     //HRESULT hr = g_swapChain->Present(0, 0); // Present without vsync
     g_swapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
-    return SUCCEEDED(hr);
+    return SUCCEEDED(hr) ? 0 : 1;
 }
 
-extern "C" bool __declspec(dllexport) __stdcall WindowCleanup()
+extern "C" bool __declspec(dllexport) __stdcall WindowCleanup() noexcept
 {
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
@@ -167,11 +170,10 @@ extern "C" bool __declspec(dllexport) __stdcall WindowCleanup()
     ::DestroyWindow(g_hwnd);
     ::UnregisterClassW(g_windowClass.lpszClassName, g_windowClass.hInstance);
 
-
-    return true;
+    return 0;
 }
 
-extern "C" void __declspec(dllexport) __stdcall RebuildFontAtlas()
+extern "C" void __declspec(dllexport) __stdcall RebuildFontAtlas() noexcept
 {
     // This function is marked static and can't be used, so we use a bigger hammer to avoid forking the ImGui backend.
     // ImGui_ImplDX11_CreateFontsTexture();
