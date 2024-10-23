@@ -24,4 +24,4 @@ jobs:
 
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild /m /p:Configuration=Release /p:Platform:${{ matrix.platform }} InstantTraceViewer.sln
+      run: msbuild /m /p:Configuration=Release /p:Platform=${{ matrix.platform }} InstantTraceViewer.sln
