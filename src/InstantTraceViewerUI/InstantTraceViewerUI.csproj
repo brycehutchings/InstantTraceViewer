@@ -50,6 +50,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\ThirdParty\ImGuiNET\src\ImGui.NET\ImGui.NET.csproj" />
+    <ProjectReference Include="..\Common\Common.csproj" />
     <ProjectReference Include="..\InstantTraceViewerNative\InstantTraceViewerNative.vcxproj" />
   </ItemGroup>
 </Project>

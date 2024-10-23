@@ -4,10 +4,10 @@ using Microsoft.Diagnostics.Tracing.Session;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using InstantTraceViewer.Common;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -29,7 +29,7 @@ namespace InstantTraceViewerUI.Etw
         private List<TraceRecord> _pendingTraceRecords = new();
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
-        private readonly ImmutableList<TraceRecord>.Builder _traceRecords = ImmutableList.CreateBuilder<TraceRecord>();
+        private ListBuilder<TraceRecord> _traceRecords = new ListBuilder<TraceRecord>();
         private int _generationId = 1;
 
         private ConcurrentDictionary<int, string> _threadNames = new();
@@ -185,7 +185,7 @@ namespace InstantTraceViewerUI.Etw
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                _traceRecords.Clear();
+                _traceRecords = new();
                 _generationId++;
             }
             finally
@@ -217,16 +217,15 @@ namespace InstantTraceViewerUI.Etw
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                // Now we can append on the new events.
-                if (pendingTraceRecordsLocal.Count > 0)
+                foreach (var record in pendingTraceRecordsLocal)
                 {
-                    _traceRecords.AddRange(pendingTraceRecordsLocal);
+                    _traceRecords.Add(record);
                 }
 
                 return new TraceRecordSnapshot
                 {
                     GenerationId = _generationId,
-                    Records = _traceRecords.ToImmutableList()
+                    Records = _traceRecords.CreateSnapshot()
                 };
             }
             finally

@@ -13,6 +13,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cimgui", "src\cimgui\cimgui
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ThirdParty", "ThirdParty", "{B61309BA-937A-440D-9F54-5FFAF28690CF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "src\Common\Common.csproj", "{71623D59-D203-42CE-817A-919A139A8DF7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTests", "src\UnitTests\UnitTests.csproj", "{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -53,6 +57,22 @@ Global
 		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|ARM64.Build.0 = Release|ARM64
 		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|x64.ActiveCfg = Release|x64
 		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|x64.Build.0 = Release|x64
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|x64.Build.0 = Debug|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Release|ARM64.Build.0 = Release|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Release|x64.ActiveCfg = Release|Any CPU
+		{71623D59-D203-42CE-817A-919A139A8DF7}.Release|x64.Build.0 = Release|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Debug|x64.Build.0 = Debug|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|ARM64.Build.0 = Release|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|x64.ActiveCfg = Release|Any CPU
+		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,20 +1,20 @@
-﻿using AdvancedSharpAdbClient;
+using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.DeviceCommands;
 using AdvancedSharpAdbClient.Logs;
 using AdvancedSharpAdbClient.Models;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
+using InstantTraceViewer.Common;
 
 namespace InstantTraceViewerUI
 {
     internal class LogcatTraceSource : ITraceSource
     {
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
-        private ImmutableList<TraceRecord>.Builder _traceRecords = ImmutableList.CreateBuilder<TraceRecord>();
+        private ListBuilder<TraceRecord> _traceRecords = new ListBuilder<TraceRecord>();
         private int _generationId = 0;
         private readonly CancellationTokenSource _tokenSource = new CancellationTokenSource();
         private readonly AdbClient _adbClient;
@@ -58,7 +58,7 @@ namespace InstantTraceViewerUI
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                _traceRecords.Clear();
+                _traceRecords = new();
                 _generationId++;
             }
             finally
@@ -76,7 +76,7 @@ namespace InstantTraceViewerUI
                 return new TraceRecordSnapshot
                 {
                     GenerationId = _generationId,
-                    Records = _traceRecords.ToImmutable()
+                    Records = _traceRecords.CreateSnapshot()
                 };
             }
             finally
