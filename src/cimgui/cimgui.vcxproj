@@ -87,6 +87,7 @@
     <ClInclude Include="..\..\ThirdParty\cimgui\imgui\imstb_truetype.h" />
     <ClInclude Include="..\..\ThirdParty\cimgui\imgui\misc\freetype\imgui_freetype.h" />
     <ClInclude Include="imconfig_custom.h" />
+    <ClInclude Include="overrides.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt" />
@@ -137,6 +138,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\cimgui;..\..\ThirdParty\cimgui\imgui;..\..\ThirdParty\freetype\include</AdditionalIncludeDirectories>
       <AdditionalOptions>"/DIMGUI_USER_CONFIG=&lt;imconfig_custom.h&gt;" %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>4267;4244</DisableSpecificWarnings>
+      <ForcedIncludeFiles>overrides.h</ForcedIncludeFiles>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -158,6 +160,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir);..\..\ThirdParty;..\..\ThirdParty\cimgui;..\..\ThirdParty\cimgui\imgui;..\..\ThirdParty\freetype\include</AdditionalIncludeDirectories>
       <AdditionalOptions>"/DIMGUI_USER_CONFIG=&lt;imconfig_custom.h&gt;" %(AdditionalOptions)</AdditionalOptions>
       <DisableSpecificWarnings>4267;4244</DisableSpecificWarnings>
+      <ForcedIncludeFiles>overrides.h</ForcedIncludeFiles>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

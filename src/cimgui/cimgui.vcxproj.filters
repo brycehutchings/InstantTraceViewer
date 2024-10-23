@@ -183,6 +183,7 @@
     <ClInclude Include="..\..\ThirdParty\cimgui\imgui\backends\imgui_impl_win32.h">
       <Filter>imgui\Backends</Filter>
     </ClInclude>
+    <ClInclude Include="overrides.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="imgui">
@@ -208,10 +209,5 @@
     <None Include="..\..\ThirdParty\cimgui\imgui\misc\freetype\README.md">
       <Filter>imgui\Freetype</Filter>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="..\..\ThirdParty\freetype\src\base\ftver.rc">
-      <Filter>freetype</Filter>
-    </ResourceCompile>
   </ItemGroup>
 </Project>
