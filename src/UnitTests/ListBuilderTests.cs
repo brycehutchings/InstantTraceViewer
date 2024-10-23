@@ -10,13 +10,11 @@ namespace InstantTraceViewerTests
         {
             var listBuilder = new ListBuilder<int>();
             var snapshot0 = listBuilder.CreateSnapshot();
-            Assert.AreEqual(0, snapshot0.Count);
+            CompareCollections(new int[0], snapshot0);
             listBuilder.Add(1);
             var snapshot1 = listBuilder.CreateSnapshot();
-            Assert.AreEqual(0, snapshot0.Count);
-            Assert.AreEqual(1, snapshot1.Count);
-            CollectionAssert.AreEqual(new int[0], snapshot0.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1 }, snapshot1.ToArray());
+            CompareCollections(new int[0], snapshot0);
+            CompareCollections(new int[] { 1 }, snapshot1);
         }
 
         [TestMethod]
@@ -28,30 +26,21 @@ namespace InstantTraceViewerTests
 
             listBuilder.Add(1);
             var snapshot1 = listBuilder.CreateSnapshot();
-            Assert.AreEqual(0, snapshot0.Count);
-            Assert.AreEqual(1, snapshot1.Count);
-            CollectionAssert.AreEqual(new int[0], snapshot0.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1 }, snapshot1.ToArray());
+            CompareCollections(new int[0], snapshot0);
+            CompareCollections(new int[] { 1 }, snapshot1);
 
             listBuilder.Add(2);
             var snapshot2 = listBuilder.CreateSnapshot();
-            Assert.AreEqual(0, snapshot0.Count);
-            Assert.AreEqual(1, snapshot1.Count);
-            Assert.AreEqual(2, snapshot2.Count);
-            CollectionAssert.AreEqual(new int[0], snapshot0.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1 }, snapshot1.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1, 2 }, snapshot2.ToArray());
+            CompareCollections(new int[0], snapshot0);
+            CompareCollections(new int[] { 1 }, snapshot1);
+            CompareCollections(new int[] { 1, 2 }, snapshot2);
 
             listBuilder.Add(3);
             var snapshot3 = listBuilder.CreateSnapshot();
-            Assert.AreEqual(0, snapshot0.Count);
-            Assert.AreEqual(1, snapshot1.Count);
-            Assert.AreEqual(2, snapshot2.Count);
-            Assert.AreEqual(3, snapshot3.Count);
-            CollectionAssert.AreEqual(new int[0], snapshot0.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1 }, snapshot1.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1, 2 }, snapshot2.ToArray());
-            CollectionAssert.AreEqual(new int[] { 1, 2, 3 }, snapshot3.ToArray());
+            CompareCollections(new int[0], snapshot0);
+            CompareCollections(new int[] { 1 }, snapshot1);
+            CompareCollections(new int[] { 1, 2 }, snapshot2);
+            CompareCollections(new int[] { 1, 2, 3 }, snapshot3);
         }
 
         [TestMethod]
@@ -72,24 +61,36 @@ namespace InstantTraceViewerTests
 
                         var expectedCollection = Enumerable.Range(0, addCount).ToArray();
                         var snapshot1 = listBuilder.CreateSnapshot();
-                        Assert.AreEqual(addCount, snapshot1.Count);
-                        CollectionAssert.AreEqual(expectedCollection, snapshot1.ToArray());
+                        CompareCollections(expectedCollection, snapshot1);
 
                         for (int i = 0; i < addCountAgain; i++)
                         {
                             listBuilder.Add(i);
                         }
 
-                        Assert.AreEqual(addCount, snapshot1.Count);
-                        CollectionAssert.AreEqual(expectedCollection, snapshot1.ToArray());
+                        CompareCollections(expectedCollection, snapshot1);
 
                         var expectedCollectionAgain = Enumerable.Range(0, addCountAgain).ToArray();
                         var snapshot2 = listBuilder.CreateSnapshot();
-                        Assert.AreEqual(addCount + addCountAgain, snapshot2.Count);
-                        CollectionAssert.AreEqual(expectedCollection.Concat(expectedCollectionAgain).ToArray(), snapshot2.ToArray());
+                        CompareCollections(expectedCollection.Concat(expectedCollectionAgain).ToArray(), snapshot2);
                     }
                 }
             }
+        }
+
+        private void CompareCollections(int[] expectedCollection, IReadOnlyList<int> actualCollection)
+        {
+            // Test count.
+            Assert.AreEqual(expectedCollection.Length, actualCollection.Count);
+
+            // Test index[] operator.
+            for (int i = 0; i < expectedCollection.Length; i++)
+            {
+                Assert.AreEqual(expectedCollection[i], actualCollection[i]);
+            }
+
+            // Test enumerable.
+            CollectionAssert.AreEqual(expectedCollection, actualCollection.ToArray());
         }
     }
 }
