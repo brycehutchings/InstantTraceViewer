@@ -136,7 +136,11 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private int SectionIndexFromTimestamp(DateTime timestamp) => (int)((timestamp - _computedTimeline.StartTime).Ticks / ((_computedTimeline.EndTime - _computedTimeline.StartTime).Ticks / _computedTimeline.ColorsBars.Length));
+        private int SectionIndexFromTimestamp(DateTime timestamp)
+        {
+            long ticksPerBar = (_computedTimeline.EndTime - _computedTimeline.StartTime).Ticks / _computedTimeline.ColorsBars.Length;
+            return ticksPerBar == 0 ? 0 : (int)((timestamp - _computedTimeline.StartTime).Ticks / ticksPerBar);
+        }
 
         static private ComputedTimeline ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollection visibleTraceRecords)
         {
