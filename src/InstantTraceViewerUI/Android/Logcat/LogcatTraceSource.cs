@@ -1,4 +1,4 @@
-using AdvancedSharpAdbClient;
+﻿using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.DeviceCommands;
 using AdvancedSharpAdbClient.Logs;
 using AdvancedSharpAdbClient.Models;
@@ -110,48 +110,45 @@ namespace InstantTraceViewerUI
         {
             try
             {
-                // RunLogServiceAsync will complete when logcat is cleared, so it is ran in a loop.
-                while (true)
+                // TODO: Which logs to look at?
+                await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, new[] { LogId.Main, LogId.Crash, LogId.Kernel, LogId.System, LogId.Security, LogId.Radio }))
                 {
-                    await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, new[] { LogId.Main, LogId.Crash, LogId.Kernel, LogId.System, LogId.Security, LogId.Radio }))
+                    if (logEntry is AndroidLogEntry androidLogEntry)
                     {
-                        if (logEntry is AndroidLogEntry androidLogEntry)
-                        {
-                            ProcessSystemMessage(androidLogEntry);
+                        ProcessSystemMessage(androidLogEntry);
 
-                            var preciseTimestamp = androidLogEntry.TimeStamp.ToLocalTime() + TimeSpan.FromTicks(androidLogEntry.NanoSeconds / TimeSpan.NanosecondsPerTick);
-                            var traceRecord = new TraceRecord
-                            {
-                                ProcessId = androidLogEntry.ProcessId,
-                                ThreadId = (int)androidLogEntry.ThreadId,
-                                Timestamp = preciseTimestamp.DateTime,
-                                Level =
-                                    androidLogEntry.Priority == Priority.Fatal ? TraceLevel.Critical :
-                                    androidLogEntry.Priority == Priority.Error ? TraceLevel.Error :
-                                    androidLogEntry.Priority == Priority.Assert ? TraceLevel.Error :
-                                    androidLogEntry.Priority == Priority.Warn ? TraceLevel.Warning :
-                                    androidLogEntry.Priority == Priority.Verbose ? TraceLevel.Verbose :
-                                    androidLogEntry.Priority == Priority.Debug ? TraceLevel.Verbose :       // TODO: Should we add a Debug trace level to map into?
-                                                                                    TraceLevel.Info,
-                                Message = androidLogEntry.Message,
-                                Name = androidLogEntry.Tag,
-                                ProviderName = ""
-                            };
-
-                            _traceRecordsLock.EnterWriteLock();
-                            try
-                            {
-                                _traceRecords.Add(traceRecord);
-                            }
-                            finally
-                            {
-                                _traceRecordsLock.ExitWriteLock();
-                            }
-                        }
-                        else
+                        var preciseTimestamp = androidLogEntry.TimeStamp.ToLocalTime() + TimeSpan.FromTicks(androidLogEntry.NanoSeconds / TimeSpan.NanosecondsPerTick);
+                        var traceRecord = new TraceRecord
                         {
-                            // Sometimes there are pure "LogEntry" objects. Not sure what to do with them...
+                            ProcessId = androidLogEntry.ProcessId,
+                            ThreadId = (int)androidLogEntry.ThreadId,
+                            Timestamp = preciseTimestamp.DateTime,
+                            Level =
+                                androidLogEntry.Priority == Priority.Fatal ? TraceLevel.Critical :
+                                androidLogEntry.Priority == Priority.Error ? TraceLevel.Error :
+                                androidLogEntry.Priority == Priority.Assert ? TraceLevel.Error :
+                                androidLogEntry.Priority == Priority.Warn ? TraceLevel.Warning :
+                                androidLogEntry.Priority == Priority.Verbose ? TraceLevel.Verbose :
+                                androidLogEntry.Priority == Priority.Debug ? TraceLevel.Verbose :       // TODO: Should we add a Debug trace level to map into?
+                                                                                TraceLevel.Info,
+                            Message = androidLogEntry.Message,
+                            Name = androidLogEntry.Tag,
+                            ProviderName = ""
+                        };
+
+                        _traceRecordsLock.EnterWriteLock();
+                        try
+                        {
+                            _traceRecords.Add(traceRecord);
                         }
+                        finally
+                        {
+                            _traceRecordsLock.ExitWriteLock();
+                        }
+                    }
+                    else
+                    {
+                        // Sometimes there are pure "LogEntry" objects. Not sure what to do with them...
                     }
                 }
             }
