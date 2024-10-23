@@ -462,8 +462,6 @@ namespace InstantTraceViewerUI
                 {
                     _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
                 }
-                _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
-}
                 ImGui.EndPopup();
             }
 
