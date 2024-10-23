@@ -61,6 +61,8 @@ namespace InstantTraceViewerUI
 
         string GetThreadName(int threadId);
 
+        bool CanClear { get; }
+
         void Clear();
 
         TraceRecordSnapshot CreateSnapshot();

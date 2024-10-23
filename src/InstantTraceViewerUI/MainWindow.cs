@@ -175,13 +175,20 @@ namespace InstantTraceViewerUI
                         {
                             Settings.AddRecentlyOpenedWprp(file);
 
-                            var wprp = Etw.Wprp.Load(file);
+                            try
+                            {
+                                var wprp = Etw.Wprp.Load(file);
 
-                            // TODO: Show selector window of profiles and their providers. Allow user to uncheck things first.
-                            var selectedProfile = wprp.Profiles[0];
-                            var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(selectedProfile.ConvertToSessionProfile());
+                                // TODO: Show selector window of profiles and their providers. Allow user to uncheck things first.
+                                var selectedProfile = wprp.Profiles[0];
+                                var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(selectedProfile.ConvertToSessionProfile());
 
-                            _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                                _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Failed to open .WPRP file or start ETW session.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
                         }
                     }
 
@@ -193,8 +200,15 @@ namespace InstantTraceViewerUI
                             (s) => Settings.EtlOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
                         {
-                            var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
-                            _logViewerWindows.Add(new LogViewerWindow(etlSession));
+                            try
+                            {
+                                var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
+                                _logViewerWindows.Add(new LogViewerWindow(etlSession));
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Failed to open .ETL file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
                         }
                     }
 

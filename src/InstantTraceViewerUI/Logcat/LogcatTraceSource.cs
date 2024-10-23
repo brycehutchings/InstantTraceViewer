@@ -45,6 +45,8 @@ namespace InstantTraceViewerUI
 
         public string DisplayName => $"{_device.Product} {_device.Model} {_device.Serial} (Logcat)";
 
+        public bool CanClear  => true;
+
         public void Clear()
         {
             _adbClient.ExecuteShellCommand(_device, "logcat -c");

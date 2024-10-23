@@ -180,6 +180,8 @@ namespace InstantTraceViewerUI.Etw
                 _threadNames.TryGetValue(threadId, out string name) ? $"{threadId} ({name})" : threadId.ToString();
         }
 
+        public bool CanClear => _etwSource.IsRealTime;
+
         public void Clear()
         {
             _traceRecordsLock.EnterWriteLock();

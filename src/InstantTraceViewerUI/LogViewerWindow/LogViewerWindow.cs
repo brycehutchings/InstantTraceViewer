@@ -73,15 +73,15 @@ namespace InstantTraceViewerUI
             ImGui.End();
 
             if (_timelineWindow != null)
-                {
-// The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
+            {
+                // The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
                 DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
                     _filteredTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
                 DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
                     _filteredTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
-                    if (!_timelineWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
-            {
-                _timelineWindow = null;
+                if (!_timelineWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
+                {
+                    _timelineWindow = null;
                 }
             }
 
@@ -217,7 +217,7 @@ namespace InstantTraceViewerUI
                         bool isSelected = _selectedTraceRecordIds.Contains(traceRecordId);
                         if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                         {
-                                _lastSelectedVisibleRowIndex = i;
+                            _lastSelectedVisibleRowIndex = i;
                         }
 
                         if (ImGui.IsItemVisible())
@@ -289,7 +289,7 @@ namespace InstantTraceViewerUI
                                 */
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
-// Include rules go last to ensure anything already excluded stays excluded.
+                                    // Include rules go last to ensure anything already excluded stays excluded.
                                     _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
                                         Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
                                         Action: TraceRecordRuleAction.Include));
@@ -297,7 +297,7 @@ namespace InstantTraceViewerUI
                                 }
                                 if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
                                 {
-// Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
+                                    // Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
                                     _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
                                         Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
                                         Action: TraceRecordRuleAction.Exclude));
@@ -311,7 +311,7 @@ namespace InstantTraceViewerUI
                                 ImGui.EndPopup();
 
                                 setColor(rowColor); // Resume color for remainder of row.
-                                                            }
+                            }
 
                             columnCount++;
                         };
@@ -417,46 +417,51 @@ namespace InstantTraceViewerUI
             }
             ImGui.EndDisabled();
 
-            ImGui.SameLine();
-            if (ImGui.Button("Clear"))
+            if (_traceSource.TraceSource.CanClear)
             {
-                _traceSource.TraceSource.Clear();
-                _lastSelectedVisibleRowIndex = null;
-                _selectedTraceRecordIds.Clear();
+                ImGui.SameLine();
+                if (ImGui.Button("Clear"))
+                {
+                    _traceSource.TraceSource.Clear();
+                    _lastSelectedVisibleRowIndex = null;
+                    _selectedTraceRecordIds.Clear();
 
-                // Updating the filtered trace records so it will see the generation id changed and clear itself.
-                _filteredTraceRecords.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
+                    // Updating the filtered trace records so it will see the generation id changed and clear itself.
+                    _filteredTraceRecords.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
+                }
             }
 
             ImGui.SameLine();
-if (ImGui.Button("Filter"))
+            if (ImGui.Button("Filter"))
             {
                 ImGui.OpenPopup("Filter");
             }
             if (ImGui.BeginPopup("Filter"))
             {
-            ImGui.BeginDisabled(!_viewerRules.VisibleRules.Any());
-            string clearFilterSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
-            if (ImGui.MenuItem($"Clear filters" + clearFilterSuffix))
-            {
-                _viewerRules.VisibleRules.Clear();
-                _viewerRules.GenerationId++;
-            }
-            ImGui.EndDisabled();
+                ImGui.BeginDisabled(!_viewerRules.VisibleRules.Any());
+                string clearFilterSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
+                if (ImGui.MenuItem($"Clear filters" + clearFilterSuffix))
+                {
+                    _viewerRules.VisibleRules.Clear();
+                    _viewerRules.GenerationId++;
+                }
+                ImGui.EndDisabled();
 
                 ImGui.EndPopup();
             }
 
             ImGui.SameLine();
-                        if (ImGui.Button("Visualization"))
+            if (ImGui.Button("Visualization"))
             {
-// Popup menu
+                // Popup menu
                 ImGui.OpenPopup("Visualization");
             }
             if (ImGui.BeginPopup("Visualization"))
             {
                 if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
                 {
+                    _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
+                }
                 _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
 }
                 ImGui.EndPopup();
