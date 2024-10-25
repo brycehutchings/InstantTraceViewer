@@ -93,6 +93,7 @@ namespace InstantTraceViewerUI.Etw
                             {
                                 try
                                 {
+                                    session.Flush(); // Flush the session to ensure the ETL file is up-to-date.
                                     uiCommands.AddLogViewerWindow(new LogViewerWindow(Etw.EtwTraceSource.CreateEtlSession(session.FileName)));
                                 }
                                 catch (Exception ex)
