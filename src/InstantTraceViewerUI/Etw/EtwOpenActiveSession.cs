@@ -71,8 +71,8 @@ namespace InstantTraceViewerUI.Etw
 
                                     // TraceEventSession doesn't seem to expose the enabled providers, so we will just assume the kernel provider is not enabled so we try to look up process names.
                                     bool kernelProcessThreadProviderEnabled = false;
-
                                     uiCommands.AddLogViewerWindow(new LogViewerWindow(new Etw.EtwTraceSource(logViewerEtwSession, kernelProcessThreadProviderEnabled, logViewerEtwSession.SessionName)));
+                                    showOpenActiveSession = false; // Close this window.
                                 }
                                 catch (Exception ex)
                                 {
@@ -95,6 +95,7 @@ namespace InstantTraceViewerUI.Etw
                                 {
                                     session.Flush(); // Flush the session to ensure the ETL file is up-to-date.
                                     uiCommands.AddLogViewerWindow(new LogViewerWindow(Etw.EtwTraceSource.CreateEtlSession(session.FileName)));
+                                    showOpenActiveSession = false; // Close this window.
                                 }
                                 catch (Exception ex)
                                 {
