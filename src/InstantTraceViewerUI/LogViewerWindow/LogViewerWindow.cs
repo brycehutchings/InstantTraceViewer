@@ -366,8 +366,8 @@ namespace InstantTraceViewerUI
                     ImGui.SetScrollY((setScrollIndex.Value - setScrollIncludePriorRowCount) * _tableClipper.ItemsHeight + partialRowScroll);
                 }
                 // ImGui has a bug with large scroll areas where you can't quite reach the MaxY with the scrollbar (e.g. ScrollY is 103545660 and ScrollMaxY is 103545670).
-                // So we use a percentage instead.
-                else if (ImGui.GetScrollMaxY() > 0 && ImGui.GetScrollY() / (float)ImGui.GetScrollMaxY() > 0.999f)
+                // ImGui seems to stop 10 pixels shy of the end when the scroll region is very large. This is a workaround to ensure the user can scroll to the very end.
+                else if (ImGui.GetScrollMaxY() > 0 && ImGui.GetScrollY() >= (float)ImGui.GetScrollMaxY() - 10)
                 {
                     // Auto scroll - AKA keep the table scrolled to the bottom as new messages come in, but only if the table is already
                     // scrolled to the bottom.
