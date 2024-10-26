@@ -45,7 +45,7 @@ namespace InstantTraceViewerUI
 
         public string DisplayName => $"{_device.Product} {_device.Model} {_device.Serial} (Logcat)";
 
-        public bool CanClear  => true;
+        public bool CanClear => true;
 
         public void Clear()
         {
@@ -93,6 +93,11 @@ namespace InstantTraceViewerUI
         }
 
         public string GetOpCodeName(byte opCode)
+        {
+            return string.Empty;
+        }
+
+        public string GetKeywords(ulong keywords)
         {
             return string.Empty;
         }

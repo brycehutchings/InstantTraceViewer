@@ -30,7 +30,7 @@ namespace InstantTraceViewerUI
         public byte OpCode;
 
         // 0 = None, ...., -1L = All
-        public long Keywords;
+        public ulong Keywords;
 
         public DateTime Timestamp;
 
@@ -56,6 +56,8 @@ namespace InstantTraceViewerUI
         string DisplayName { get; }
 
         string GetOpCodeName(byte opCode);
+
+        string GetKeywords(ulong keywords);
 
         string GetProcessName(int processId);
 

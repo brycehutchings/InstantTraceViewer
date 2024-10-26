@@ -39,9 +39,9 @@ namespace InstantTraceViewerUI.Etw
                         }
                         continue;
                     }
-                    else if (i == 0 && data.PayloadNames[i] == "PartA_PrivTags" && data.PayloadValue(i) is long)
+                    else if (data.PayloadNames[i] == "PartA_PrivTags" && data.PayloadValue(i) is long)
                     {
-                        // Skip this field. It's for telemetry and not useful for a viewer.
+                        // Skip this telemetry metadata field. It's generally going to just be noise for most users.
                         continue;
                     }
 

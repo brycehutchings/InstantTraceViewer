@@ -17,7 +17,7 @@ namespace InstantTraceViewerUI.Etw
             newRecord.Timestamp = data.TimeStamp;
             newRecord.Level = ConvertLevel(data);
             newRecord.OpCode = (byte)data.Opcode;
-            newRecord.Keywords = (long)data.Keywords;
+            newRecord.Keywords = (ulong)data.Keywords;
             newRecord.ActivityId = data.ActivityID;
             newRecord.RelatedActivityId = data.RelatedActivityID;
 

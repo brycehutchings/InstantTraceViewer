@@ -34,6 +34,9 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().Colors[(int)ImGuiCol.WindowBg] = ImGui.ColorConvertU32ToFloat4(0xff1f1f1f);
                 ImGui.GetStyle().Colors[(int)ImGuiCol.ScrollbarBg] = ImGui.ColorConvertU32ToFloat4(0xff1f1f1f);
 
+                ImGui.GetStyle().Colors[(int)ImGuiCol.TitleBg] = ImGui.ColorConvertU32ToFloat4(0xff1f1f1f);
+                ImGui.GetStyle().Colors[(int)ImGuiCol.TitleBgActive] = ImGui.ColorConvertU32ToFloat4(0xff1f1f1f);
+
                 ImGui.GetStyle().Colors[(int)ImGuiCol.ChildBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
                 ImGui.GetStyle().Colors[(int)ImGuiCol.PopupBg] = ImGui.ColorConvertU32ToFloat4(0xff292929);
 

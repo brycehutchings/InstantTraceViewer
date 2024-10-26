@@ -6,11 +6,21 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using InstantTraceViewer.Common;
 
 namespace InstantTraceViewerUI.Etw
 {
+    // See https://github.com/microsoft/cpp_client_telemetry_modules/blob/master/utc/MicrosoftTelemetry.h
+    [Flags]
+    internal enum KnownKeywords : ulong
+    {
+        Telemetry         = 0x0000200000000000,
+        TelemetryCritical = 0x0000800000000000,
+        TelemetryMeasures = 0x0000400000000000,
+    }
+
     internal partial class EtwTraceSource : ITraceSource
     {
         private static HashSet<int> SessionNums = new();
@@ -164,6 +174,38 @@ namespace InstantTraceViewerUI.Etw
                 opCode == 10 ? "Load" :
                 opCode == 11 ? "Terminate" :
                                 ((TraceEventOpcode)opCode).ToString();
+        }
+
+        public string GetKeywords(ulong keywords)
+        {
+            StringBuilder sb = new();
+            void AppendString(string value)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Append(", ");
+                }
+                sb.Append(value);
+            }
+
+            void AppendKnownKeyword(KnownKeywords knownKeyword)
+            {
+                if ((keywords & (ulong)knownKeyword) == (ulong)knownKeyword)
+                {
+                    AppendString(knownKeyword.ToString());
+                    keywords &= ~(ulong)knownKeyword;
+                }
+            }
+
+            AppendKnownKeyword(KnownKeywords.TelemetryMeasures);
+            AppendKnownKeyword(KnownKeywords.TelemetryCritical);
+            AppendKnownKeyword(KnownKeywords.Telemetry);
+            if (keywords != 0)
+            {
+                AppendString(keywords.ToString("X"));
+            }
+
+            return sb.ToString();
         }
 
         public string GetProcessName(int processId)

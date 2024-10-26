@@ -111,7 +111,7 @@ namespace InstantTraceViewerUI
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
 
-            if (ImGui.BeginTable("DebugPanelLogger", 8 /* columns */,
+            if (ImGui.BeginTable("TraceRecords", 9 /* columns */,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
                 ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
                 ImGuiTableFlags.Hideable))
@@ -123,8 +123,9 @@ namespace InstantTraceViewerUI
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
                 ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 6.25f * dpiBase);
                 ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
+                ImGui.TableSetupColumn("Keywords", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 8.75f * dpiBase);
+                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
                 ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 7.0f);
                 ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
@@ -320,15 +321,16 @@ namespace InstantTraceViewerUI
                         addColumnData(r => _traceSource.TraceSource.GetThreadName(r.ThreadId));
                         addColumnData(r => r.ProviderName);
                         addColumnData(r => _traceSource.TraceSource.GetOpCodeName(r.OpCode));
-                        addColumnData(r => r.Level.ToString());
+                        addColumnData(r => _traceSource.TraceSource.GetKeywords(r.Keywords));
                         addColumnData(r => r.Name);
+                        addColumnData(r => r.Level.ToString());
                         addColumnData(r => r.Timestamp.ToString(TimestampFormat));
                         addColumnData(r => r.Message.Replace("\n", " ").Replace("\r", " "));
 
                         // Double-click on the message cell will pop up a read-only edit box so the user can read long messages or copy parts of the text.
                         if (!string.IsNullOrEmpty(traceRecord.Message))
                         {
-                            if (isRowHovered && hoveredCol == 7 /* Message */ && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                            if (isRowHovered && hoveredCol == 8 /* Message */ && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                             {
                                 ImGui.OpenPopup("MessagePopup");
                             }
@@ -432,7 +434,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Filter"))
+            if (ImGui.Button("Filter..."))
             {
                 ImGui.OpenPopup("Filter");
             }
@@ -451,7 +453,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Visualization"))
+            if (ImGui.Button("Visualization..."))
             {
                 // Popup menu
                 ImGui.OpenPopup("Visualization");
@@ -574,6 +576,7 @@ namespace InstantTraceViewerUI
                     traceRecord.Level.ToString().Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     traceRecord.Timestamp.ToString(TimestampFormat).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     _traceSource.TraceSource.GetOpCodeName(traceRecord.OpCode).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                    _traceSource.TraceSource.GetKeywords(traceRecord.Keywords).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     _traceSource.TraceSource.GetProcessName(traceRecord.ProcessId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     _traceSource.TraceSource.GetThreadName(traceRecord.ThreadId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
                 {
