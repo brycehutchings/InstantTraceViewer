@@ -1,6 +1,6 @@
-﻿using System.Collections;
+using System.Collections;
 
-namespace InstantTraceViewer.Common
+namespace InstantTraceViewer
 {
     public class ListBuilderSnapshot<TItem> : IReadOnlyList<TItem>
     {
