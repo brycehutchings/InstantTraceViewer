@@ -1,6 +1,8 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
+using System.Collections.Generic;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -211,7 +213,12 @@ namespace InstantTraceViewerUI.Etw
             // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
             DateTimeOffset timeDateStamp = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(obj.TimeDateStamp).ToLocalTime();
 
-            newRecord.Message = $"File:{obj.FileName} ImageBase:{obj.ImageBase} ImageSize:{obj.ImageSize} TimeDateStamp:{timeDateStamp:yyyy-MM-dd HH:mm:ss} CheckSum:{obj.ImageChecksum}";
+            newRecord.NamedValues = [
+                new NamedValue("File", obj.FileName),
+                new NamedValue("ImageBase", obj.ImageBase),
+                new NamedValue("ImageSize", obj.ImageSize),
+                new NamedValue("TimeDateStamp", timeDateStamp.ToString("yyyy-MM-dd HH:mm:ss")),
+                new NamedValue("CheckSum", obj.ImageChecksum)];
             AddEvent(newRecord);
         }
 
@@ -236,7 +243,12 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Message = $"File:{obj.FileName} CreateOptions:{(KernelFileCreateOptions)obj.CreateOptions} CreateDisposition:{(KernelFileCreateDisposition)obj.CreateDisposition} FileAttributes:{obj.FileAttributes} ShareAccess:{obj.ShareAccess}"; // IrpPtr:{obj.IrpPtr} FileObject:{obj.FileObject}";
+                newRecord.NamedValues = [
+                    new NamedValue("File", obj.FileName),
+                    new NamedValue("CreateOptions", (KernelFileCreateOptions)obj.CreateOptions),
+                    new NamedValue("CreateDisposition", (KernelFileCreateDisposition)obj.CreateDisposition),
+                    new NamedValue("FileAttributes", obj.FileAttributes),
+                    new NamedValue("ShareAccess", obj.ShareAccess)];
                 AddEvent(newRecord);
             }
         }
@@ -250,7 +262,7 @@ namespace InstantTraceViewerUI.Etw
             return;
 #else
             var newRecord = CreateBaseTraceRecord(obj);
-            newRecord.Message = $"NtStatus:{obj.NtStatus:X}"; // IrpPtr:{obj.IrpPtr}";
+            newRecord.NamedValues = [new NamedValue("NtStatus", obj.NtStatus.ToString("X"))];
             AddEvent(newRecord);
 #endif
         }
@@ -261,7 +273,7 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Message = $"File:{obj.FileName}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey} FileObject:{obj.FileObject}";
+                newRecord.NamedValues = [new NamedValue("File", obj.FileName)];
                 AddEvent(newRecord);
             }
         }
@@ -272,7 +284,7 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Message = $"File:{obj.FileName}"; // FileKey:{obj.FileKey}";
+                newRecord.NamedValues = [new NamedValue("File", obj.FileName)];
                 AddEvent(newRecord);
             }
         }
@@ -282,15 +294,19 @@ namespace InstantTraceViewerUI.Etw
         {
             if (!string.IsNullOrEmpty(obj.FileName))
             {
-                // TODO: How do we parse the IO request packet flags (obj.IoFlags)?
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Message = $"File:{obj.FileName} Offset:{obj.Offset} Size:{obj.IoSize}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
+                var namedValues = new List<NamedValue> {
+                    new NamedValue("File", obj.FileName),
+                    new NamedValue("Offset", obj.Offset),
+                    new NamedValue("Size", obj.IoSize)
+                };
 
                 if (obj.IoFlags != 0)
                 {
-                    newRecord.Message += $" IoFlags:{obj.IoFlags}";
+                    namedValues.Add(new NamedValue("IoFlags", obj.IoFlags));
                 }
 
+                newRecord.NamedValues = namedValues.ToArray();
                 AddEvent(newRecord);
             }
         }
@@ -300,7 +316,7 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Message = $"File:{obj.FileName}"; // FileKey:{obj.FileKey}";
+                newRecord.NamedValues = [new NamedValue("File", obj.FileName)];
                 AddEvent(newRecord);
             }
         }
@@ -311,17 +327,21 @@ namespace InstantTraceViewerUI.Etw
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Message = $"File:{obj.FileName} InfoClass={(FileInformationClass)obj.InfoClass}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
+                var namedValues = new List<NamedValue> {
+                    new NamedValue("File", obj.FileName),
+                    new NamedValue("InfoClass", (FileInformationClass)obj.InfoClass)
+                };
 
                 if (obj.InfoClass == (int)FileInformationClass.FileEndOfFileInformation)
                 {
-                    newRecord.Message += $" EndOfFilePosition:{obj.ExtraInfo}";
+                    namedValues.Add(new NamedValue("EndOfFilePosition", obj.ExtraInfo));
                 }
                 else if (obj.ExtraInfo != 0)
                 {
-                    newRecord.Message += $" ExtraInfo:{obj.ExtraInfo}";
+                    namedValues.Add(new NamedValue("ExtraInfo", obj.ExtraInfo));
                 }
 
+                newRecord.NamedValues = namedValues.ToArray();
                 AddEvent(newRecord);
             }
         }
@@ -330,7 +350,9 @@ namespace InstantTraceViewerUI.Etw
         private void FileIO_DirEnum(FileIODirEnumTraceData obj)
         {
             var newRecord = CreateBaseTraceRecord(obj);
-            newRecord.Message = $"Directory:{obj.DirectoryName} File:{obj.FileName}"; // IrpPtr:{obj.IrpPtr} FileKey:{obj.FileKey}";
+            newRecord.NamedValues = [
+                new NamedValue("Directory", obj.DirectoryName),
+                new NamedValue("File", obj.FileName)];
             AddEvent(newRecord);
         }
 
@@ -354,38 +376,7 @@ namespace InstantTraceViewerUI.Etw
                 }
             }
 
-            // Very noisy--Do we think anyone will want to see the thread events?
-#if false
-            if (data.ProcessID == 0 && data.ThreadID == 0)
-            {
-                return; // Skip the idle process and thread.
-            }
-
-            if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||
-                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && (_etwSession?.IsRealTime ?? false))
-            {
-                return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
-            }
-
-            var newRecord = CreateBaseTraceRecord(data);
-            newRecord.ProviderName = "Kernel";
-
-            StringBuilder sb = new();
-            if (data.ParentProcessID > 0)
-            {
-                AppendField(sb, "ParentPid", data.ParentProcessID.ToString());
-            }
-            if (data.ParentThreadID > 0)
-            {
-                AppendField(sb, "ParentTid", data.ParentThreadID.ToString());
-            }
-            if (!string.IsNullOrEmpty(data.ThreadName))
-            {
-                AppendField(sb, "ThreadName", data.ThreadName);
-            }
-            newRecord.Message = sb.ToString();
-            AddEvent(newRecord);
-#endif
+            // IGNORED: Very noisy--Do we think anyone will want to see the thread events?
         }
 
         private void OnProcessEvent(ProcessTraceData data)
@@ -402,7 +393,7 @@ namespace InstantTraceViewerUI.Etw
             }
 
             var newRecord = CreateBaseTraceRecord(data);
-            newRecord.Message = $"ParentPid:{data.ParentID} CommandLine:{data.CommandLine}";
+            newRecord.NamedValues = [new NamedValue("ParentPid", data.ParentID), new NamedValue("CommandLine", data.CommandLine)];
             AddEvent(newRecord);
         }
     }

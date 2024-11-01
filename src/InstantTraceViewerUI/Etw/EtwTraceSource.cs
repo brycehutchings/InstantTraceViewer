@@ -8,7 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
-using InstantTraceViewer.Common;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -94,7 +94,7 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new TraceRecord { Message = $"Failed to process ETW session: {ex.Message}" });
+                AddEvent(new TraceRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
             }
         }
 
@@ -220,6 +220,11 @@ namespace InstantTraceViewerUI.Etw
             return
                 threadId == -1 ? string.Empty :
                 _threadNames.TryGetValue(threadId, out string name) ? $"{threadId} ({name})" : threadId.ToString();
+        }
+
+        public string GetMessage(NamedValue[] namedValues, bool allowMultiline)
+        {
+            return NamedValue.GetCollectionString(namedValues, allowMultiline);
         }
 
         public bool CanClear => _etwSource.IsRealTime;

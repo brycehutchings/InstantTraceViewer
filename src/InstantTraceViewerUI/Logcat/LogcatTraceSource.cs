@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
-using InstantTraceViewer.Common;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
@@ -113,6 +113,12 @@ namespace InstantTraceViewerUI
             return threadId.ToString();
         }
 
+        public string GetMessage(NamedValue[] namedValues, bool allowMultiline)
+        {
+            Debug.Assert(namedValues.Length == 1);
+            return (string)namedValues[0].Value;
+        }
+
         private async void ReadLogcatThread(AdbClient adbClient, DeviceData device)
         {
             try
@@ -138,7 +144,7 @@ namespace InstantTraceViewerUI
                                 androidLogEntry.Priority == Priority.Verbose ? TraceLevel.Verbose :
                                 androidLogEntry.Priority == Priority.Debug ? TraceLevel.Verbose :       // TODO: Should we add a Debug trace level to map into?
                                                                                 TraceLevel.Info,
-                            Message = androidLogEntry.Message,
+                            NamedValues = new[] { new NamedValue { Value = androidLogEntry.Message } },
                             Name = androidLogEntry.Tag,
                             ProviderName = ""
                         };

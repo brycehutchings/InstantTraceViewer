@@ -315,6 +315,8 @@ namespace InstantTraceViewerUI
                             }
 
                             columnCount++;
+
+                            return displayText;
                         };
 
                         addColumnData(r => _traceSource.TraceSource.GetProcessName(r.ProcessId));
@@ -325,21 +327,19 @@ namespace InstantTraceViewerUI
                         addColumnData(r => r.Name);
                         addColumnData(r => r.Level.ToString());
                         addColumnData(r => r.Timestamp.ToString(TimestampFormat));
-                        addColumnData(r => r.Message.Replace("\n", " ").Replace("\r", " "));
+                        var messageText = addColumnData(r => _traceSource.TraceSource.GetMessage(r.NamedValues).Replace("\n", " ").Replace("\r", " "));
 
                         // Double-click on the message cell will pop up a read-only edit box so the user can read long messages or copy parts of the text.
-                        if (!string.IsNullOrEmpty(traceRecord.Message))
+                        if (!string.IsNullOrEmpty(messageText))
                         {
                             if (isRowHovered && hoveredCol == 8 /* Message */ && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                             {
                                 ImGui.OpenPopup("MessagePopup");
                             }
-                            if (ImGui.BeginPopup("MessagePopup", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
+                            if (ImGui.BeginPopup("MessagePopup", /*ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar |*/ ImGuiWindowFlags.NoSavedSettings))
                             {
-                                string message = traceRecord.Message;
-                                setColor(null);
-                                ImGui.InputTextMultiline("##Message", ref message, 0, new Vector2(500, ImGui.GetTextLineHeight() * 4),
-                                    ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
+                                setColor(null); // Clear color back to default
+                                RenderMessagePopupContent(traceRecord);
                                 setColor(rowColor); // Resume color
                                 ImGui.EndPopup();
                             }
@@ -378,6 +378,22 @@ namespace InstantTraceViewerUI
 
                 ImGui.EndTable();
             }
+        }
+
+        private void RenderMessagePopupContent(TraceRecord traceRecord)
+        {
+            string message = _traceSource.TraceSource.GetMessage(traceRecord.NamedValues, true /*allow multiline*/);
+
+            string[] lines = message.Split('\n');
+            float maxLineLength = lines.Max(line => ImGui.CalcTextSize(line).X);
+            ImGui.InputTextMultiline(
+                "##Message",
+                ref message,
+                0,
+                new Vector2(
+                    Math.Clamp(maxLineLength + 40, 200, 800),
+                    ImGui.GetTextLineHeight() * Math.Min(32, lines.Length) + 10),
+                ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
         }
 
         private void ApplyMultiSelectRequests(FilteredTraceRecordCollection visibleTraceRecords, ImGuiMultiSelectIOPtr multiselectIO)
@@ -434,15 +450,15 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Filter..."))
+            string filterCountSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
+            if (ImGui.Button($"Filtering{filterCountSuffix}..."))
             {
-                ImGui.OpenPopup("Filter");
+                ImGui.OpenPopup("Filtering");
             }
-            if (ImGui.BeginPopup("Filter"))
+            if (ImGui.BeginPopup("Filtering"))
             {
                 ImGui.BeginDisabled(!_viewerRules.VisibleRules.Any());
-                string clearFilterSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
-                if (ImGui.MenuItem($"Clear filters" + clearFilterSuffix))
+                if (ImGui.MenuItem($"Clear filters"))
                 {
                     _viewerRules.VisibleRules.Clear();
                     _viewerRules.GenerationId++;
@@ -453,12 +469,12 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Visualization..."))
+            if (ImGui.Button("Visualizations..."))
             {
                 // Popup menu
-                ImGui.OpenPopup("Visualization");
+                ImGui.OpenPopup("Visualizations");
             }
-            if (ImGui.BeginPopup("Visualization"))
+            if (ImGui.BeginPopup("Visualizations"))
             {
                 if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
                 {
@@ -553,7 +569,7 @@ namespace InstantTraceViewerUI
             foreach (var selectedRecordId in _selectedTraceRecordIds.OrderBy(i => i))
             {
                 TraceRecord record = visibleTraceRecords.GetRecordFromId(selectedRecordId);
-                copyText.Append($"{record.Timestamp:HH:mm:ss.ffffff}\t{record.ProcessId}\t{record.ThreadId}\t{_traceSource.TraceSource.GetOpCodeName(record.OpCode)}\t{record.Level}\t{record.ProviderName}\t{record.Name}\t{record.Message}\n");
+                copyText.Append($"{record.Timestamp:HH:mm:ss.ffffff}\t{record.ProcessId}\t{record.ThreadId}\t{_traceSource.TraceSource.GetOpCodeName(record.OpCode)}\t{record.Level}\t{record.ProviderName}\t{record.Name}\t{_traceSource.TraceSource.GetMessage(record.NamedValues)}\n");
             }
 
             ImGui.SetClipboardText(copyText.ToString());
@@ -570,7 +586,7 @@ namespace InstantTraceViewerUI
             {
                 TraceRecord traceRecord = visibleTraceRecords[visibleRowIndex];
 
-                if (traceRecord.Message.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
+                if (_traceSource.TraceSource.GetMessage(traceRecord.NamedValues).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     traceRecord.Name.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     traceRecord.ProviderName.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
                     traceRecord.Level.ToString().Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||

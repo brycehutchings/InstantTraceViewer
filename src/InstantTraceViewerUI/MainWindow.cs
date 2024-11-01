@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -138,7 +138,7 @@ namespace InstantTraceViewerUI
                         ImGui.BeginDisabled(Settings.Font == FontType.ProggyClean);
                         if (ImGui.BeginMenu("Font size"))
                         {
-                            foreach (int fontSize in new[] { 12, 14, 16, 17, 18, 20, 22, 24 })
+                            foreach (int fontSize in new[] { 12, 13, 14, 15, 16, 17, 18, 20, 22, 24 })
                             {
                                 if (ImGui.MenuItem(fontSize.ToString(), "", Settings.FontSize == fontSize))
                                 {

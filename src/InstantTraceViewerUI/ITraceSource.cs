@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
@@ -25,7 +26,7 @@ namespace InstantTraceViewerUI
 
         public string Name;
 
-        public string Message;
+        public NamedValue[] NamedValues;
 
         public byte OpCode;
 
@@ -62,6 +63,8 @@ namespace InstantTraceViewerUI
         string GetProcessName(int processId);
 
         string GetThreadName(int threadId);
+
+        string GetMessage(NamedValue[] namedValues, bool allowMultiline = false);
 
         bool CanClear { get; }
 

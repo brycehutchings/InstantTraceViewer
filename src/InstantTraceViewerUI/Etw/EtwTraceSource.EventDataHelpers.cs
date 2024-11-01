@@ -44,18 +44,5 @@ namespace InstantTraceViewerUI.Etw
                 data.Level == TraceEventLevel.Warning ? TraceLevel.Warning :
                 data.Level == TraceEventLevel.Informational ? TraceLevel.Info : TraceLevel.Verbose;
         }
-
-        private static StringBuilder AppendField(StringBuilder sb, string fieldName, string value)
-        {
-            if (sb.Length > 0)
-            {
-                sb.Append(' ');
-            }
-
-            sb.Append(fieldName);
-            sb.Append(':');
-            sb.Append(value);
-            return sb;
-        }
     }
 }

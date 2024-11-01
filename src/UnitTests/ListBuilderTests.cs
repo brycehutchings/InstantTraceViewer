@@ -1,4 +1,4 @@
-using InstantTraceViewer.Common;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerTests
 {
