@@ -1,22 +1,23 @@
-﻿using System.Diagnostics;
-using System.Text;
+﻿using System.Text;
 
 namespace InstantTraceViewer
 {
+    public delegate bool TryGetCustomizedValue(string? name, object value, out string customValue);
+
     public struct NamedValue
     {
         private static readonly IFormatProvider FormatProvider = System.Globalization.CultureInfo.InvariantCulture;
 
-        public string Name;
+        public string? Name;
         public object Value;
 
-        public NamedValue(string name, object value)
+        public NamedValue(string? name, object value)
         {
             Name = name;
             Value = value;
         }
 
-        public static string GetCollectionString(IReadOnlyCollection<NamedValue> namedValues, bool allowMultiline)
+        public static string GetCollectionString(IReadOnlyCollection<NamedValue> namedValues, bool allowMultiline, TryGetCustomizedValue? tryGetCustomizedValue = null)
         {
             if (namedValues == null || namedValues.Count == 0)
             {
@@ -31,16 +32,20 @@ namespace InstantTraceViewer
                     sb.Append(allowMultiline ? '\n' : ' ');
                 }
 
-                sb.Append(namedValue.ToString(allowMultiline));
+                sb.Append(namedValue.ToString(allowMultiline, tryGetCustomizedValue));
             }
             return sb.ToString();
         }
 
-        public string GetValueString(bool allowMultiline = false) => ObjectToString(Name, Value, allowMultiline, 0);
+        public string GetValueString(bool allowMultiline = false) => ObjectToString(Name, Value, allowMultiline, null, 0);
 
-        private static string ObjectToString(string name, object value, bool allowMultiline, int nestingLevel)
+        private static string ObjectToString(string? name, object value, bool allowMultiline, TryGetCustomizedValue? tryGetCustomizedValue, int nestingLevel)
         {
-            if (value == null)
+            if (tryGetCustomizedValue != null && tryGetCustomizedValue(name, value, out string customValue))
+            {
+                return customValue;
+            }
+            else if (value == null)
             {
                 return "";
             }
@@ -99,7 +104,7 @@ namespace InstantTraceViewer
                         sb.Append(", ");
                     }
 
-                    sb.Append(ObjectToString(name, item, allowMultiline, nestingLevel));
+                    sb.Append(ObjectToString(name, item, allowMultiline, tryGetCustomizedValue, nestingLevel));
                 }
                 sb.Append(']');
                 return sb.ToString();
@@ -126,7 +131,7 @@ namespace InstantTraceViewer
 
                     sb.Append(item.Key);
                     sb.Append(':');
-                    sb.Append(ObjectToString(item.Key, item.Value, allowMultiline, nestingLevel));
+                    sb.Append(ObjectToString(item.Key, item.Value, allowMultiline, tryGetCustomizedValue, nestingLevel));
 
                     if (allowMultiline)
                     {
@@ -145,7 +150,7 @@ namespace InstantTraceViewer
             {
                 try
                 {
-                    return value.ToString();
+                    return value.ToString()!;
                 }
                 catch (Exception ex)
                 {
@@ -164,14 +169,14 @@ namespace InstantTraceViewer
             return $"{Name}:{GetValueString()}";
         }
 
-        public string ToString(bool allowMultiline)
+        public string ToString(bool allowMultiline, TryGetCustomizedValue? tryGetCustomizedValue = null)
         {
             if (Name == null)
             {
-                return GetValueString(allowMultiline);
+                return ObjectToString(Name, Value, allowMultiline, tryGetCustomizedValue, 0);
             }
 
-            return $"{Name}:{GetValueString(allowMultiline)}";
+            return $"{Name}:{ObjectToString(Name, Value, allowMultiline, tryGetCustomizedValue, 0)}";
         }
     }
 }

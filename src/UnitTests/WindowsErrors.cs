@@ -157,21 +157,21 @@
                 hrMap.Add(Tuple.Create(errorCode | 0x10000000, $"HRESULT_FROM_NT({name})"));
             }
 
-            using StreamWriter hrMapWriter = new StreamWriter("FieldMap_HResults.txt");
-            hrMapWriter.WriteLine("hr\thresult\terror\tresult"); // First row are field names
+            using StreamWriter hrMapWriter = new StreamWriter("FieldMap_HResults.tsv");
+            hrMapWriter.WriteLine("hr\thresult\terror\tresult\tstatus"); // First row are field names
             foreach (var (errorCode, name) in hrMap.OrderBy(t => t.Item1))
             {
                 hrMapWriter.WriteLine($"{(int)errorCode}\t{name}");
             }
 
-            using StreamWriter win32MapWriter = new StreamWriter("FieldMap_Win32Errors.txt");
+            using StreamWriter win32MapWriter = new StreamWriter("FieldMap_Win32Errors.tsv");
             win32MapWriter.WriteLine("error\tstatus\twin32error\tlasterror\tgetlasterror\tresult"); // First row are field names
             foreach (var (errorCode, name) in win32Map.OrderBy(t => t.Item1))
             {
                 win32MapWriter.WriteLine($"{(int)errorCode}\t{name}");
             }
 
-            using StreamWriter ntStatusWriter = new StreamWriter("FieldMap_NTStatus.txt");
+            using StreamWriter ntStatusWriter = new StreamWriter("FieldMap_NTStatus.tsv");
             ntStatusWriter.WriteLine("error\tstatus\tntstatus"); // First row are field names
             foreach (var (errorCode, name) in ntStatusMap.OrderBy(t => t.Item1))
             {

@@ -224,7 +224,23 @@ namespace InstantTraceViewerUI.Etw
 
         public string GetMessage(NamedValue[] namedValues, bool allowMultiline)
         {
-            return NamedValue.GetCollectionString(namedValues, allowMultiline);
+            // TODO: In the future it would be nice to make these tooltips over the field which is underlined like a hyperlink.
+            TryGetCustomizedValue tryGetCustomizedValue = (string name, object value, out string customValue) =>
+            {
+                string friendlyName;
+                if (value is int intValue && CodeLookup.TryGetFriendlyName(name, intValue, out friendlyName))
+                {
+                    customValue = intValue == 0 ? 
+                        $"0 [{friendlyName}]" :
+                        $"0x{intValue:X8} [{friendlyName}]";
+                    return true;
+                }
+
+                customValue = null;
+                return false;
+            };
+
+            return NamedValue.GetCollectionString(namedValues, allowMultiline, tryGetCustomizedValue);
         }
 
         public bool CanClear => _etwSource.IsRealTime;

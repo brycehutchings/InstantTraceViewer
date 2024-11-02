@@ -18,9 +18,21 @@
     <None Remove="Assets\DroidSans-Bold.ttf" />
     <None Remove="Assets\DroidSans.ttf" />
     <None Remove="Assets\Fonts\CascadiaMono.ttf" />
+    <None Remove="FieldMap_HResults.tsv" />
+    <None Remove="FieldMap_NTStatus.tsv" />
+    <None Remove="FieldMap_Win32Errors.tsv" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\Logo.ico" />
+    <Content Include="FieldMap_HResults.tsv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="FieldMap_NTStatus.tsv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="FieldMap_Win32Errors.tsv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
