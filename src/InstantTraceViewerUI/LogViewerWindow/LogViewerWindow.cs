@@ -126,7 +126,7 @@ namespace InstantTraceViewerUI
                 ImGui.TableSetupColumn("Keywords", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
                 ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 8.75f * dpiBase);
                 ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 7.0f);
+                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 5.75f * dpiBase);
                 ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 
