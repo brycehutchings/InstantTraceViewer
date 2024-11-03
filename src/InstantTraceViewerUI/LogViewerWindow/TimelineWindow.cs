@@ -38,7 +38,7 @@ namespace InstantTraceViewerUI
             _windowId = _nextWindowId++;
         }
 
-        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
+        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceRecordCollectionView visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
@@ -53,7 +53,7 @@ namespace InstantTraceViewerUI
             return _open;
         }
 
-        public void DrawTimelineGraph(FilteredTraceRecordCollection visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
+        public void DrawTimelineGraph(FilteredTraceRecordCollectionView visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
         {
             int sectionCount = (int)ImGui.GetContentRegionAvail().X / PixelsPerSection;
             if (sectionCount <= 0 || visibleTraceRecords.Count == 0)
@@ -75,9 +75,7 @@ namespace InstantTraceViewerUI
             {
                 if (computedTimelineSnapshot == null || computedTimelineSnapshot.ColorsBars.Length != sectionCount || computedTimelineSnapshot.LastFilteredTraceRecordCount != visibleTraceRecords.Count)
                 {
-                    // Create a new background task to process the trace records. A clone of the visibleTraceRecords is used since it is otherwise mutated every frame on the UI thread.
-                    var visibleTraceRecordsClone = visibleTraceRecords.Clone();
-                    _nextComputedTimelineTask = Task.Run(() => ProcessTraceRecords(sectionCount, visibleTraceRecordsClone));
+                    _nextComputedTimelineTask = Task.Run(() => ProcessTraceRecords(sectionCount, visibleTraceRecords));
                 }
             }
 
@@ -142,7 +140,7 @@ namespace InstantTraceViewerUI
             return ticksPerBar == 0 ? 0 : (int)((timestamp - _computedTimeline.StartTime).Ticks / ticksPerBar);
         }
 
-        static private ComputedTimeline ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollection visibleTraceRecords)
+        static private ComputedTimeline ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollectionView visibleTraceRecords)
         {
             ComputedTimeline newComputedTimeline = new();
             newComputedTimeline.StartTime = visibleTraceRecords.First().Timestamp;

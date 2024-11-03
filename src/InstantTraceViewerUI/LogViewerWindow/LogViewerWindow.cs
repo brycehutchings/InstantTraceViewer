@@ -18,7 +18,7 @@ namespace InstantTraceViewerUI
         private readonly int _windowId;
 
         private ViewerRules _viewerRules = new();
-        private FilteredTraceRecordCollection _filteredTraceRecords = new();
+        private FilteredTraceRecordCollectionBuilder _filteredTraceRecordsBuilder = new();
 
         private HashSet<int> _selectedTraceRecordIds = new HashSet<int>();
         private int? _lastSelectedVisibleRowIndex;
@@ -59,7 +59,8 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            bool filteredViewRebuilt = _filteredTraceRecords.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
+            bool filteredViewRebuilt = _filteredTraceRecordsBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
+            FilteredTraceRecordCollectionView filteredTraceRecordsSnapshot = _filteredTraceRecordsBuilder.Snapshot();
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -67,7 +68,7 @@ namespace InstantTraceViewerUI
             bool opened = true;
             if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
             {
-                DrawWindowContents(uiCommands, _filteredTraceRecords, filteredViewRebuilt);
+                DrawWindowContents(uiCommands, filteredTraceRecordsSnapshot, filteredViewRebuilt);
             }
 
             ImGui.End();
@@ -75,11 +76,11 @@ namespace InstantTraceViewerUI
             if (_timelineWindow != null)
             {
                 // The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
-                    _filteredTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
-                DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
-                    _filteredTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
-                if (!_timelineWindow.DrawWindow(uiCommands, _filteredTraceRecords, startWindow, endWindow))
+                DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < filteredTraceRecordsSnapshot.Count ?
+                    filteredTraceRecordsSnapshot[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
+                DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < filteredTraceRecordsSnapshot.Count ?
+                    filteredTraceRecordsSnapshot[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
+                if (!_timelineWindow.DrawWindow(uiCommands, filteredTraceRecordsSnapshot, startWindow, endWindow))
                 {
                     _timelineWindow = null;
                 }
@@ -91,7 +92,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, bool filteredViewRebuilt)
+        private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceRecordCollectionView visibleTraceRecords, bool filteredViewRebuilt)
         {
             int? setScrollIndex = null;             // Row index to scroll to (it will be the topmost row that is visible).
 
@@ -100,11 +101,11 @@ namespace InstantTraceViewerUI
             if (_timelineInline != null)
             {
                 // The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
-                    _filteredTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
-                DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < _filteredTraceRecords.Count ?
-                    _filteredTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
-                _timelineInline.DrawTimelineGraph(_filteredTraceRecords, startWindow, endWindow);
+                DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < visibleTraceRecords.Count ?
+                    visibleTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
+                DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < visibleTraceRecords.Count ?
+                    visibleTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
+                _timelineInline.DrawTimelineGraph(visibleTraceRecords, startWindow, endWindow);
             }
 
             // If we are scrolling to show a line (like for CTRL+F), position the line ~1/3 of the way down.
@@ -396,7 +397,7 @@ namespace InstantTraceViewerUI
                 ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
         }
 
-        private void ApplyMultiSelectRequests(FilteredTraceRecordCollection visibleTraceRecords, ImGuiMultiSelectIOPtr multiselectIO)
+        private void ApplyMultiSelectRequests(FilteredTraceRecordCollectionView visibleTraceRecords, ImGuiMultiSelectIOPtr multiselectIO)
         {
             for (int reqIdx = 0; reqIdx < multiselectIO.Requests.Size; reqIdx++)
             {
@@ -426,7 +427,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceRecordCollection visibleTraceRecords, ref int? setScrollIndex)
+        private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceRecordCollectionView visibleTraceRecords, ref int? setScrollIndex)
         {
             ImGui.BeginDisabled(!_selectedTraceRecordIds.Any());
             if (ImGui.Button("Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
@@ -445,7 +446,7 @@ namespace InstantTraceViewerUI
                     _selectedTraceRecordIds.Clear();
 
                     // Updating the filtered trace records so it will see the generation id changed and clear itself.
-                    _filteredTraceRecords.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
+                    _filteredTraceRecordsBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
                 }
             }
 
@@ -562,7 +563,7 @@ namespace InstantTraceViewerUI
                                                    : AppTheme.InfoColor;
         }
 
-        private void CopySelectedRows(FilteredTraceRecordCollection visibleTraceRecords)
+        private void CopySelectedRows(FilteredTraceRecordCollectionView visibleTraceRecords)
         {
             StringBuilder copyText = new();
 
@@ -575,7 +576,7 @@ namespace InstantTraceViewerUI
             ImGui.SetClipboardText(copyText.ToString());
         }
 
-        private int? FindText(FilteredTraceRecordCollection visibleTraceRecords, string text)
+        private int? FindText(FilteredTraceRecordCollectionView visibleTraceRecords, string text)
         {
             int? setScrollIndex = null;
             int visibleRowIndex =
