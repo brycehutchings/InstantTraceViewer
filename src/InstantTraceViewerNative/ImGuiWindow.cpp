@@ -4,6 +4,11 @@
 #include <d3d11.h>
 #include <shellapi.h>
 
+static constexpr UINT DefaultX = 100;
+static constexpr UINT DefaultY = 100;
+static constexpr UINT DefaultWidth = 1200;
+static constexpr UINT DefaultHeight = 800;
+
 static HWND g_hwnd{ nullptr };
 static WNDCLASSEXW g_windowClass{};
 static bool g_swapChainOccluded{ false };
@@ -38,7 +43,22 @@ extern "C" int __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** i
 
     ::RegisterClassExW(&g_windowClass);
 
-    g_hwnd = ::CreateWindowW(g_windowClass.lpszClassName, L"Instant Trace Viewer", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, g_windowClass.hInstance, nullptr);
+    //#include <shellscalingapi.h>
+    //#pragma comment(lib, "Shcore.lib")
+    g_hwnd = ::CreateWindowW(
+        g_windowClass.lpszClassName, L"Instant Trace Viewer", WS_OVERLAPPEDWINDOW,
+        DefaultX, DefaultY, DefaultWidth, DefaultHeight,
+        nullptr, nullptr, g_windowClass.hInstance, nullptr);
+
+    // Scale the size of the window based on the DPI of the monitor. This won't happen "for free" because this application has DPI awareness turned on.
+    if (g_hwnd)
+    {
+        if (UINT dpi = GetDpiForWindow(g_hwnd); dpi != 0)
+        {
+            float scaleFactor = dpi / 96.0f; // 96 is the default DPI
+            ::SetWindowPos(g_hwnd, nullptr, 0, 0, (int)(DefaultWidth * scaleFactor), (int)(DefaultHeight * scaleFactor), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
 
     if (!CreateDeviceD3D(g_hwnd))
     {
