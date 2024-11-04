@@ -13,12 +13,12 @@ namespace InstantTraceViewerUI
 {
     internal class LogcatTraceSource : ITraceSource
     {
-        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 8.75f };
-        private static readonly TraceSourceSchemaColumn ColumnPriority = new TraceSourceSchemaColumn { Name = "Priority", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 5.75f };
-        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = null };
+        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", DefaultColumnSize = 8.75f };
+        private static readonly TraceSourceSchemaColumn ColumnPriority = new TraceSourceSchemaColumn { Name = "Priority", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
+        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
 
         private static readonly TraceSourceSchema _schema = new TraceSourceSchema
         {

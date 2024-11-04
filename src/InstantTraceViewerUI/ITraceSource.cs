@@ -70,29 +70,9 @@ namespace InstantTraceViewerUI
         TraceRecordSnapshot CreateSnapshot();
     }
 
-    [Flags]
-    public enum TraceSourceSchemaColumnType
-    {
-        String = 0x01,
-        Int = 0x02,
-        DateTime = 0x04,
-        NamedValues = 0x08,
-        // TODO: Trace level?
-        // TODO: UInt, Long, ULong, Float, Double, Guid.
-
-        // Special flags that can be combined with the above
-        ProcessId = 0x100,
-        ThreadId = 0x200,
-        Timestamp = 0x400,
-        EventName = 0x800,
-        Message = 0x1000
-    }
-
     public class TraceSourceSchemaColumn
     {
         public string Name { get; init;  }
-
-        public TraceSourceSchemaColumnType Type { get; init; }
 
         /// <summary>
         /// Size is multipled by the current font height in pixels.

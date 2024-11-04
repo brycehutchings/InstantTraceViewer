@@ -16,22 +16,22 @@ namespace InstantTraceViewerUI.Etw
     [Flags]
     internal enum KnownKeywords : ulong
     {
-        Telemetry         = 0x0000200000000000,
+        Telemetry = 0x0000200000000000,
         TelemetryCritical = 0x0000800000000000,
         TelemetryMeasures = 0x0000400000000000,
     }
 
     internal partial class EtwTraceSource : ITraceSource
     {
-        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 6.25f };
-        private static readonly TraceSourceSchemaColumn ColumnOpCode = new TraceSourceSchemaColumn { Name = "OpCode", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnKeywords = new TraceSourceSchemaColumn { Name = "Keywords", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnName = new TraceSourceSchemaColumn { Name = "Name", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 8.75f };
-        private static readonly TraceSourceSchemaColumn ColumnLevel = new TraceSourceSchemaColumn { Name = "Level", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 5.75f };
-        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = null };
+        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", DefaultColumnSize = 6.25f };
+        private static readonly TraceSourceSchemaColumn ColumnOpCode = new TraceSourceSchemaColumn { Name = "OpCode", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnKeywords = new TraceSourceSchemaColumn { Name = "Keywords", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnName = new TraceSourceSchemaColumn { Name = "Name", DefaultColumnSize = 8.75f };
+        private static readonly TraceSourceSchemaColumn ColumnLevel = new TraceSourceSchemaColumn { Name = "Level", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
+        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
 
         private static readonly TraceSourceSchema _schema = new TraceSourceSchema
         {
