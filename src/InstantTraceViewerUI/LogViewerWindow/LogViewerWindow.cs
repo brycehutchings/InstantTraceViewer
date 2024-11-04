@@ -254,10 +254,10 @@ namespace InstantTraceViewerUI
                             }
                         }
 
-                        bool isFirstColumn = true;
+                        int columnIndex = 0;
                         foreach (var column in _traceSource.TraceSource.Schema.Columns)
                         {
-                            if (isFirstColumn)
+                            if (columnIndex == 0)
                             {
                                 ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
                             }
@@ -265,10 +265,51 @@ namespace InstantTraceViewerUI
                             {
                                 ImGui.TableNextColumn();
                             }
-                            isFirstColumn = false;
 
                             string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
                             ImGui.TextUnformatted(displayText);
+
+                            if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnIndex)
+                            {
+                                ImGui.OpenPopup($"tableViewPopup{columnIndex}");
+                            }
+
+                            if (ImGui.BeginPopup($"tableViewPopup{columnIndex}", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
+                            {
+                                setColor(null);
+
+                                // This is a delegate because we need to pass this to the lambda rule to run it on arbitrary rows and not this specific row.
+                                Func<TraceRecord, string> getColumnText = (traceRecordEval) =>
+                                    _traceSource.TraceSource.GetColumnString(traceRecordEval, column, allowMultiline: false);
+                                string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
+
+                                if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
+                                {
+                                    // Include rules go last to ensure anything already excluded stays excluded.
+                                    _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
+                                        Rule: new TraceRecordRule { IsMatch = record => getColumnText(record) == displayText },
+                                        Action: TraceRecordRuleAction.Include));
+                                    _viewerRules.GenerationId++;
+                                }
+                                if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
+                                {
+                                    // Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
+                                    _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
+                                        Rule: new TraceRecordRule { IsMatch = record => getColumnText(record) == displayText },
+                                        Action: TraceRecordRuleAction.Exclude));
+                                    _viewerRules.GenerationId++;
+                                }
+                                ImGui.Separator();
+                                if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
+                                {
+                                    ImGui.SetClipboardText(displayText);
+                                }
+                                ImGui.EndPopup();
+
+                                setColor(rowColor); // Resume color for remainder of row.
+                            }
+
+                            columnIndex++;
                         }
 
                         ImGui.PopID(); // Trace record id
