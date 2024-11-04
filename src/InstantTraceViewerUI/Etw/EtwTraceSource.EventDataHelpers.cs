@@ -18,8 +18,6 @@ namespace InstantTraceViewerUI.Etw
             newRecord.Level = ConvertLevel(data);
             newRecord.OpCode = (byte)data.Opcode;
             newRecord.Keywords = (ulong)data.Keywords;
-            newRecord.ActivityId = data.ActivityID;
-            newRecord.RelatedActivityId = data.RelatedActivityID;
 
             if (data.ProviderGuid == SystemProvider)
             {

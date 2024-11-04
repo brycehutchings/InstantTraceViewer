@@ -112,7 +112,7 @@ namespace InstantTraceViewerUI
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
 
-            if (ImGui.BeginTable("TraceRecords", 9 /* columns */,
+            if (ImGui.BeginTable("TraceRecords", _traceSource.TraceSource.Schema.Columns.Count,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
                 ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
                 ImGuiTableFlags.Hideable))
@@ -120,15 +120,17 @@ namespace InstantTraceViewerUI
                 float dpiBase = ImGui.GetFontSize();
 
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                ImGui.TableSetupColumn("Process", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthFixed, 6.25f * dpiBase);
-                ImGui.TableSetupColumn("OpCode", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Keywords", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthFixed, 8.75f * dpiBase);
-                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 3.75f * dpiBase);
-                ImGui.TableSetupColumn("Time", ImGuiTableColumnFlags.WidthFixed, 5.75f * dpiBase);
-                ImGui.TableSetupColumn("Message", ImGuiTableColumnFlags.WidthStretch, 1);
+                foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                {
+                    if (column.DefaultColumnSize.HasValue)
+                    {
+                        ImGui.TableSetupColumn(column.Name, ImGuiTableColumnFlags.WidthFixed, column.DefaultColumnSize.Value * dpiBase);
+                    }
+                    else
+                    {
+                        ImGui.TableSetupColumn(column.Name, ImGuiTableColumnFlags.WidthStretch, 1);
+                    }
+                }
                 ImGui.TableHeadersRow();
 
                 ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(2, 2)); // Tighten spacing
@@ -252,98 +254,21 @@ namespace InstantTraceViewerUI
                             }
                         }
 
-                        int columnCount = 0;
-                        var addColumnData = (Func<TraceRecord, string> getDisplayText) =>
+                        bool isFirstColumn = true;
+                        foreach (var column in _traceSource.TraceSource.Schema.Columns)
                         {
-                            if (columnCount == 0)
+                            if (isFirstColumn)
                             {
-                                // The first column is already started with a special whole-row selectable.
-                                ImGui.SameLine();
+                                ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
                             }
                             else
                             {
                                 ImGui.TableNextColumn();
                             }
+                            isFirstColumn = false;
 
-                            string displayText = getDisplayText(traceRecord);
+                            string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
                             ImGui.TextUnformatted(displayText);
-
-                            if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnCount)
-                            {
-                                ImGui.OpenPopup($"tableViewPopup{columnCount}");
-                            }
-
-                            if (ImGui.BeginPopup($"tableViewPopup{columnCount}", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
-                            {
-                                string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
-
-                                setColor(null);
-
-                                // TODO: Highlight not implemented
-                                /*
-                                if (ImGui.MenuItem($"Highlight '{displayTextTruncated}'"))
-                                {
-                                    _viewerRules.HighlightRules.Add(new TraceRecordHighlightRule(
-                                        Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
-                                        Color: new Vector4(1.0f, 1.0f, 0.0f, 1.0f)));
-                                    _viewerRules.GenerationId++;
-                                }
-                                */
-                                if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
-                                {
-                                    // Include rules go last to ensure anything already excluded stays excluded.
-                                    _viewerRules.VisibleRules.Add(new TraceRecordVisibleRule(
-                                        Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
-                                        Action: TraceRecordRuleAction.Include));
-                                    _viewerRules.GenerationId++;
-                                }
-                                if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
-                                {
-                                    // Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
-                                    _viewerRules.VisibleRules.Insert(0, new TraceRecordVisibleRule(
-                                        Rule: new TraceRecordRule { IsMatch = record => getDisplayText(record) == displayText },
-                                        Action: TraceRecordRuleAction.Exclude));
-                                    _viewerRules.GenerationId++;
-                                }
-                                ImGui.Separator();
-                                if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
-                                {
-                                    ImGui.SetClipboardText(displayText);
-                                }
-                                ImGui.EndPopup();
-
-                                setColor(rowColor); // Resume color for remainder of row.
-                            }
-
-                            columnCount++;
-
-                            return displayText;
-                        };
-
-                        addColumnData(r => _traceSource.TraceSource.GetProcessName(r.ProcessId));
-                        addColumnData(r => _traceSource.TraceSource.GetThreadName(r.ThreadId));
-                        addColumnData(r => r.ProviderName);
-                        addColumnData(r => _traceSource.TraceSource.GetOpCodeName(r.OpCode));
-                        addColumnData(r => _traceSource.TraceSource.GetKeywords(r.Keywords));
-                        addColumnData(r => r.Name);
-                        addColumnData(r => r.Level.ToString());
-                        addColumnData(r => r.Timestamp.ToString(TimestampFormat));
-                        var messageText = addColumnData(r => _traceSource.TraceSource.GetMessage(r.NamedValues).Replace("\n", " ").Replace("\r", " "));
-
-                        // Double-click on the message cell will pop up a read-only edit box so the user can read long messages or copy parts of the text.
-                        if (!string.IsNullOrEmpty(messageText))
-                        {
-                            if (isRowHovered && hoveredCol == 8 /* Message */ && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
-                            {
-                                ImGui.OpenPopup("MessagePopup");
-                            }
-                            if (ImGui.BeginPopup("MessagePopup", /*ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar |*/ ImGuiWindowFlags.NoSavedSettings))
-                            {
-                                setColor(null); // Clear color back to default
-                                RenderMessagePopupContent(traceRecord);
-                                setColor(rowColor); // Resume color
-                                ImGui.EndPopup();
-                            }
                         }
 
                         ImGui.PopID(); // Trace record id
@@ -381,9 +306,9 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void RenderMessagePopupContent(TraceRecord traceRecord)
+        private void RenderMessagePopupContent(TraceRecord traceRecord, TraceSourceSchemaColumn column)
         {
-            string message = _traceSource.TraceSource.GetMessage(traceRecord.NamedValues, true /*allow multiline*/);
+            string message = _traceSource.TraceSource.GetColumnString(traceRecord, column, true /*allow multiline*/);
 
             string[] lines = message.Split('\n');
             float maxLineLength = lines.Max(line => ImGui.CalcTextSize(line).X);
@@ -569,8 +494,21 @@ namespace InstantTraceViewerUI
 
             foreach (var selectedRecordId in _selectedTraceRecordIds.OrderBy(i => i))
             {
-                TraceRecord record = visibleTraceRecords.GetRecordFromId(selectedRecordId);
-                copyText.Append($"{record.Timestamp:HH:mm:ss.ffffff}\t{record.ProcessId}\t{record.ThreadId}\t{_traceSource.TraceSource.GetOpCodeName(record.OpCode)}\t{record.Level}\t{record.ProviderName}\t{record.Name}\t{_traceSource.TraceSource.GetMessage(record.NamedValues)}\n");
+                TraceRecord traceRecord = visibleTraceRecords.GetRecordFromId(selectedRecordId);
+
+                bool isFirstColumn = true;
+                foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                {
+                    if (!isFirstColumn)
+                    {
+                        copyText.Append('\t');
+                    }
+                    isFirstColumn = false;
+
+                    string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
+                    copyText.Append(displayText);
+                }
+                copyText.AppendLine();
             }
 
             ImGui.SetClipboardText(copyText.ToString());
@@ -587,21 +525,17 @@ namespace InstantTraceViewerUI
             {
                 TraceRecord traceRecord = visibleTraceRecords[visibleRowIndex];
 
-                if (_traceSource.TraceSource.GetMessage(traceRecord.NamedValues).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    traceRecord.Name.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    traceRecord.ProviderName.Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    traceRecord.Level.ToString().Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    traceRecord.Timestamp.ToString(TimestampFormat).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    _traceSource.TraceSource.GetOpCodeName(traceRecord.OpCode).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    _traceSource.TraceSource.GetKeywords(traceRecord.Keywords).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    _traceSource.TraceSource.GetProcessName(traceRecord.ProcessId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase) ||
-                    _traceSource.TraceSource.GetThreadName(traceRecord.ThreadId).Contains(_findBuffer, StringComparison.InvariantCultureIgnoreCase))
+                foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                {
+                    string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
+                    if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
                 {
                     setScrollIndex = visibleRowIndex;
                     _lastSelectedVisibleRowIndex = visibleRowIndex;
                     _selectedTraceRecordIds.Clear();
                     _selectedTraceRecordIds.Add(visibleTraceRecords.GetRecordId(visibleRowIndex));
                     break;
+}
                 }
 
                 visibleRowIndex = (_findFoward ? visibleRowIndex + 1 : visibleRowIndex - 1);

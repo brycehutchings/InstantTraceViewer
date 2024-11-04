@@ -13,6 +13,18 @@ namespace InstantTraceViewerUI
 {
     internal class LogcatTraceSource : ITraceSource
     {
+        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 8.75f };
+        private static readonly TraceSourceSchemaColumn ColumnPriority = new TraceSourceSchemaColumn { Name = "Priority", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = 5.75f };
+        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", Type = TraceSourceSchemaColumnType.Int, DefaultColumnSize = null };
+
+        private static readonly TraceSourceSchema _schema = new TraceSourceSchema
+        {
+            Columns = [ColumnProcess, ColumnThread, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage]
+        };
+
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
         private ListBuilder<TraceRecord> _traceRecords = new ListBuilder<TraceRecord>();
         private int _generationId = 0;
@@ -92,31 +104,39 @@ namespace InstantTraceViewerUI
             _tokenSource.Cancel();
         }
 
-        public string GetOpCodeName(byte opCode)
-        {
-            return string.Empty;
-        }
+        public TraceSourceSchema Schema => _schema;
 
-        public string GetKeywords(ulong keywords)
+        public string GetColumnString(TraceRecord traceRecord, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
-            return string.Empty;
-        }
+            if (column == ColumnProcess)
+            {
+                return
+                    traceRecord.ProcessId == -1 ? string.Empty :
+                    _processNames.TryGetValue(traceRecord.ProcessId, out string name) && !string.IsNullOrEmpty(name) ? $"{traceRecord.ProcessId} ({name})" : traceRecord.ProcessId.ToString();
+            }
+            else if (column == ColumnThread)
+            {
+                return traceRecord.ThreadId.ToString();
+            }
+            else if (column == ColumnPriority)
+            {
+                return traceRecord.Level.ToString();
+            }
+            else if (column == ColumnTime)
+            {
+                return traceRecord.Timestamp.ToString("HH:mm:ss.ffffff");
+            }
+            else if (column == ColumnTag)
+            {
+                return traceRecord.Name;
+            }
+            else if (column == ColumnMessage)
+            {
+                Debug.Assert(traceRecord.NamedValues.Length == 1);
+                return (string)traceRecord.NamedValues[0].Value;
+            }
 
-        public string GetProcessName(int processId)
-        {
-            return _processNames.TryGetValue(processId, out string name) && !string.IsNullOrEmpty(name) ? $"{processId} ({name})" : processId.ToString();
-
-        }
-
-        public string GetThreadName(int threadId)
-        {
-            return threadId.ToString();
-        }
-
-        public string GetMessage(NamedValue[] namedValues, bool allowMultiline)
-        {
-            Debug.Assert(namedValues.Length == 1);
-            return (string)namedValues[0].Value;
+            throw new NotImplementedException();
         }
 
         private async void ReadLogcatThread(AdbClient adbClient, DeviceData device)
@@ -144,9 +164,8 @@ namespace InstantTraceViewerUI
                                 androidLogEntry.Priority == Priority.Verbose ? TraceLevel.Verbose :
                                 androidLogEntry.Priority == Priority.Debug ? TraceLevel.Verbose :       // TODO: Should we add a Debug trace level to map into?
                                                                                 TraceLevel.Info,
-                            NamedValues = new[] { new NamedValue { Value = androidLogEntry.Message } },
+                            NamedValues = [new NamedValue { Value = androidLogEntry.Message }],
                             Name = androidLogEntry.Tag,
-                            ProviderName = ""
                         };
 
                         _traceRecordsLock.EnterWriteLock();
