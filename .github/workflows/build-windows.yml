@@ -42,7 +42,7 @@ jobs:
 
     - name: Build Everything
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
+      run: msbuild -m -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
 
     - name: Run Unit Tests
       run: dotnet test src/UnitTests/UnitTests.csproj --configuration Release
