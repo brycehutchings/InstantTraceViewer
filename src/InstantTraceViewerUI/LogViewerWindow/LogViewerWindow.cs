@@ -33,6 +33,9 @@ namespace InstantTraceViewerUI
         private TimelineWindow _timelineInline = null;
         private TimelineWindow _timelineWindow = null;
 
+        private int? _cellContentPopupTraceRecordId = null;
+        private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
+
         private string _findBuffer = string.Empty;
         private bool _findFoward = true;
         private bool _isDisposed;
@@ -266,7 +269,7 @@ namespace InstantTraceViewerUI
                                 ImGui.TableNextColumn();
                             }
 
-                            string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
+                            string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false).Replace('\n', ' ');
                             ImGui.TextUnformatted(displayText);
 
                             if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnIndex)
@@ -309,6 +312,36 @@ namespace InstantTraceViewerUI
                                 setColor(rowColor); // Resume color for remainder of row.
                             }
 
+                            // Double-click on a cell will pop up a read-only edit box so the user can read long content or copy parts of the text.
+                            {
+                                if (!string.IsNullOrEmpty(displayText))
+                                {
+                                    if (isRowHovered && hoveredCol == columnIndex && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+                                    {
+                                        ImGui.OpenPopup("CellContentPopup", ImGuiPopupFlags.AnyPopupLevel);
+                                        _cellContentPopupTraceRecordId = traceRecordId;
+                                        _cellContentPopupColumn = column;
+                                    }
+                                }
+
+                                if (_cellContentPopupTraceRecordId == traceRecordId && _cellContentPopupColumn == column)
+                                {
+                                    if (ImGui.BeginPopup("CellContentPopup", ImGuiWindowFlags.NoSavedSettings))
+                                    {
+                                        setColor(null); // Clear color back to default
+                                        RenderCellContentPopup(traceRecord, column);
+                                        setColor(rowColor); // Resume color
+                                        ImGui.EndPopup();
+                                    }
+                                    else
+                                    {
+                                        // User scrolled away from the row so it isn't being shown anymore.
+                                        _cellContentPopupTraceRecordId = null;
+                                        _cellContentPopupColumn = null;
+                                    }
+                                }
+                            }
+
                             columnIndex++;
                         }
 
@@ -347,12 +380,14 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void RenderMessagePopupContent(TraceRecord traceRecord, TraceSourceSchemaColumn column)
+        private void RenderCellContentPopup(TraceRecord traceRecord, TraceSourceSchemaColumn column)
         {
             string message = _traceSource.TraceSource.GetColumnString(traceRecord, column, true /*allow multiline*/);
 
+            // Analyze the text to measure it's width and height in pixels so we can pick a reasonable popup size within limits.
             string[] lines = message.Split('\n');
             float maxLineLength = lines.Max(line => ImGui.CalcTextSize(line).X);
+
             ImGui.InputTextMultiline(
                 "##Message",
                 ref message,
