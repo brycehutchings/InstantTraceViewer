@@ -59,9 +59,6 @@ namespace InstantTraceViewerUI
         TraceSourceSchema Schema { get; }
 
         string GetColumnString(TraceRecord traceRecord, TraceSourceSchemaColumn column, bool allowMultiline = false);
-        //DateTime GetColumnDateTime(TraceRecord traceRecord, TraceSourceSchemaColumn column);
-        //int GetColumnInt(TraceRecord traceRecord, TraceSourceSchemaColumn column); 
-        //NamedValue[] GetNamedValues(TraceRecord traceRecord, TraceSourceSchemaColumn column);
 
         bool CanClear { get; }
 

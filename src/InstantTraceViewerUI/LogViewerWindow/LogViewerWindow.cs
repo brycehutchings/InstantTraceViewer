@@ -605,13 +605,13 @@ namespace InstantTraceViewerUI
                 {
                     string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
                     if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    setScrollIndex = visibleRowIndex;
-                    _lastSelectedVisibleRowIndex = visibleRowIndex;
-                    _selectedTraceRecordIds.Clear();
-                    _selectedTraceRecordIds.Add(visibleTraceRecords.GetRecordId(visibleRowIndex));
-                    break;
-}
+                    {
+                        setScrollIndex = visibleRowIndex;
+                        _lastSelectedVisibleRowIndex = visibleRowIndex;
+                        _selectedTraceRecordIds.Clear();
+                        _selectedTraceRecordIds.Add(visibleTraceRecords.GetRecordId(visibleRowIndex));
+                        break;
+                    }
                 }
 
                 visibleRowIndex = (_findFoward ? visibleRowIndex + 1 : visibleRowIndex - 1);
