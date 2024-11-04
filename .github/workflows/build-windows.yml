@@ -45,4 +45,5 @@ jobs:
       run: msbuild -m -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
 
     # FIXME: ParseWinError excluded because C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\winerror.h is not found on the build agent.
-    run: dotnet test src/UnitTests/UnitTests.csproj --configuration Release --filter "FullyQualifiedName!~ParseWinError"
+    - name: Run Unit Tests
+      run: dotnet test src/UnitTests/UnitTests.csproj --configuration Release --filter "FullyQualifiedName!~ParseWinError"
