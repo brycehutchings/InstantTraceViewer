@@ -16,13 +16,28 @@ namespace InstantTraceViewerUI.Etw
     [Flags]
     internal enum KnownKeywords : ulong
     {
-        Telemetry         = 0x0000200000000000,
+        Telemetry = 0x0000200000000000,
         TelemetryCritical = 0x0000800000000000,
         TelemetryMeasures = 0x0000400000000000,
     }
 
     internal partial class EtwTraceSource : ITraceSource
     {
+        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", DefaultColumnSize = 6.25f };
+        private static readonly TraceSourceSchemaColumn ColumnOpCode = new TraceSourceSchemaColumn { Name = "OpCode", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnKeywords = new TraceSourceSchemaColumn { Name = "Keywords", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnName = new TraceSourceSchemaColumn { Name = "Name", DefaultColumnSize = 8.75f };
+        private static readonly TraceSourceSchemaColumn ColumnLevel = new TraceSourceSchemaColumn { Name = "Level", DefaultColumnSize = 3.75f };
+        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
+        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
+
+        private static readonly TraceSourceSchema _schema = new TraceSourceSchema
+        {
+            Columns = [ColumnProcess, ColumnThread, ColumnProvider, ColumnOpCode, ColumnKeywords, ColumnName, ColumnLevel, ColumnTime, ColumnMessage]
+        };
+
         private static HashSet<int> SessionNums = new();
 
         // Fixed name is used because ETW sessions can outlive their processes and there is a low system limit. This way we replace leaked sessions rather than creating new ones.
@@ -167,80 +182,99 @@ namespace InstantTraceViewerUI.Etw
 
         public string DisplayName { get; private set; }
 
-        public string GetOpCodeName(byte opCode)
-        {
-            return
-                opCode == 0 ? string.Empty :
-                opCode == 10 ? "Load" :
-                opCode == 11 ? "Terminate" :
-                                ((TraceEventOpcode)opCode).ToString();
-        }
+        public TraceSourceSchema Schema => _schema;
 
-        public string GetKeywords(ulong keywords)
+        public string GetColumnString(TraceRecord traceRecord, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
-            StringBuilder sb = new();
-            void AppendString(string value)
+            if (column == ColumnProcess)
             {
-                if (sb.Length > 0)
-                {
-                    sb.Append(", ");
-                }
-                sb.Append(value);
+                return
+                    traceRecord.ProcessId == -1 ? string.Empty :
+                    _processNames.TryGetValue(traceRecord.ProcessId, out string name) && !string.IsNullOrEmpty(name) ? $"{traceRecord.ProcessId} ({name})" : traceRecord.ProcessId.ToString();
             }
-
-            void AppendKnownKeyword(KnownKeywords knownKeyword)
+            else if (column == ColumnThread)
             {
-                if ((keywords & (ulong)knownKeyword) == (ulong)knownKeyword)
-                {
-                    AppendString(knownKeyword.ToString());
-                    keywords &= ~(ulong)knownKeyword;
-                }
+                return
+                    traceRecord.ThreadId == -1 ? string.Empty :
+                    _threadNames.TryGetValue(traceRecord.ThreadId, out string name) ? $"{traceRecord.ThreadId} ({name})" : traceRecord.ThreadId.ToString();
             }
-
-            AppendKnownKeyword(KnownKeywords.TelemetryMeasures);
-            AppendKnownKeyword(KnownKeywords.TelemetryCritical);
-            AppendKnownKeyword(KnownKeywords.Telemetry);
-            if (keywords != 0)
+            else if (column == ColumnProvider)
             {
-                AppendString(keywords.ToString("X"));
+                return traceRecord.ProviderName;
             }
-
-            return sb.ToString();
-        }
-
-        public string GetProcessName(int processId)
-        {
-            return
-                processId == -1 ? string.Empty :
-                _processNames.TryGetValue(processId, out string name) && !string.IsNullOrEmpty(name) ? $"{processId} ({name})" : processId.ToString();
-        }
-
-        public string GetThreadName(int threadId)
-        {
-            return
-                threadId == -1 ? string.Empty :
-                _threadNames.TryGetValue(threadId, out string name) ? $"{threadId} ({name})" : threadId.ToString();
-        }
-
-        public string GetMessage(NamedValue[] namedValues, bool allowMultiline)
-        {
-            // TODO: In the future it would be nice to make these tooltips over the field which is underlined like a hyperlink.
-            TryGetCustomizedValue tryGetCustomizedValue = (string name, object value, out string customValue) =>
+            else if (column == ColumnLevel)
             {
-                string friendlyName;
-                if (value is int intValue && CodeLookup.TryGetFriendlyName(name, intValue, out friendlyName))
+                return traceRecord.Level.ToString();
+            }
+            else if (column == ColumnTime)
+            {
+                return traceRecord.Timestamp.ToString("HH:mm:ss.ffffff");
+            }
+            else if (column == ColumnOpCode)
+            {
+                return
+                    traceRecord.OpCode == 0 ? string.Empty :
+                    traceRecord.OpCode == 10 ? "Load" :
+                    traceRecord.OpCode == 11 ? "Terminate" : ((TraceEventOpcode)traceRecord.OpCode).ToString();
+            }
+            else if (column == ColumnKeywords)
+            {
+                StringBuilder sb = new();
+                void AppendString(string value)
                 {
-                    customValue = intValue == 0 ? 
-                        $"0 [{friendlyName}]" :
-                        $"0x{intValue:X8} [{friendlyName}]";
-                    return true;
+                    if (sb.Length > 0)
+                    {
+                        sb.Append(", ");
+                    }
+                    sb.Append(value);
                 }
 
-                customValue = null;
-                return false;
-            };
+                ulong keywords = traceRecord.Keywords;
+                void AppendKnownKeyword(KnownKeywords knownKeyword)
+                {
+                    if ((keywords & (ulong)knownKeyword) == (ulong)knownKeyword)
+                    {
+                        AppendString(knownKeyword.ToString());
+                        keywords &= ~(ulong)knownKeyword;
+                    }
+                }
 
-            return NamedValue.GetCollectionString(namedValues, allowMultiline, tryGetCustomizedValue);
+                AppendKnownKeyword(KnownKeywords.TelemetryMeasures);
+                AppendKnownKeyword(KnownKeywords.TelemetryCritical);
+                AppendKnownKeyword(KnownKeywords.Telemetry);
+                if (keywords != 0)
+                {
+                    AppendString(keywords.ToString("X"));
+                }
+
+                return sb.ToString();
+            }
+            else if (column == ColumnName)
+            {
+                return traceRecord.Name;
+            }
+            else if (column == ColumnMessage)
+            {
+                // TODO: In the future it would be nice to make these tooltips over the field which is underlined like a hyperlink.
+                TryGetCustomizedValue tryGetCustomizedValue = (string name, object value, out string customValue) =>
+                {
+                    string friendlyName;
+                    if (value is int intValue && CodeLookup.TryGetFriendlyName(name, intValue, out friendlyName))
+                    {
+                        customValue = intValue == 0 ?
+                            $"0 [{friendlyName}]" :
+                            $"0x{intValue:X8} [{friendlyName}]";
+                        return true;
+                    }
+
+                    customValue = null;
+                    return false;
+                };
+
+                return NamedValue.GetCollectionString(traceRecord.NamedValues, allowMultiline, tryGetCustomizedValue);
+            }
+
+            throw new NotImplementedException();
         }
 
         public bool CanClear => _etwSource.IsRealTime;
