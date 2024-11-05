@@ -32,7 +32,7 @@ namespace InstantTraceViewerUI.Etw
         public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
         public static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
 
-        private static readonly TraceSourceSchema _schema = new TraceSourceSchema
+        private static readonly TraceTableSchema _schema = new TraceTableSchema
         {
             Columns = [ColumnProcess, ColumnThread, ColumnProvider, ColumnOpCode, ColumnKeywords, ColumnName, ColumnLevel, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime,
@@ -200,7 +200,7 @@ namespace InstantTraceViewerUI.Etw
             GC.Collect();
         }
 
-        public ITraceRecordSnapshot CreateSnapshot()
+        public ITraceTableSnapshot CreateSnapshot()
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.
             // It is important to not block the ETW event callback or events might get dropped.
@@ -226,7 +226,7 @@ namespace InstantTraceViewerUI.Etw
                     _traceRecords.Add(record);
                 }
 
-                return new EtwTraceRecordSnapshot
+                return new EtwTraceTableSnapshot
                 {
                     ProcessNames = _processNames,
                     ThreadNames = _threadNames,

@@ -1,7 +1,5 @@
 ﻿using System;
-using System.CodeDom;
 using System.Collections.Generic;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
@@ -15,9 +13,9 @@ namespace InstantTraceViewerUI
         Verbose,
     }
 
-    public interface ITraceRecordSnapshot
+    public interface ITraceTableSnapshot
     {
-        TraceSourceSchema Schema { get; }
+        TraceTableSchema Schema { get; }
 
         /// <summary>
         /// The number of trace records in the snapshot.
@@ -43,7 +41,7 @@ namespace InstantTraceViewerUI
 
         void Clear();
 
-        ITraceRecordSnapshot CreateSnapshot();
+        ITraceTableSnapshot CreateSnapshot();
     }
 
     public class TraceSourceSchemaColumn
@@ -57,7 +55,7 @@ namespace InstantTraceViewerUI
         public float? DefaultColumnSize { get; init; }
     }
 
-    public class TraceSourceSchema
+    public class TraceTableSchema
     {
         public IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
 
@@ -67,9 +65,9 @@ namespace InstantTraceViewerUI
         public TraceSourceSchemaColumn? TimestampColumn { get; init; }
     }
 
-    public static class TraceRecordSnapshotExtensions
+    public static class TraceTableSnapshotExtensions
     {
-        public static DateTime GetTimestamp(this ITraceRecordSnapshot snapshot, int rowIndex)
+        public static DateTime GetTimestamp(this ITraceTableSnapshot snapshot, int rowIndex)
         {
             if (snapshot.Schema.TimestampColumn == null)
             {

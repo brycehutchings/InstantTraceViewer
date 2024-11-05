@@ -20,7 +20,7 @@ namespace InstantTraceViewerUI.Logcat
         public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
         public static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
 
-        private static readonly TraceSourceSchema _schema = new TraceSourceSchema
+        private static readonly TraceTableSchema _schema = new TraceTableSchema
         {
             Columns = [ColumnProcess, ColumnThread, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime
@@ -82,13 +82,13 @@ namespace InstantTraceViewerUI.Logcat
             }
         }
 
-        public ITraceRecordSnapshot CreateSnapshot()
+        public ITraceTableSnapshot CreateSnapshot()
         {
             // ToImmutable and Add on the ImmutableList appear to not be threadsafe. Once we make an immutable list, it should be safe to continue modifying the builder.
             _traceRecordsLock.EnterReadLock();
             try
             {
-                return new LogcatRecordSnapshot
+                return new LogcatTraceTableSnapshot
                 {
                     ProcessNames = _processNames,
                     RecordSnapshot = _traceRecords.CreateSnapshot(),

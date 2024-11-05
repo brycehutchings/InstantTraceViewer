@@ -13,10 +13,10 @@ namespace InstantTraceViewerUI
     {
         private ListBuilder<int> _visibleRowsBuilder = new();
         private int _lastViewerRulesGenerationId = -1;
-        protected ITraceRecordSnapshot? _lastUnfilteredTraceRecordSnapshot = null;
+        protected ITraceTableSnapshot? _lastUnfilteredTraceRecordSnapshot = null;
         protected int _errorCount = 0;
 
-        public bool Update(ViewerRules viewerRules, ITraceRecordSnapshot newSnapshot)
+        public bool Update(ViewerRules viewerRules, ITraceTableSnapshot newSnapshot)
         {
             bool rebuildFilteredView =
                 newSnapshot.GenerationId != (_lastUnfilteredTraceRecordSnapshot?.GenerationId ?? 0) ||
@@ -69,7 +69,7 @@ namespace InstantTraceViewerUI
         protected IReadOnlyList<int> _visibleRowsSnapshot;
         protected int _errorCount = 0;
 
-        public FilteredTraceRecordCollectionView(ITraceRecordSnapshot unfilteredSnapshot, IReadOnlyList<int> visibleRowsSnapshot, int errorCount)
+        public FilteredTraceRecordCollectionView(ITraceTableSnapshot unfilteredSnapshot, IReadOnlyList<int> visibleRowsSnapshot, int errorCount)
         {
             _visibleRowsSnapshot = visibleRowsSnapshot;
             _errorCount = errorCount;
@@ -86,7 +86,7 @@ namespace InstantTraceViewerUI
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         #endregion
 
-        public ITraceRecordSnapshot UnfilteredSnapshot { get; init; }
+        public ITraceTableSnapshot UnfilteredSnapshot { get; init; }
 
         public int ErrorCount => _errorCount;
     }

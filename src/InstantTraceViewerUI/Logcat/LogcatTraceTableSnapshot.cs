@@ -4,14 +4,14 @@ using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Logcat
 {
-    class LogcatRecordSnapshot : ITraceRecordSnapshot
+    class LogcatTraceTableSnapshot : ITraceTableSnapshot
     {
         public IReadOnlyDictionary<int, string> ProcessNames { get; init; }
 
         public ListBuilderSnapshot<LogcatRecord> RecordSnapshot { get; init; }
 
         #region ITraceRecordSnapshot
-        public TraceSourceSchema Schema { get; init; }
+        public TraceTableSchema Schema { get; init; }
 
         public int RowCount => RecordSnapshot.Count;
 
@@ -53,7 +53,12 @@ namespace InstantTraceViewerUI.Logcat
 
         public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
         {
-            throw new NotImplementedException();
+            if (column != LogcatTraceSource.ColumnTime)
+            {
+                throw new NotSupportedException();
+            }
+
+            return RecordSnapshot[rowIndex].Timestamp;
         }
         #endregion
     }

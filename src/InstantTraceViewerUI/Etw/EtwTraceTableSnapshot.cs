@@ -6,7 +6,7 @@ using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
-    class EtwTraceRecordSnapshot : ITraceRecordSnapshot
+    class EtwTraceTableSnapshot : ITraceTableSnapshot
     {
         public IReadOnlyDictionary<int, string> ThreadNames { get; init; }
         public IReadOnlyDictionary<int, string> ProcessNames { get; init; }
@@ -14,7 +14,7 @@ namespace InstantTraceViewerUI.Etw
         public ListBuilderSnapshot<EtwRecord> RecordSnapshot { get; init; }
 
         #region ITraceRecordSnapshot
-        public TraceSourceSchema Schema { get; init; }
+        public TraceTableSchema Schema { get; init; }
 
         public int RowCount => RecordSnapshot.Count;
 
@@ -117,7 +117,12 @@ namespace InstantTraceViewerUI.Etw
 
         public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
         {
-            throw new NotImplementedException();
+            if (column != EtwTraceSource.ColumnTime)
+            {
+                throw new NotSupportedException();
+            }
+
+            return RecordSnapshot[rowIndex].Timestamp;
         }
         #endregion
     }
