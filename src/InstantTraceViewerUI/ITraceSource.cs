@@ -1,4 +1,5 @@
 ﻿using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using InstantTraceViewer;
 
@@ -14,62 +15,40 @@ namespace InstantTraceViewerUI
         Verbose,
     }
 
-    public struct TraceRecord
+    public interface ITraceRecordSnapshot
     {
-        public int ProcessId;
-
-        public int ThreadId;
-
-        public TraceLevel Level;
-
-        public string ProviderName;
-
-        public string Name;
-
-        public NamedValue[] NamedValues;
-
-        public byte OpCode;
-
-        public ulong Keywords;
-
-        public DateTime Timestamp;
-    }
-
-    public struct TraceRecordSnapshot
-    {
-        public TraceRecordSnapshot()
-        {
-            Records = Array.Empty<TraceRecord>();
-            GenerationId = -1;
-        }
-
-        public IReadOnlyList<TraceRecord> Records;
+        TraceSourceSchema Schema { get; }
 
         /// <summary>
-        /// This will increment if existing records have been modified or removed.
+        /// The number of trace records in the snapshot.
+        /// </summary>
+        int RowCount { get; }
+
+        /// <summary>
+        /// This will increment if existing records have been modified or removed or the schema has changed.
         /// This does not increase if new records are added, so it should be a rare event.
         /// </summary>
-        public int GenerationId;
+        int GenerationId { get; }
+
+        string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false);
+
+        DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column);
     }
 
     public interface ITraceSource : IDisposable
     {
         string DisplayName { get; }
 
-        TraceSourceSchema Schema { get; }
-
-        string GetColumnString(TraceRecord traceRecord, TraceSourceSchemaColumn column, bool allowMultiline = false);
-
         bool CanClear { get; }
 
         void Clear();
 
-        TraceRecordSnapshot CreateSnapshot();
+        ITraceRecordSnapshot CreateSnapshot();
     }
 
     public class TraceSourceSchemaColumn
     {
-        public string Name { get; init;  }
+        public string Name { get; init; }
 
         /// <summary>
         /// Size is multipled by the current font height in pixels.
@@ -81,5 +60,23 @@ namespace InstantTraceViewerUI
     public class TraceSourceSchema
     {
         public IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
+
+        /// <summary>
+        /// The column which represents the timestamp of the trace record.
+        /// </summary>
+        public TraceSourceSchemaColumn? TimestampColumn { get; init; }
+    }
+
+    public static class TraceRecordSnapshotExtensions
+    {
+        public static DateTime GetTimestamp(this ITraceRecordSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.TimestampColumn == null)
+            {
+                throw new Exception("The schema does not have a timestamp column.");
+            }
+
+            return snapshot.GetColumnDateTime(rowIndex, snapshot.Schema.TimestampColumn);
+        }
     }
 }

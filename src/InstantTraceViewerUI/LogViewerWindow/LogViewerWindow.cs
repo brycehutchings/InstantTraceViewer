@@ -20,12 +20,12 @@ namespace InstantTraceViewerUI
         private ViewerRules _viewerRules = new();
         private FilteredTraceRecordCollectionBuilder _filteredTraceRecordsBuilder = new();
 
-        private HashSet<int> _selectedTraceRecordIds = new HashSet<int>();
+        private HashSet<int> _selectedUnfilteredRowIndices = new HashSet<int>();
         private int? _lastSelectedVisibleRowIndex;
-        private int? _topmostVisibleTraceRecordId;
+        private int? _topmostDisplayedUnfilteredRowIndex;
 
-        private int? _topmostVisibleTraceRecordIndex;
-        private int? _bottommostVisibleTraceRecordIndex;
+        private int? _topmostDisplayedVisibleRowIndex;
+        private int? _bottommostDisplayedVisibleRowIndex;
 
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
@@ -33,7 +33,7 @@ namespace InstantTraceViewerUI
         private TimelineWindow _timelineInline = null;
         private TimelineWindow _timelineWindow = null;
 
-        private int? _cellContentPopupTraceRecordId = null;
+        private int? _cellContentPopupUnfilteredRowIndex = null;
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
 
         private string _findBuffer = string.Empty;
@@ -63,7 +63,7 @@ namespace InstantTraceViewerUI
             }
 
             bool filteredViewRebuilt = _filteredTraceRecordsBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
-            FilteredTraceRecordCollectionView filteredTraceRecordsSnapshot = _filteredTraceRecordsBuilder.Snapshot();
+            FilteredTraceRecordCollectionView visibleTraceRecordsSnapshot = _filteredTraceRecordsBuilder.Snapshot();
 
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -71,19 +71,24 @@ namespace InstantTraceViewerUI
             bool opened = true;
             if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
             {
-                DrawWindowContents(uiCommands, filteredTraceRecordsSnapshot, filteredViewRebuilt);
+                DrawWindowContents(uiCommands, visibleTraceRecordsSnapshot, filteredViewRebuilt);
             }
 
             ImGui.End();
 
             if (_timelineWindow != null)
             {
+                Func<int /* filtered index */, DateTime?> getTimestamp = (int visibleRowIndex) =>
+                    visibleTraceRecordsSnapshot.UnfilteredSnapshot.GetColumnDateTime(
+                        visibleTraceRecordsSnapshot[visibleRowIndex],
+                        visibleTraceRecordsSnapshot.UnfilteredSnapshot.Schema.TimestampColumn);
+
                 // The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < filteredTraceRecordsSnapshot.Count ?
-                    filteredTraceRecordsSnapshot[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
-                DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < filteredTraceRecordsSnapshot.Count ?
-                    filteredTraceRecordsSnapshot[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
-                if (!_timelineWindow.DrawWindow(uiCommands, filteredTraceRecordsSnapshot, startWindow, endWindow))
+                DateTime ? startWindow = _topmostDisplayedVisibleRowIndex.HasValue && _topmostDisplayedVisibleRowIndex < visibleTraceRecordsSnapshot.Count ?
+                    getTimestamp(_topmostDisplayedVisibleRowIndex.Value) : null;
+                DateTime? endWindow = _bottommostDisplayedVisibleRowIndex.HasValue && _bottommostDisplayedVisibleRowIndex < visibleTraceRecordsSnapshot.Count ?
+                    getTimestamp(_bottommostDisplayedVisibleRowIndex.Value) : null;
+                if (!_timelineWindow.DrawWindow(uiCommands, visibleTraceRecordsSnapshot, startWindow, endWindow))
                 {
                     _timelineWindow = null;
                 }
@@ -104,10 +109,10 @@ namespace InstantTraceViewerUI
             if (_timelineInline != null)
             {
                 // The topmost/bottommost record index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostVisibleTraceRecordIndex.HasValue && _topmostVisibleTraceRecordIndex < visibleTraceRecords.Count ?
-                    visibleTraceRecords[_topmostVisibleTraceRecordIndex.Value].Timestamp : null;
-                DateTime? endWindow = _bottommostVisibleTraceRecordIndex.HasValue && _bottommostVisibleTraceRecordIndex < visibleTraceRecords.Count ?
-                    visibleTraceRecords[_bottommostVisibleTraceRecordIndex.Value].Timestamp : null;
+                DateTime? startWindow = _topmostDisplayedVisibleRowIndex.HasValue && _topmostDisplayedVisibleRowIndex < visibleTraceRecords.Count ?
+                    visibleTraceRecords.UnfilteredSnapshot.GetTimestamp(visibleTraceRecords[_topmostDisplayedVisibleRowIndex.Value]) : null;
+                DateTime? endWindow = _bottommostDisplayedVisibleRowIndex.HasValue && _bottommostDisplayedVisibleRowIndex < visibleTraceRecords.Count ?
+                    visibleTraceRecords.UnfilteredSnapshot.GetTimestamp(visibleTraceRecords[_bottommostDisplayedVisibleRowIndex.Value]) : null;
                 _timelineInline.DrawTimelineGraph(visibleTraceRecords, startWindow, endWindow);
             }
 
@@ -115,7 +120,7 @@ namespace InstantTraceViewerUI
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
 
-            if (ImGui.BeginTable("TraceRecords", _traceSource.TraceSource.Schema.Columns.Count,
+            if (ImGui.BeginTable("TraceRecords", visibleTraceRecords.UnfilteredSnapshot.Schema.Columns.Count,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
                 ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
                 ImGuiTableFlags.Hideable))
@@ -123,7 +128,7 @@ namespace InstantTraceViewerUI
                 float dpiBase = ImGui.GetFontSize();
 
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                foreach (var column in visibleTraceRecords.UnfilteredSnapshot.Schema.Columns)
                 {
                     if (column.DefaultColumnSize.HasValue)
                     {
@@ -157,7 +162,7 @@ namespace InstantTraceViewerUI
                 };
 
                 // Maintain scroll position when the view was rebuilt. The scroll will happen after the table is drawn so that the row height can be used to calculate the scroll offset.
-                if (filteredViewRebuilt && _topmostVisibleTraceRecordId.HasValue)
+                if (filteredViewRebuilt && _topmostDisplayedUnfilteredRowIndex.HasValue)
                 {
                     Debug.WriteLine("Trying to maintain scroll position...");
 
@@ -165,7 +170,7 @@ namespace InstantTraceViewerUI
                     // TODO: This could be a binary search.
                     for (int i = 0; i < visibleTraceRecords.Count; i++)
                     {
-                        if (visibleTraceRecords.GetRecordId(i) >= _topmostVisibleTraceRecordId)
+                        if (visibleTraceRecords[i] >= _topmostDisplayedUnfilteredRowIndex)
                         {
                             Debug.WriteLine($"Scrolling to index {i} / {visibleTraceRecords.Count}");
                             // If we're trying to precisely maintain the content after the count has changed, we need to account for the partial row scroll.
@@ -179,9 +184,9 @@ namespace InstantTraceViewerUI
                 ImGuiMultiSelectIOPtr multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
                 ApplyMultiSelectRequests(visibleTraceRecords, multiselectIO);
 
-                _topmostVisibleTraceRecordId = null;
-                _topmostVisibleTraceRecordIndex = null;
-                _bottommostVisibleTraceRecordIndex = null;
+                _topmostDisplayedUnfilteredRowIndex = null;
+                _topmostDisplayedVisibleRowIndex = null;
+                _bottommostDisplayedVisibleRowIndex = null;
 
                 int? newHoveredProcessId = null, newHoveredThreadId = null;
                 _tableClipper.Begin(visibleTraceRecords.Count);
@@ -195,13 +200,14 @@ namespace InstantTraceViewerUI
                             setScrollIndex = null;
                         }
 
-                        TraceRecord traceRecord = visibleTraceRecords[i];
-                        int traceRecordId = visibleTraceRecords.GetRecordId(i);
+                        //TraceRecordIndex traceRecord = visibleTraceRecords[i];
+                        int unfilteredRowIndex = visibleTraceRecords[i];
 
-                        ImGui.PushID(traceRecordId);
+                        ImGui.PushID(unfilteredRowIndex);
 
                         ImGui.TableNextRow();
 
+                        /*
                         if (traceRecord.ProcessId == _hoveredProcessId)
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 0);
@@ -210,8 +216,9 @@ namespace InstantTraceViewerUI
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 1);
                         }
+                        */
 
-                        Vector4 rowColor = LevelToColor(traceRecord.Level);
+                        Vector4 rowColor = LevelToColor(TraceLevel.Info); //traceRecord.Level);
                         setColor(rowColor);
 
                         ImGui.TableNextColumn();
@@ -221,7 +228,7 @@ namespace InstantTraceViewerUI
                         ImGui.SetNextItemSelectionUserData(i);
 
                         // Create an empty selectable that spans the full row to enable row selection.
-                        bool isSelected = _selectedTraceRecordIds.Contains(traceRecordId);
+                        bool isSelected = _selectedUnfilteredRowIndices.Contains(unfilteredRowIndex);
                         if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                         {
                             _lastSelectedVisibleRowIndex = i;
@@ -229,23 +236,23 @@ namespace InstantTraceViewerUI
 
                         if (ImGui.IsItemVisible())
                         {
-                            if (_topmostVisibleTraceRecordId == null)
+                            if (_topmostDisplayedUnfilteredRowIndex == null)
                             {
-                                _topmostVisibleTraceRecordId = traceRecordId;
+                                _topmostDisplayedUnfilteredRowIndex = unfilteredRowIndex;
                             }
-                            if (_topmostVisibleTraceRecordIndex == null)
+                            if (_topmostDisplayedVisibleRowIndex == null)
                             {
-                                _topmostVisibleTraceRecordIndex = i;
+                                _topmostDisplayedVisibleRowIndex = i;
                             }
 
-                            _bottommostVisibleTraceRecordIndex = i;
+                            _bottommostDisplayedVisibleRowIndex = i;
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
                         bool isRowHovered = ImGui.IsItemHovered();
                         int hoveredCol = ImGui.TableGetHoveredColumn();
 
-                        if (isRowHovered)
+                        /*if (isRowHovered)
                         {
                             if (hoveredCol == 0)
                             {
@@ -255,10 +262,10 @@ namespace InstantTraceViewerUI
                             {
                                 newHoveredThreadId = traceRecord.ThreadId;
                             }
-                        }
+                        }*/
 
                         int columnIndex = 0;
-                        foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                        foreach (var column in visibleTraceRecords.UnfilteredSnapshot.Schema.Columns)
                         {
                             if (columnIndex == 0)
                             {
@@ -269,7 +276,7 @@ namespace InstantTraceViewerUI
                                 ImGui.TableNextColumn();
                             }
 
-                            string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false).Replace('\n', ' ');
+                            string displayText = visibleTraceRecords.UnfilteredSnapshot.GetColumnString(unfilteredRowIndex, column, allowMultiline: false).Replace('\n', ' ');
                             ImGui.TextUnformatted(displayText);
 
                             if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnIndex)
@@ -282,8 +289,8 @@ namespace InstantTraceViewerUI
                                 setColor(null);
 
                                 // This is a delegate because we need to pass this to the lambda rule to run it on arbitrary rows and not this specific row.
-                                Func<TraceRecord, string> getColumnText = (traceRecordEval) =>
-                                    _traceSource.TraceSource.GetColumnString(traceRecordEval, column, allowMultiline: false);
+                                Func<int, string> getColumnText = (unfilteredRowIndex) =>
+                                    visibleTraceRecords.UnfilteredSnapshot.GetColumnString(unfilteredRowIndex, column, allowMultiline: false);
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
 
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
@@ -319,24 +326,24 @@ namespace InstantTraceViewerUI
                                     if (isRowHovered && hoveredCol == columnIndex && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
                                     {
                                         ImGui.OpenPopup("CellContentPopup", ImGuiPopupFlags.AnyPopupLevel);
-                                        _cellContentPopupTraceRecordId = traceRecordId;
+                                        _cellContentPopupUnfilteredRowIndex = unfilteredRowIndex;
                                         _cellContentPopupColumn = column;
                                     }
                                 }
 
-                                if (_cellContentPopupTraceRecordId == traceRecordId && _cellContentPopupColumn == column)
+                                if (_cellContentPopupUnfilteredRowIndex == unfilteredRowIndex && _cellContentPopupColumn == column)
                                 {
                                     if (ImGui.BeginPopup("CellContentPopup", ImGuiWindowFlags.NoSavedSettings))
                                     {
                                         setColor(null); // Clear color back to default
-                                        RenderCellContentPopup(traceRecord, column);
+                                        RenderCellContentPopup(visibleTraceRecords, unfilteredRowIndex, column);
                                         setColor(rowColor); // Resume color
                                         ImGui.EndPopup();
                                     }
                                     else
                                     {
                                         // User scrolled away from the row so it isn't being shown anymore.
-                                        _cellContentPopupTraceRecordId = null;
+                                        _cellContentPopupUnfilteredRowIndex = null;
                                         _cellContentPopupColumn = null;
                                     }
                                 }
@@ -380,9 +387,9 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void RenderCellContentPopup(TraceRecord traceRecord, TraceSourceSchemaColumn column)
+        private void RenderCellContentPopup(FilteredTraceRecordCollectionView visibleTraceRecords, int unfilteredRowIndex, TraceSourceSchemaColumn column)
         {
-            string message = _traceSource.TraceSource.GetColumnString(traceRecord, column, true /*allow multiline*/);
+            string message = visibleTraceRecords.UnfilteredSnapshot.GetColumnString(unfilteredRowIndex, column, true /*allow multiline*/);
 
             // Analyze the text to measure it's width and height in pixels so we can pick a reasonable popup size within limits.
             string[] lines = message.Split('\n');
@@ -415,14 +422,14 @@ namespace InstantTraceViewerUI
                 long endIndex = Math.Max(req.RangeFirstItem, req.RangeLastItem);
                 for (long i = startIndex; i <= endIndex; i++)
                 {
-                    int recordId = visibleTraceRecords.GetRecordId((int)i);
+                    int unfilteredRowIndex = visibleTraceRecords[(int)i];
                     if (req.Selected)
                     {
-                        _selectedTraceRecordIds.Add(recordId);
+                        _selectedUnfilteredRowIndices.Add(unfilteredRowIndex);
                     }
                     else
                     {
-                        _selectedTraceRecordIds.Remove(recordId);
+                        _selectedUnfilteredRowIndices.Remove(unfilteredRowIndex);
                     }
                 }
             }
@@ -430,7 +437,7 @@ namespace InstantTraceViewerUI
 
         private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceRecordCollectionView visibleTraceRecords, ref int? setScrollIndex)
         {
-            ImGui.BeginDisabled(!_selectedTraceRecordIds.Any());
+            ImGui.BeginDisabled(!_selectedUnfilteredRowIndices.Any());
             if (ImGui.Button("Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
             {
                 CopySelectedRows(visibleTraceRecords);
@@ -444,7 +451,7 @@ namespace InstantTraceViewerUI
                 {
                     _traceSource.TraceSource.Clear();
                     _lastSelectedVisibleRowIndex = null;
-                    _selectedTraceRecordIds.Clear();
+                    _selectedUnfilteredRowIndices.Clear();
 
                     // Updating the filtered trace records so it will see the generation id changed and clear itself.
                     _filteredTraceRecordsBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
@@ -513,10 +520,10 @@ namespace InstantTraceViewerUI
 
             ImGui.SameLine();
             ImGui.Text($"{visibleTraceRecords.Count:N0} rows");
-            if (visibleTraceRecords.Count != visibleTraceRecords.UnfilteredCount)
+            if (visibleTraceRecords.Count != visibleTraceRecords.UnfilteredSnapshot.RowCount)
             {
                 ImGui.SameLine();
-                ImGui.Text($"({visibleTraceRecords.UnfilteredCount - visibleTraceRecords.Count:N0} excluded)");
+                ImGui.Text($"({visibleTraceRecords.UnfilteredSnapshot.RowCount - visibleTraceRecords.Count:N0} excluded)");
             }
 
             if (visibleTraceRecords.ErrorCount > 0)
@@ -568,12 +575,10 @@ namespace InstantTraceViewerUI
         {
             StringBuilder copyText = new();
 
-            foreach (var selectedRecordId in _selectedTraceRecordIds.OrderBy(i => i))
+            foreach (var unfilteredRowIndex in _selectedUnfilteredRowIndices.OrderBy(i => i))
             {
-                TraceRecord traceRecord = visibleTraceRecords.GetRecordFromId(selectedRecordId);
-
                 bool isFirstColumn = true;
-                foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                foreach (var column in visibleTraceRecords.UnfilteredSnapshot.Schema.Columns)
                 {
                     if (!isFirstColumn)
                     {
@@ -581,7 +586,7 @@ namespace InstantTraceViewerUI
                     }
                     isFirstColumn = false;
 
-                    string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
+                    string displayText = visibleTraceRecords.UnfilteredSnapshot.GetColumnString(unfilteredRowIndex, column, allowMultiline: false);
                     copyText.Append(displayText);
                 }
                 copyText.AppendLine();
@@ -599,17 +604,17 @@ namespace InstantTraceViewerUI
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : visibleTraceRecords.Count - 1);
             while (visibleRowIndex >= 0 && visibleRowIndex < visibleTraceRecords.Count)
             {
-                TraceRecord traceRecord = visibleTraceRecords[visibleRowIndex];
+                int unfilteredRowIndex = visibleTraceRecords[visibleRowIndex];
 
-                foreach (var column in _traceSource.TraceSource.Schema.Columns)
+                foreach (var column in visibleTraceRecords.UnfilteredSnapshot.Schema.Columns)
                 {
-                    string displayText = _traceSource.TraceSource.GetColumnString(traceRecord, column, allowMultiline: false);
+                    string displayText = visibleTraceRecords.UnfilteredSnapshot.GetColumnString(unfilteredRowIndex, column, allowMultiline: false);
                     if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
                     {
                         setScrollIndex = visibleRowIndex;
                         _lastSelectedVisibleRowIndex = visibleRowIndex;
-                        _selectedTraceRecordIds.Clear();
-                        _selectedTraceRecordIds.Add(visibleTraceRecords.GetRecordId(visibleRowIndex));
+                        _selectedUnfilteredRowIndices.Clear();
+                        _selectedUnfilteredRowIndices.Add(unfilteredRowIndex);
                         break;
                     }
                 }

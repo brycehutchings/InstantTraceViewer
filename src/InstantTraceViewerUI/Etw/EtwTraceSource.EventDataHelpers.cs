@@ -9,9 +9,9 @@ namespace InstantTraceViewerUI.Etw
         // The ETW parser calls the kernel event provider "MSNT_SystemTrace" but we rename to Kernel for simplicity.
         private readonly static Guid SystemProvider = Guid.Parse("{9e814aad-3204-11d2-9a82-006008a86939}");
 
-        private static TraceRecord CreateBaseTraceRecord(TraceEvent data)
+        private static EtwRecord CreateBaseTraceRecord(TraceEvent data)
         {
-            var newRecord = new TraceRecord();
+            var newRecord = new EtwRecord();
             newRecord.ProcessId = data.ProcessID;
             newRecord.ThreadId = data.ThreadID;
             newRecord.Timestamp = data.TimeStamp;

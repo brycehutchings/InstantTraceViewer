@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI
         // TODO: Needed later for editing rules.
         // public string Rule { get; }
 
-        public Func<TraceRecord, bool> IsMatch { get; set; }
+        public Func<int, bool> IsMatch { get; set; }
     }
 
     internal record TraceRecordVisibleRule(TraceRecordRule Rule, TraceRecordRuleAction Action);
@@ -30,12 +30,12 @@ namespace InstantTraceViewerUI
 
         public int GenerationId { get; set; } = 1;
 
-        public TraceRecordRuleAction GetVisibleAction(TraceRecord record)
+        public TraceRecordRuleAction GetVisibleAction(int unfilteredRowIndex)
         {
             TraceRecordRuleAction defaultAction = TraceRecordRuleAction.Include;
             foreach (var rule in VisibleRules)
             {
-                if (rule.Rule.IsMatch(record))
+                if (rule.Rule.IsMatch(unfilteredRowIndex))
                 {
                     return rule.Action;
                 }

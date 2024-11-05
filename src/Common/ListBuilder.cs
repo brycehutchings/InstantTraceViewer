@@ -61,13 +61,15 @@ namespace InstantTraceViewer
     /// <typeparam name="TItem"></typeparam>
     public class ListBuilder<TItem>
     {
+        private readonly int _blockSize;
         private List<TItem[]> _blocks = new List<TItem[]>();
         private IReadOnlyList<TItem[]> _blocksSnapshotCopy = null;
         private int _lastBlockIndex = 0;
 
         public ListBuilder(int blockSize = 16 * 1024)
         {
-            _blocks.Add(new TItem[blockSize]);
+            _blockSize = blockSize;
+            _blocks.Add(new TItem[_blockSize]);
         }
 
         public void Add(TItem item)

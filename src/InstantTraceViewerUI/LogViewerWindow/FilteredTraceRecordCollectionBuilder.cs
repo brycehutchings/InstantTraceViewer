@@ -1,7 +1,7 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
@@ -13,30 +13,32 @@ namespace InstantTraceViewerUI
     {
         private ListBuilder<int> _visibleRowsBuilder = new();
         private int _lastViewerRulesGenerationId = -1;
-        protected TraceRecordSnapshot _lastUnfilteredTraceRecordSnapshot = new TraceRecordSnapshot();
+        protected ITraceRecordSnapshot? _lastUnfilteredTraceRecordSnapshot = null;
         protected int _errorCount = 0;
 
-        public bool Update(ViewerRules viewerRules, TraceRecordSnapshot newSnapshot)
+        public bool Update(ViewerRules viewerRules, ITraceRecordSnapshot newSnapshot)
         {
             bool rebuildFilteredView =
-                newSnapshot.GenerationId != _lastUnfilteredTraceRecordSnapshot.GenerationId ||
+                newSnapshot.GenerationId != (_lastUnfilteredTraceRecordSnapshot?.GenerationId ?? 0) ||
                 viewerRules.GenerationId != _lastViewerRulesGenerationId;
             if (rebuildFilteredView)
             {
                 Debug.WriteLine("Rebuilding visible rows...");
                 _visibleRowsBuilder = new ListBuilder<int>();
-                _lastUnfilteredTraceRecordSnapshot = new TraceRecordSnapshot();
+                _lastUnfilteredTraceRecordSnapshot = null;
                 _errorCount = 0;
             }
 
-            for (int i = _lastUnfilteredTraceRecordSnapshot.Records.Count; i < newSnapshot.Records.Count; i++)
+            for (int i = (_lastUnfilteredTraceRecordSnapshot?.RowCount ?? 0); i < newSnapshot.RowCount; i++)
             {
-                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(newSnapshot.Records[i]) == TraceRecordRuleAction.Include)
+                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(i) == TraceRecordRuleAction.Include)
                 {
+                    /*
                     if (newSnapshot.Records[i].Level == TraceLevel.Error)
                     {
                         _errorCount++;
                     }
+                    */
 
                     _visibleRowsBuilder.Add(i);
                 }
@@ -62,35 +64,30 @@ namespace InstantTraceViewerUI
     /// <summary>
     /// A read-only view of the trace records that are included by the user's rules.
     /// </summary>
-    class FilteredTraceRecordCollectionView : IReadOnlyList<TraceRecord>
+    class FilteredTraceRecordCollectionView : IReadOnlyList<int>
     {
-        protected IReadOnlyList<int> _visibleRowsSnapshot = new int[0];
-        protected TraceRecordSnapshot _unfilteredSnapshot = new TraceRecordSnapshot();
+        protected IReadOnlyList<int> _visibleRowsSnapshot;
         protected int _errorCount = 0;
 
-        public FilteredTraceRecordCollectionView(TraceRecordSnapshot unfilteredSnapshot, IReadOnlyList<int> visibleRowsSnapshot, int errorCount)
+        public FilteredTraceRecordCollectionView(ITraceRecordSnapshot unfilteredSnapshot, IReadOnlyList<int> visibleRowsSnapshot, int errorCount)
         {
             _visibleRowsSnapshot = visibleRowsSnapshot;
-            _unfilteredSnapshot = unfilteredSnapshot;
             _errorCount = errorCount;
+            UnfilteredSnapshot = unfilteredSnapshot;
         }
 
-        #region IReadOnlyList<TraceRecord>
-        public TraceRecord this[int index] => _unfilteredSnapshot.Records[GetRecordId(index)];
-
-        public int GetRecordId(int index) => _visibleRowsSnapshot[index];
-
-        public TraceRecord GetRecordFromId(int recordId) => _unfilteredSnapshot.Records[recordId];
+        #region IReadOnlyList<int>
+        public int this[int traceSourceIndex] => _visibleRowsSnapshot[traceSourceIndex];
 
         public int Count => _visibleRowsSnapshot.Count;
 
-        public IEnumerator<TraceRecord> GetEnumerator() => _visibleRowsSnapshot.Select(i => _unfilteredSnapshot.Records[i]).GetEnumerator();
+        public IEnumerator<int> GetEnumerator() => _visibleRowsSnapshot.GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         #endregion
 
-        public int ErrorCount => _errorCount;
+        public ITraceRecordSnapshot UnfilteredSnapshot { get; init; }
 
-        public int UnfilteredCount => _unfilteredSnapshot.Records.Count;
+        public int ErrorCount => _errorCount;
     }
 }

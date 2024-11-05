@@ -56,7 +56,7 @@ namespace InstantTraceViewerUI
         public void DrawTimelineGraph(FilteredTraceRecordCollectionView visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
         {
             int sectionCount = (int)ImGui.GetContentRegionAvail().X / PixelsPerSection;
-            if (sectionCount <= 0 || visibleTraceRecords.Count == 0)
+            if (sectionCount <= 0 || visibleTraceRecords.Count == 0 || visibleTraceRecords.UnfilteredSnapshot.Schema.TimestampColumn == null )
             {
                 return;
             }
@@ -118,7 +118,7 @@ namespace InstantTraceViewerUI
                 }
 
                 // Render text showing the time offset from the start of the visible trace records.
-                string startTimeOffsetStr = GetSmartDurationString(startWindow.Value - visibleTraceRecords.First().Timestamp);
+                string startTimeOffsetStr = GetSmartDurationString(startWindow.Value - visibleTraceRecords.UnfilteredSnapshot.GetTimestamp(visibleTraceRecords.First()));
                 float startTimeOffsetStrWidth = ImGui.CalcTextSize(startTimeOffsetStr).X;
                 float barWidth = ImGui.GetContentRegionAvail().X;
                 Vector2 cursorPos = ImGui.GetCursorPos();
@@ -143,8 +143,8 @@ namespace InstantTraceViewerUI
         static private ComputedTimeline ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollectionView visibleTraceRecords)
         {
             ComputedTimeline newComputedTimeline = new();
-            newComputedTimeline.StartTime = visibleTraceRecords.First().Timestamp;
-            newComputedTimeline.EndTime = visibleTraceRecords.Last().Timestamp;
+            newComputedTimeline.StartTime = visibleTraceRecords.UnfilteredSnapshot.GetTimestamp(visibleTraceRecords.First());
+            newComputedTimeline.EndTime = visibleTraceRecords.UnfilteredSnapshot.GetTimestamp(visibleTraceRecords.Last());
 
             int[] errorCounts = new int[sectionCount];
             int[] warningCounts = new int[sectionCount];
@@ -161,12 +161,13 @@ namespace InstantTraceViewerUI
             //var sw = Stopwatch.StartNew();
             for (int i = 0; i < visibleTraceRecords.Count; i++)
             {
-                TraceRecord traceRecord = visibleTraceRecords[i];
-                int sectionIndex = (int)((traceRecord.Timestamp - newComputedTimeline.StartTime).Ticks / ticksPerSection);
+                int rowIndex = visibleTraceRecords[i];
+                int sectionIndex = (int)((visibleTraceRecords.UnfilteredSnapshot.GetTimestamp(rowIndex) - newComputedTimeline.StartTime).Ticks / ticksPerSection);
 
                 // Due to rounding errors the sectionIndex can go too high. Protect against too low in case there is a rogue event that is not in chronological order.
                 sectionIndex = Math.Clamp(sectionIndex, 0, sectionCount - 1);
 
+                /*
                 if (traceRecord.Level == TraceLevel.Error || traceRecord.Level == TraceLevel.Critical)
                 {
                     errorCounts[sectionIndex]++;
@@ -179,7 +180,7 @@ namespace InstantTraceViewerUI
                 {
                     verboseCounts[sectionIndex]++;
                 }
-                else
+                else*/
                 {
                     otherCounts[sectionIndex]++;
                 }

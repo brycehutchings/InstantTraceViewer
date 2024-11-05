@@ -276,7 +276,7 @@ namespace InstantTraceViewerUI
                         {
                             if (ImGui.MenuItem("Open logcat"))
                             {
-                                var logcat = new LogcatTraceSource(_adbClient, device);
+                                var logcat = new Logcat.LogcatTraceSource(_adbClient, device);
                                 _logViewerWindows.Add(new LogViewerWindow(logcat));
                             }
                             ImGui.EndMenu();
