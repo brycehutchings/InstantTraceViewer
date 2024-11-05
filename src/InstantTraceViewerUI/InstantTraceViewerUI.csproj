@@ -13,6 +13,18 @@
     <Nullable>disable</Nullable>
     <UseWindowsForms>True</UseWindowsForms>
     <ApplicationIcon>Assets\Logo.ico</ApplicationIcon>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- Cannot trim as long as WinForms is used for MessageBox.Show -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- _SuppressWinFormsTrimError will get rid of the publish error but then it fails at runtime. The error is legit. -->
+    <_SuppressWinFormsTrimError>false</_SuppressWinFormsTrimError>
+
+    <!-- And SelfContained is 250MB without trimming instead of "only" 100MB -->
+    <SelfContained>false</SelfContained>
+
+    <!-- And the app crashes on startup when PublishSingleFile is true -->
+    <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\DroidSans-Bold.ttf" />
