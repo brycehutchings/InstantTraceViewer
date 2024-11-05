@@ -13,6 +13,19 @@
     <Nullable>disable</Nullable>
     <UseWindowsForms>True</UseWindowsForms>
     <ApplicationIcon>Assets\Logo.ico</ApplicationIcon>
+    <PublishReadyToRun>true</PublishReadyToRun>
+
+    <!-- Cannot trim as long as WinForms is used for MessageBox.Show -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!-- _SuppressWinFormsTrimError will get rid of the publish error but then it fails at runtime. The error is legit. -->
+    <_SuppressWinFormsTrimError>false</_SuppressWinFormsTrimError>
+
+    <!-- And SelfContained is 250MB without trimming instead of "only" 100MB -->
+    <SelfContained>false</SelfContained>
+
+    <!-- The app has very slow initial startup time when publishing as a single file (~40MB) -->
+    <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\DroidSans-Bold.ttf" />
@@ -43,10 +56,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\cimgui.dll">
+    <Content Include="$(ProjectDir)\..\cimgui\$(Platform)\$(Configuration)\cimgui.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\InstantTraceViewerNative.dll">
+    <Content Include="$(ProjectDir)\..\InstantTraceViewerNative\$(Platform)\$(Configuration)\InstantTraceViewerNative.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

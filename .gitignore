@@ -4,3 +4,4 @@ obj/
 x64/
 ARM64/
 *.vcxproj.user
+*.pubxml.user

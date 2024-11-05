@@ -13,7 +13,7 @@ Instant Trace Viewer is a developer tool collecting and viewing traces and logs.
 To clone the repository, use the following command in your terminal:
 
 ```bash
-git clone --recurse-submodules https://github.com/brycehutchings/InstantTraceViewer
+git clone https://github.com/brycehutchings/InstantTraceViewer --recursive
 ```
 
 If you forget to use `--recurse-submodules` when cloning, you can use the following command to update the submodules:
@@ -21,3 +21,10 @@ If you forget to use `--recurse-submodules` when cloning, you can use the follow
 ```bash
 git submodule update --init --recursive
 ```
+
+## Latest Builds
+
+These are the latest builds produced by this project's GitHub Actions pipeline.
+
+* Download [InstantTraceViewer-x64.zip](https://nightly.link/brycehutchings/InstantTraceViewer/workflows/build-windows/main/InstantTraceViewer-x64.zip)
+* Download [InstantTraceViewer-ARM64.zip](https://nightly.link/brycehutchings/InstantTraceViewer/workflows/build-windows/main/InstantTraceViewer-ARM64.zip)
