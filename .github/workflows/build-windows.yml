@@ -32,13 +32,13 @@ jobs:
 
     - name: Publish UI
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 .\src\InstantTraceViewerUI\InstantTraceViewerUI.csproj
+      run: msbuild -m -target:Publish -p:NoWarn=1591 -p:PublishProfile=src\InstantTraceViewerUI\Properties\PublishProfiles\win-${{ matrix.platform }}.pubxml .\src\InstantTraceViewerUI\InstantTraceViewerUI.csproj
 
     - name: Upload Instant Trace Viewer
       uses: actions/upload-artifact@v3
       with:
         name: InstantTraceViewer-${{ matrix.platform }}
-        path: src/InstantTraceViewerUI/bin/${{ matrix.platform }}/Release/net8.0-windows10.0.22621.0
+        path: src/InstantTraceViewerUI/bin/${{ matrix.platform }}/Release/net8.0-windows10.0.22621.0/publish
 
     - name: Build Everything
       working-directory: ${{env.GITHUB_WORKSPACE}}
