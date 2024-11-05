@@ -14,6 +14,7 @@
     <UseWindowsForms>True</UseWindowsForms>
     <ApplicationIcon>Assets\Logo.ico</ApplicationIcon>
     <PublishReadyToRun>true</PublishReadyToRun>
+
     <!-- Cannot trim as long as WinForms is used for MessageBox.Show -->
     <PublishTrimmed>false</PublishTrimmed>
 
@@ -23,7 +24,7 @@
     <!-- And SelfContained is 250MB without trimming instead of "only" 100MB -->
     <SelfContained>false</SelfContained>
 
-    <!-- And the app crashes on startup when PublishSingleFile is true -->
+    <!-- The app has very slow initial startup time when publishing as a single file (~40MB) -->
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup>
@@ -55,10 +56,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\cimgui.dll">
+    <Content Include="$(ProjectDir)\..\cimgui\$(Platform)\$(Configuration)\cimgui.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(SolutionDir)\$(Platform)\$(Configuration)\InstantTraceViewerNative.dll">
+    <Content Include="$(ProjectDir)\..\InstantTraceViewerNative\$(Platform)\$(Configuration)\InstantTraceViewerNative.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
