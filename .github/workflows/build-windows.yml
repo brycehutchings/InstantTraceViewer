@@ -27,8 +27,7 @@ jobs:
       uses: microsoft/setup-msbuild@v1.0.2
 
     - name: Restore NuGet packages
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore InstantTraceViewer.sln
+      run: dotnet restore InstantTraceViewer.sln
 
     - name: Publish UI
       working-directory: ${{env.GITHUB_WORKSPACE}}
