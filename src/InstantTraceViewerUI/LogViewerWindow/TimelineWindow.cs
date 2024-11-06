@@ -23,7 +23,7 @@ namespace InstantTraceViewerUI
         // The data that is computed on a background thread and rendered on the UI thread.
         class ComputedTimeline
         {
-            public int LastFilteredTraceRecordCount;
+            public int LastVisibleTraceTableRowCount;
             public uint[] ColorsBars;
             public DateTime StartTime;
             public DateTime EndTime;
@@ -38,14 +38,14 @@ namespace InstantTraceViewerUI
             _windowId = _nextWindowId++;
         }
 
-        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceRecordCollectionView visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
+        public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
 
             if (ImGui.Begin($"{PopupName} - {_name}###Timeline_{_windowId}", ref _open))
             {
-                DrawTimelineGraph(visibleTraceRecords, startWindow, endWindow);
+                DrawTimelineGraph(traceTable, startWindow, endWindow);
             }
 
             ImGui.End();
@@ -53,10 +53,10 @@ namespace InstantTraceViewerUI
             return _open;
         }
 
-        public void DrawTimelineGraph(FilteredTraceRecordCollectionView visibleTraceRecords, DateTime? startWindow, DateTime? endWindow)
+        public void DrawTimelineGraph(ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
             int sectionCount = (int)ImGui.GetContentRegionAvail().X / PixelsPerSection;
-            if (sectionCount <= 0 || visibleTraceRecords.Count == 0)
+            if (sectionCount <= 0 || traceTable.RowCount == 0 || traceTable.Schema.TimestampColumn == null )
             {
                 return;
             }
@@ -73,9 +73,9 @@ namespace InstantTraceViewerUI
             // If the background processing of the timeline is not running and the snapshot is out of date, start a new background task.
             if (_nextComputedTimelineTask == null)
             {
-                if (computedTimelineSnapshot == null || computedTimelineSnapshot.ColorsBars.Length != sectionCount || computedTimelineSnapshot.LastFilteredTraceRecordCount != visibleTraceRecords.Count)
+                if (computedTimelineSnapshot == null || computedTimelineSnapshot.ColorsBars.Length != sectionCount || computedTimelineSnapshot.LastVisibleTraceTableRowCount != traceTable.RowCount)
                 {
-                    _nextComputedTimelineTask = Task.Run(() => ProcessTraceRecords(sectionCount, visibleTraceRecords));
+                    _nextComputedTimelineTask = Task.Run(() => ProcessTraceTable(sectionCount, traceTable));
                 }
             }
 
@@ -117,8 +117,8 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                // Render text showing the time offset from the start of the visible trace records.
-                string startTimeOffsetStr = GetSmartDurationString(startWindow.Value - visibleTraceRecords.First().Timestamp);
+                // Render text showing the time offset from the start of the visible trace rows.
+                string startTimeOffsetStr = GetSmartDurationString(startWindow.Value - traceTable.GetTimestamp(0));
                 float startTimeOffsetStrWidth = ImGui.CalcTextSize(startTimeOffsetStr).X;
                 float barWidth = ImGui.GetContentRegionAvail().X;
                 Vector2 cursorPos = ImGui.GetCursorPos();
@@ -140,11 +140,11 @@ namespace InstantTraceViewerUI
             return ticksPerBar == 0 ? 0 : (int)((timestamp - _computedTimeline.StartTime).Ticks / ticksPerBar);
         }
 
-        static private ComputedTimeline ProcessTraceRecords(int sectionCount, FilteredTraceRecordCollectionView visibleTraceRecords)
+        static private ComputedTimeline ProcessTraceTable(int sectionCount, ITraceTableSnapshot visibleTraceTable)
         {
             ComputedTimeline newComputedTimeline = new();
-            newComputedTimeline.StartTime = visibleTraceRecords.First().Timestamp;
-            newComputedTimeline.EndTime = visibleTraceRecords.Last().Timestamp;
+            newComputedTimeline.StartTime = visibleTraceTable.GetTimestamp(0);
+            newComputedTimeline.EndTime = visibleTraceTable.GetTimestamp(visibleTraceTable.RowCount - 1);
 
             int[] errorCounts = new int[sectionCount];
             int[] warningCounts = new int[sectionCount];
@@ -159,33 +159,40 @@ namespace InstantTraceViewerUI
             }
 
             //var sw = Stopwatch.StartNew();
-            for (int i = 0; i < visibleTraceRecords.Count; i++)
+            for (int i = 0; i < visibleTraceTable.RowCount; i++)
             {
-                TraceRecord traceRecord = visibleTraceRecords[i];
-                int sectionIndex = (int)((traceRecord.Timestamp - newComputedTimeline.StartTime).Ticks / ticksPerSection);
+                int sectionIndex = (int)((visibleTraceTable.GetTimestamp(i) - newComputedTimeline.StartTime).Ticks / ticksPerSection);
 
                 // Due to rounding errors the sectionIndex can go too high. Protect against too low in case there is a rogue event that is not in chronological order.
                 sectionIndex = Math.Clamp(sectionIndex, 0, sectionCount - 1);
 
-                if (traceRecord.Level == TraceLevel.Error || traceRecord.Level == TraceLevel.Critical)
+                if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
                 {
-                    errorCounts[sectionIndex]++;
-                }
-                else if (traceRecord.Level == TraceLevel.Warning)
-                {
-                    warningCounts[sectionIndex]++;
-                }
-                else if (traceRecord.Level == TraceLevel.Verbose)
-                {
-                    verboseCounts[sectionIndex]++;
+                    UnifiedLevel level = visibleTraceTable.GetUnifiedLevel(i);
+                    if (level == UnifiedLevel.Error || level == UnifiedLevel.Fatal)
+                    {
+                        errorCounts[sectionIndex]++;
+                    }
+                    else if (level == UnifiedLevel.Warning)
+                    {
+                        warningCounts[sectionIndex]++;
+                    }
+                    else if (level == UnifiedLevel.Verbose)
+                    {
+                        verboseCounts[sectionIndex]++;
+                    }
+                    else
+                    {
+                        otherCounts[sectionIndex]++;
+                    }
                 }
                 else
                 {
                     otherCounts[sectionIndex]++;
                 }
             }
-            //Trace.WriteLine($"Processed {visibleTraceRecords.Count} records in {sw.ElapsedMilliseconds}ms");
-            // Currently processes about 83.4k records per millisecond on my PC.
+            //Trace.WriteLine($"Processed {traceTable.Count} rows in {sw.ElapsedMilliseconds}ms");
+            // Currently processes about 83.4k rows per millisecond on my PC.
 
             int maxErrors = errorCounts.Max();
             int maxWarnings = warningCounts.Max();
@@ -194,7 +201,7 @@ namespace InstantTraceViewerUI
             int maxNonError = Math.Max(maxVerboses, maxOthers);
 
             newComputedTimeline.ColorsBars = new uint[sectionCount];
-            newComputedTimeline.LastFilteredTraceRecordCount = visibleTraceRecords.Count;
+            newComputedTimeline.LastVisibleTraceTableRowCount = visibleTraceTable.RowCount;
 
             for (int i = 0; i < sectionCount; i++)
             {

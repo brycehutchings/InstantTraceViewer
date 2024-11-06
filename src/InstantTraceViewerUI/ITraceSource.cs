@@ -1,75 +1,58 @@
 ﻿using System;
 using System.Collections.Generic;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
-    public enum TraceLevel
+    /// <summary>
+    /// A unified level that all sources can use for a special level column type used for colorization.
+    /// </summary>
+    public enum UnifiedLevel
     {
-        Always,
-        Critical,
+        Fatal,
         Error,
         Warning,
         Info,
         Verbose,
     }
 
-    public struct TraceRecord
+    public interface ITraceTableSnapshot
     {
-        public int ProcessId;
-
-        public int ThreadId;
-
-        public TraceLevel Level;
-
-        public string ProviderName;
-
-        public string Name;
-
-        public NamedValue[] NamedValues;
-
-        public byte OpCode;
-
-        public ulong Keywords;
-
-        public DateTime Timestamp;
-    }
-
-    public struct TraceRecordSnapshot
-    {
-        public TraceRecordSnapshot()
-        {
-            Records = Array.Empty<TraceRecord>();
-            GenerationId = -1;
-        }
-
-        public IReadOnlyList<TraceRecord> Records;
+        TraceTableSchema Schema { get; }
 
         /// <summary>
-        /// This will increment if existing records have been modified or removed.
-        /// This does not increase if new records are added, so it should be a rare event.
+        /// The number of rows in the snapshot.
         /// </summary>
-        public int GenerationId;
+        int RowCount { get; }
+
+        /// <summary>
+        /// This will increment if existing rows have been modified or removed or the schema has changed.
+        /// This does not increase if new rows are added, so it should be a rare event.
+        /// </summary>
+        int GenerationId { get; }
+
+        string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false);
+
+        DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column);
+
+        int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column);
+
+        UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column);
     }
 
     public interface ITraceSource : IDisposable
     {
         string DisplayName { get; }
 
-        TraceSourceSchema Schema { get; }
-
-        string GetColumnString(TraceRecord traceRecord, TraceSourceSchemaColumn column, bool allowMultiline = false);
-
         bool CanClear { get; }
 
         void Clear();
 
-        TraceRecordSnapshot CreateSnapshot();
+        ITraceTableSnapshot CreateSnapshot();
     }
 
     public class TraceSourceSchemaColumn
     {
-        public string Name { get; init;  }
+        public string Name { get; init; }
 
         /// <summary>
         /// Size is multipled by the current font height in pixels.
@@ -78,8 +61,71 @@ namespace InstantTraceViewerUI
         public float? DefaultColumnSize { get; init; }
     }
 
-    public class TraceSourceSchema
+    public class TraceTableSchema
     {
         public IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
+
+        /// <summary>
+        /// The column which represents the timestamp of a row. Must support queries using GetColumnDateTime.
+        /// </summary>
+        public TraceSourceSchemaColumn? TimestampColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the level/severity/priority of a row. Must support queries using GetColumnUnifiedLevel.
+        /// </summary>
+        public TraceSourceSchemaColumn? UnifiedLevelColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the process id of a row. Must support queries using GetColumnInt.
+        /// </summary>
+        public TraceSourceSchemaColumn? ProcessIdColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the thread id of a row. Must support queries using GetColumnInt.
+        /// </summary>
+        public TraceSourceSchemaColumn? ThreadIdColumn { get; init; }
+    }
+
+    public static class TraceTableSnapshotExtensions
+    {
+        public static DateTime GetTimestamp(this ITraceTableSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.TimestampColumn == null)
+            {
+                throw new Exception("The schema does not have a timestamp column.");
+            }
+
+            return snapshot.GetColumnDateTime(rowIndex, snapshot.Schema.TimestampColumn);
+        }
+
+        public static UnifiedLevel GetUnifiedLevel(this ITraceTableSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.UnifiedLevelColumn == null)
+            {
+                throw new Exception("The schema does not have a unified level column.");
+            }
+
+            return snapshot.GetColumnUnifiedLevel(rowIndex, snapshot.Schema.UnifiedLevelColumn);
+        }
+
+        public static int GetProcessId(this ITraceTableSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.ProcessIdColumn == null)
+            {
+                throw new Exception("The schema does not have a process id column.");
+            }
+
+            return snapshot.GetColumnInt(rowIndex, snapshot.Schema.ProcessIdColumn);
+        }
+
+        public static int GetThreadId(this ITraceTableSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.ThreadIdColumn == null)
+            {
+                throw new Exception("The schema does not have a thread id column.");
+            }
+
+            return snapshot.GetColumnInt(rowIndex, snapshot.Schema.ThreadIdColumn);
+        }
     }
 }

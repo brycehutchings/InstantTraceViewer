@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Threading;
 using InstantTraceViewer;
 
@@ -23,19 +22,23 @@ namespace InstantTraceViewerUI.Etw
 
     internal partial class EtwTraceSource : ITraceSource
     {
-        private static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", DefaultColumnSize = 6.25f };
-        private static readonly TraceSourceSchemaColumn ColumnOpCode = new TraceSourceSchemaColumn { Name = "OpCode", DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnKeywords = new TraceSourceSchemaColumn { Name = "Keywords", DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnName = new TraceSourceSchemaColumn { Name = "Name", DefaultColumnSize = 8.75f };
-        private static readonly TraceSourceSchemaColumn ColumnLevel = new TraceSourceSchemaColumn { Name = "Level", DefaultColumnSize = 3.75f };
-        private static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
-        private static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
+        public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", DefaultColumnSize = 6.25f };
+        public static readonly TraceSourceSchemaColumn ColumnOpCode = new TraceSourceSchemaColumn { Name = "OpCode", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnKeywords = new TraceSourceSchemaColumn { Name = "Keywords", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnName = new TraceSourceSchemaColumn { Name = "Name", DefaultColumnSize = 8.75f };
+        public static readonly TraceSourceSchemaColumn ColumnLevel = new TraceSourceSchemaColumn { Name = "Level", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
+        public static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
 
-        private static readonly TraceSourceSchema _schema = new TraceSourceSchema
+        private static readonly TraceTableSchema _schema = new TraceTableSchema
         {
-            Columns = [ColumnProcess, ColumnThread, ColumnProvider, ColumnOpCode, ColumnKeywords, ColumnName, ColumnLevel, ColumnTime, ColumnMessage]
+            Columns = [ColumnProcess, ColumnThread, ColumnProvider, ColumnOpCode, ColumnKeywords, ColumnName, ColumnLevel, ColumnTime, ColumnMessage],
+            TimestampColumn = ColumnTime,
+            UnifiedLevelColumn = ColumnLevel,
+            ProcessIdColumn = ColumnProcess,
+            ThreadIdColumn = ColumnThread,
         };
 
         private static HashSet<int> SessionNums = new();
@@ -51,10 +54,10 @@ namespace InstantTraceViewerUI.Etw
         private readonly Thread _processingThread;
 
         private readonly ReaderWriterLockSlim _pendingTraceRecordsLock = new ReaderWriterLockSlim();
-        private List<TraceRecord> _pendingTraceRecords = new();
+        private List<EtwRecord> _pendingTraceRecords = new();
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
-        private ListBuilder<TraceRecord> _traceRecords = new ListBuilder<TraceRecord>();
+        private ListBuilder<EtwRecord> _traceRecords = new ListBuilder<EtwRecord>();
         private int _generationId = 1;
 
         private ConcurrentDictionary<int, string> _threadNames = new();
@@ -84,7 +87,7 @@ namespace InstantTraceViewerUI.Etw
             _processingThread.Start();
         }
 
-        private void AddEvent(TraceRecord record)
+        private void AddEvent(EtwRecord record)
         {
             _pendingTraceRecordsLock.EnterWriteLock();
             try
@@ -109,7 +112,7 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new TraceRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
+                AddEvent(new EtwRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
             }
         }
 
@@ -182,101 +185,6 @@ namespace InstantTraceViewerUI.Etw
 
         public string DisplayName { get; private set; }
 
-        public TraceSourceSchema Schema => _schema;
-
-        public string GetColumnString(TraceRecord traceRecord, TraceSourceSchemaColumn column, bool allowMultiline = false)
-        {
-            if (column == ColumnProcess)
-            {
-                return
-                    traceRecord.ProcessId == -1 ? string.Empty :
-                    _processNames.TryGetValue(traceRecord.ProcessId, out string name) && !string.IsNullOrEmpty(name) ? $"{traceRecord.ProcessId} ({name})" : traceRecord.ProcessId.ToString();
-            }
-            else if (column == ColumnThread)
-            {
-                return
-                    traceRecord.ThreadId == -1 ? string.Empty :
-                    _threadNames.TryGetValue(traceRecord.ThreadId, out string name) ? $"{traceRecord.ThreadId} ({name})" : traceRecord.ThreadId.ToString();
-            }
-            else if (column == ColumnProvider)
-            {
-                return traceRecord.ProviderName;
-            }
-            else if (column == ColumnLevel)
-            {
-                return traceRecord.Level.ToString();
-            }
-            else if (column == ColumnTime)
-            {
-                return traceRecord.Timestamp.ToString("HH:mm:ss.ffffff");
-            }
-            else if (column == ColumnOpCode)
-            {
-                return
-                    traceRecord.OpCode == 0 ? string.Empty :
-                    traceRecord.OpCode == 10 ? "Load" :
-                    traceRecord.OpCode == 11 ? "Terminate" : ((TraceEventOpcode)traceRecord.OpCode).ToString();
-            }
-            else if (column == ColumnKeywords)
-            {
-                StringBuilder sb = new();
-                void AppendString(string value)
-                {
-                    if (sb.Length > 0)
-                    {
-                        sb.Append(", ");
-                    }
-                    sb.Append(value);
-                }
-
-                ulong keywords = traceRecord.Keywords;
-                void AppendKnownKeyword(KnownKeywords knownKeyword)
-                {
-                    if ((keywords & (ulong)knownKeyword) == (ulong)knownKeyword)
-                    {
-                        AppendString(knownKeyword.ToString());
-                        keywords &= ~(ulong)knownKeyword;
-                    }
-                }
-
-                AppendKnownKeyword(KnownKeywords.TelemetryMeasures);
-                AppendKnownKeyword(KnownKeywords.TelemetryCritical);
-                AppendKnownKeyword(KnownKeywords.Telemetry);
-                if (keywords != 0)
-                {
-                    AppendString(keywords.ToString("X"));
-                }
-
-                return sb.ToString();
-            }
-            else if (column == ColumnName)
-            {
-                return traceRecord.Name;
-            }
-            else if (column == ColumnMessage)
-            {
-                // TODO: In the future it would be nice to make these tooltips over the field which is underlined like a hyperlink.
-                TryGetCustomizedValue tryGetCustomizedValue = (string name, object value, out string customValue) =>
-                {
-                    string friendlyName;
-                    if (value is int intValue && CodeLookup.TryGetFriendlyName(name, intValue, out friendlyName))
-                    {
-                        customValue = intValue == 0 ?
-                            $"0 [{friendlyName}]" :
-                            $"0x{intValue:X8} [{friendlyName}]";
-                        return true;
-                    }
-
-                    customValue = null;
-                    return false;
-                };
-
-                return NamedValue.GetCollectionString(traceRecord.NamedValues, allowMultiline, tryGetCustomizedValue);
-            }
-
-            throw new NotImplementedException();
-        }
-
         public bool CanClear => _etwSource.IsRealTime;
 
         public void Clear()
@@ -295,11 +203,11 @@ namespace InstantTraceViewerUI.Etw
             GC.Collect();
         }
 
-        public TraceRecordSnapshot CreateSnapshot()
+        public ITraceTableSnapshot CreateSnapshot()
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.
             // It is important to not block the ETW event callback or events might get dropped.
-            List<TraceRecord> pendingTraceRecordsLocal;
+            List<EtwRecord> pendingTraceRecordsLocal;
             _pendingTraceRecordsLock.EnterWriteLock();
             try
             {
@@ -321,10 +229,13 @@ namespace InstantTraceViewerUI.Etw
                     _traceRecords.Add(record);
                 }
 
-                return new TraceRecordSnapshot
+                return new EtwTraceTableSnapshot
                 {
+                    ProcessNames = _processNames,
+                    ThreadNames = _threadNames,
+                    RecordSnapshot = _traceRecords.CreateSnapshot(),
                     GenerationId = _generationId,
-                    Records = _traceRecords.CreateSnapshot()
+                    Schema = _schema,
                 };
             }
             finally
@@ -333,7 +244,7 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
-        private void UpdateProcessNameTable(IReadOnlyList<TraceRecord> traceRecords)
+        private void UpdateProcessNameTable(IReadOnlyList<EtwRecord> traceRecords)
         {
             // Microsoft.Diagnostics.Tracing will track process names when the Kernel provider is enabled, otherwise we need to do it.
             // If this is not a realtime session, then no point in trying to look up process names--they could be from a different machine or be reused at this point.

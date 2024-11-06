@@ -229,11 +229,18 @@ namespace InstantTraceViewerUI
                                 {
                                     Settings.AddRecentlyOpenedWprp(file);
 
-                                    // TODO: Show selector window of profiles and their providers. Allow user to uncheck things first.
-                                    var wprp = Etw.Wprp.Load(file);
-                                    var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
+                                    try
+                                    {
+                                        // TODO: Show selector window of profiles and their providers. Allow user to uncheck things first.
+                                        var wprp = Etw.Wprp.Load(file);
+                                        var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
 
-                                    _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                                        _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        MessageBox.Show($"Failed to open .WPRP file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    }
                                 }
                             }
 
@@ -276,7 +283,7 @@ namespace InstantTraceViewerUI
                         {
                             if (ImGui.MenuItem("Open logcat"))
                             {
-                                var logcat = new LogcatTraceSource(_adbClient, device);
+                                var logcat = new Logcat.LogcatTraceSource(_adbClient, device);
                                 _logViewerWindows.Add(new LogViewerWindow(logcat));
                             }
                             ImGui.EndMenu();
