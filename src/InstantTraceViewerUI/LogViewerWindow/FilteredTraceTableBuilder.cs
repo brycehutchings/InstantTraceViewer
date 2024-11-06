@@ -31,7 +31,7 @@ namespace InstantTraceViewerUI
 
             for (int i = (_lastUnfilteredTraceRecordSnapshot?.RowCount ?? 0); i < newSnapshot.RowCount; i++)
             {
-                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(i) == TraceRowRuleAction.Include)
+                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(newSnapshot, i) == TraceRowRuleAction.Include)
                 {
                     if (newSnapshot.Schema.UnifiedLevelColumn != null)
                     {
@@ -68,50 +68,41 @@ namespace InstantTraceViewerUI
     /// </summary>
     class FilteredTraceTableSnapshot : ITraceTableSnapshot
     {
-        private ITraceTableSnapshot _fullTraceTableSnapshot { get; init; }
         private IReadOnlyList<int> _visibleRowIndiciesSnapshot;
-        private int _errorCount = 0;
 
         public FilteredTraceTableSnapshot(ITraceTableSnapshot fullTraceTableSnapshot, IReadOnlyList<int> visibleRowIndiciesSnapshot, int errorCount)
         {
-            _fullTraceTableSnapshot = fullTraceTableSnapshot;
+            FullTable = fullTraceTableSnapshot;
+            ErrorCount = errorCount;
             _visibleRowIndiciesSnapshot = visibleRowIndiciesSnapshot;
-            _errorCount = errorCount;
         }
 
-        public int ErrorCount => _errorCount;
+        public int ErrorCount { get; private init; }
+
+        public ITraceTableSnapshot FullTable { get; private init; }
 
         public int GetFullTableRowIndex(int filteredRowIndex)
-        {
-            return _visibleRowIndiciesSnapshot[filteredRowIndex];
-        }
+            => _visibleRowIndiciesSnapshot[filteredRowIndex];
 
-        public ITraceTableSnapshot FullTable => _fullTraceTableSnapshot;
+        public string GetColumnString(int filteredRowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+            => FullTable.GetColumnString(GetFullTableRowIndex(filteredRowIndex), column, allowMultiline);
 
-        public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
-        {
-            return _fullTraceTableSnapshot.GetColumnString(GetFullTableRowIndex(rowIndex), column, allowMultiline);
-        }
+        public int GetColumnInt(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnInt(GetFullTableRowIndex(filteredRowIndex), column);
 
-        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            return _fullTraceTableSnapshot.GetColumnInt(GetFullTableRowIndex(rowIndex), column);
-        }
+        public DateTime GetColumnDateTime(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnDateTime(GetFullTableRowIndex(filteredRowIndex), column);
 
-        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            return _fullTraceTableSnapshot.GetColumnDateTime(GetFullTableRowIndex(rowIndex), column);
-        }
+        public UnifiedLevel GetColumnUnifiedLevel(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnUnifiedLevel(GetFullTableRowIndex(filteredRowIndex), column);
 
-        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            return _fullTraceTableSnapshot.GetColumnUnifiedLevel(GetFullTableRowIndex(rowIndex), column);
-        }
+        public TraceTableSchema Schema
+            => FullTable.Schema;
 
-        public TraceTableSchema Schema => _fullTraceTableSnapshot.Schema;
+        public int RowCount
+            => _visibleRowIndiciesSnapshot.Count;
 
-        public int RowCount => _visibleRowIndiciesSnapshot.Count;
-
-        public int GenerationId => _fullTraceTableSnapshot.GenerationId;
+        public int GenerationId
+            => FullTable.GenerationId;
     }
 }

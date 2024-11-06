@@ -72,7 +72,6 @@ namespace InstantTraceViewerUI.Logcat
                priority == Priority.Warn ? UnifiedLevel.Warning :
                priority == Priority.Verbose ? UnifiedLevel.Verbose :
                priority == Priority.Debug ? UnifiedLevel.Verbose : UnifiedLevel.Info;
-
         #endregion
     }
 }

@@ -25,7 +25,8 @@ namespace InstantTraceViewerUI
         // The last row that was selected by the user. This is used to start searching from the next row.
         private int? _lastSelectedVisibleRowIndex;
 
-        // The row index of the top-most row that that is rendered. This is used to maintain scroll position when the view is rebuilt.
+        // The row index into the full table of the top-most row that that is rendered.
+        // This is used to maintain scroll position when the view is rebuilt and so the full table index is used to find the closest row after filtering changes.
         private int? _topmostRenderedFullTableRowIndex;
 
         // The topmost/bottommost row index that is rendered. This is used show the current viewed span of rows in the timeline window.
@@ -36,7 +37,6 @@ namespace InstantTraceViewerUI
         private int? _hoveredThreadId;
 
         private TimelineWindow _timelineInline = null;
-        private TimelineWindow _timelineWindow = null;
 
         private int? _cellContentPopupFullTableRowIndex = null;
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
@@ -80,19 +80,6 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.End();
-
-            if (_timelineWindow != null)
-            {
-                // The topmost/bottommost displayed row index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostRenderedVisibleRowIndex.HasValue && _topmostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
-                    visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
-                DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
-                    visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
-                if (!_timelineWindow.DrawWindow(uiCommands, visibleTraceTable, startWindow, endWindow))
-                {
-                    _timelineWindow = null;
-                }
-            }
 
             if (!opened)
             {
@@ -292,15 +279,15 @@ namespace InstantTraceViewerUI
                                 setColor(null);
 
                                 // This is a delegate because we need to pass this to the lambda rule to run it on arbitrary rows and not this specific row.
-                                Func<int, string> getColumnText = (fullTableRowIndex) =>
-                                    visibleTraceTable.FullTable.GetColumnString(fullTableRowIndex, column, allowMultiline: false);
-                                string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
+                                Func<ITraceTableSnapshot, int, bool> matchFunc = (traceTable, rowIndex) =>
+                                    traceTable.GetColumnString(rowIndex, column, allowMultiline: false) == displayText;
 
+                                string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
                                     // Include rules go last to ensure anything already excluded stays excluded.
                                     _viewerRules.VisibleRules.Add(new TraceRowVisibleRule(
-                                        Rule: new TraceRowRule { IsMatch = fullTableRowIndex => getColumnText(fullTableRowIndex) == displayText },
+                                        Rule: new TraceRowRule { IsMatch = matchFunc },
                                         Action: TraceRowRuleAction.Include));
                                     _viewerRules.GenerationId++;
                                 }
@@ -308,7 +295,7 @@ namespace InstantTraceViewerUI
                                 {
                                     // Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
                                     _viewerRules.VisibleRules.Insert(0, new TraceRowVisibleRule(
-                                        Rule: new TraceRowRule { IsMatch = fullTableRowIndex => getColumnText(fullTableRowIndex) == displayText },
+                                        Rule: new TraceRowRule { IsMatch = matchFunc },
                                         Action: TraceRowRuleAction.Exclude));
                                     _viewerRules.GenerationId++;
                                 }
@@ -415,6 +402,12 @@ namespace InstantTraceViewerUI
                 ImGuiSelectionRequestPtr req = multiselectIO.Requests[reqIdx];
                 if (req.Type == ImGuiSelectionRequestType.SetAll)
                 {
+                    if (!req.Selected)
+                    {
+                        _selectedFullTableRowIndices.Clear();
+                        continue;
+                    }
+
                     req.RangeFirstItem = 0;
                     req.RangeLastItem = visibleTraceTable.RowCount - 1;
                     req.RangeDirection = 1;
@@ -488,10 +481,12 @@ namespace InstantTraceViewerUI
             }
             if (ImGui.BeginPopup("Visualizations"))
             {
+                ImGui.BeginDisabled(visibleTraceTable.Schema.TimestampColumn == null);
                 if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
                 {
                     _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
                 }
+                ImGui.EndDisabled();
                 ImGui.EndPopup();
             }
 
