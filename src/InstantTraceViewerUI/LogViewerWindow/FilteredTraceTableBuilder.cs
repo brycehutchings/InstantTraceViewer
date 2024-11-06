@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using InstantTraceViewer;
@@ -64,31 +64,49 @@ namespace InstantTraceViewerUI
     }
 
     /// <summary>
-    /// A read-only view of the trace records that are included by the user's rules.
+    /// A read-only view of a full table but with only the rows that are included by the user's rules.
     /// </summary>
-    class FilteredTraceTableSnapshot : IReadOnlyList<int>  // TODO: Consider implementing ITraceTableSnapshot instead.
+    class FilteredTraceTableSnapshot : ITraceTableSnapshot
     {
-        protected IReadOnlyList<int> _visibleRowIndiciesSnapshot;
-        protected int _errorCount = 0;
+        private ITraceTableSnapshot _fullTraceTableSnapshot { get; init; }
+        private IReadOnlyList<int> _visibleRowIndiciesSnapshot;
+        private int _errorCount = 0;
 
-        public FilteredTraceTableSnapshot(ITraceTableSnapshot traceTableSnapshot, IReadOnlyList<int> visibleRowIndiciesSnapshot, int errorCount)
+        public FilteredTraceTableSnapshot(ITraceTableSnapshot fullTraceTableSnapshot, IReadOnlyList<int> visibleRowIndiciesSnapshot, int errorCount)
         {
+            _fullTraceTableSnapshot = fullTraceTableSnapshot;
             _visibleRowIndiciesSnapshot = visibleRowIndiciesSnapshot;
             _errorCount = errorCount;
-            TraceTableSnapshot = traceTableSnapshot;
         }
 
-        // Given a filtered row index, returns an unfiltered row index into the ITraceTableSnapshot.
-        public int this[int filteredRowIndex] => _visibleRowIndiciesSnapshot[filteredRowIndex];
-
-        public int Count => _visibleRowIndiciesSnapshot.Count;
-
-        public IEnumerator<int> GetEnumerator() => _visibleRowIndiciesSnapshot.GetEnumerator();
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public ITraceTableSnapshot TraceTableSnapshot { get; init; }
-
         public int ErrorCount => _errorCount;
+
+        public int GetFullTableRowIndex(int filteredRowIndex)
+        {
+            return _visibleRowIndiciesSnapshot[filteredRowIndex];
+        }
+
+        public ITraceTableSnapshot FullTable => _fullTraceTableSnapshot;
+
+        public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+        {
+            return _fullTraceTableSnapshot.GetColumnString(GetFullTableRowIndex(rowIndex), column, allowMultiline);
+        }
+
+        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            return _fullTraceTableSnapshot.GetColumnDateTime(GetFullTableRowIndex(rowIndex), column);
+        }
+
+        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            return _fullTraceTableSnapshot.GetColumnUnifiedLevel(GetFullTableRowIndex(rowIndex), column);
+        }
+
+        public TraceTableSchema Schema => _fullTraceTableSnapshot.Schema;
+
+        public int RowCount => _visibleRowIndiciesSnapshot.Count;
+
+        public int GenerationId => _fullTraceTableSnapshot.GenerationId;
     }
 }
