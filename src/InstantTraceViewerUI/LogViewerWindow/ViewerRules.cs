@@ -5,13 +5,13 @@ using System.Numerics;
 
 namespace InstantTraceViewerUI
 {
-    internal enum TraceRecordRuleAction
+    internal enum TraceRowRuleAction
     {
         Include,
         Exclude
     }
 
-    internal struct TraceRecordRule
+    internal struct TraceRowRule
     {
         // TODO: Needed later for editing rules.
         // public string Rule { get; }
@@ -19,20 +19,20 @@ namespace InstantTraceViewerUI
         public Func<int, bool> IsMatch { get; set; }
     }
 
-    internal record TraceRecordVisibleRule(TraceRecordRule Rule, TraceRecordRuleAction Action);
-    internal record TraceRecordHighlightRule(TraceRecordRule Rule, Vector4 Color);
+    internal record TraceRowVisibleRule(TraceRowRule Rule, TraceRowRuleAction Action);
+    internal record TraceRecordHighlightRule(TraceRowRule Rule, Vector4 Color);
 
     internal class ViewerRules
     {
-        public List<TraceRecordVisibleRule> VisibleRules { get; set; } = new List<TraceRecordVisibleRule>();
+        public List<TraceRowVisibleRule> VisibleRules { get; set; } = new List<TraceRowVisibleRule>();
 
         public List<TraceRecordHighlightRule> HighlightRules { get; set; } = new List<TraceRecordHighlightRule>();
 
         public int GenerationId { get; set; } = 1;
 
-        public TraceRecordRuleAction GetVisibleAction(int unfilteredRowIndex)
+        public TraceRowRuleAction GetVisibleAction(int unfilteredRowIndex)
         {
-            TraceRecordRuleAction defaultAction = TraceRecordRuleAction.Include;
+            TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
             foreach (var rule in VisibleRules)
             {
                 if (rule.Rule.IsMatch(unfilteredRowIndex))
@@ -42,9 +42,9 @@ namespace InstantTraceViewerUI
 
                 // If user is explicitly including things, then exclude anything unmatched.
                 // Thus if user only excludes things, then include anything unmatched.
-                if (rule.Action == TraceRecordRuleAction.Include)
+                if (rule.Action == TraceRowRuleAction.Include)
                 {
-                    defaultAction = TraceRecordRuleAction.Exclude;
+                    defaultAction = TraceRowRuleAction.Exclude;
                 }
             }
             return defaultAction;

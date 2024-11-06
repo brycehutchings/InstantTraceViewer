@@ -10,10 +10,8 @@ namespace InstantTraceViewerUI.Etw
     {
         public IReadOnlyDictionary<int, string> ThreadNames { get; init; }
         public IReadOnlyDictionary<int, string> ProcessNames { get; init; }
-
         public ListBuilderSnapshot<EtwRecord> RecordSnapshot { get; init; }
 
-        #region ITraceRecordSnapshot
         public TraceTableSchema Schema { get; init; }
 
         public int RowCount => RecordSnapshot.Count;
@@ -139,7 +137,5 @@ namespace InstantTraceViewerUI.Etw
                 level == TraceEventLevel.Warning ? UnifiedLevel.Warning :
                 level == TraceEventLevel.Verbose ? UnifiedLevel.Verbose : UnifiedLevel.Info;
         }
-
-        #endregion
     }
 }

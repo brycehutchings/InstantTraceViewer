@@ -1,17 +1,17 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
-    // This object tracks the list of trace records that are included by the user's rules. It can update itself
-    // incrementally to avoid having to rebuild the view from scratch every frame.
-    // It is mutable, and is not thread-safe. In fact it can't even be read from and a snapshot must be created to do that.
-    class FilteredTraceRecordCollectionBuilder
+    // This object tracks the list of rows that are included by the user's rules.
+    // It updates itself incrementally to avoid having to rebuild the view from scratch every frame.
+    class FilteredTraceTableBuilder
     {
+        // Holds the row indices of the trace records that are included by the user's rules.
         private ListBuilder<int> _visibleRowsBuilder = new();
+
         private int _lastViewerRulesGenerationId = -1;
         protected ITraceTableSnapshot? _lastUnfilteredTraceRecordSnapshot = null;
         protected int _errorCount = 0;
@@ -31,14 +31,16 @@ namespace InstantTraceViewerUI
 
             for (int i = (_lastUnfilteredTraceRecordSnapshot?.RowCount ?? 0); i < newSnapshot.RowCount; i++)
             {
-                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(i) == TraceRecordRuleAction.Include)
+                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(i) == TraceRowRuleAction.Include)
                 {
-                    /*
-                    if (newSnapshot.Records[i].Level == TraceLevel.Error)
+                    if (newSnapshot.Schema.UnifiedLevelColumn != null)
                     {
-                        _errorCount++;
+                        UnifiedLevel level = newSnapshot.GetColumnUnifiedLevel(i, newSnapshot.Schema.UnifiedLevelColumn);
+                        if (level == UnifiedLevel.Error || level == UnifiedLevel.Fatal)
+                        {
+                            _errorCount++;
+                        }
                     }
-                    */
 
                     _visibleRowsBuilder.Add(i);
                 }
@@ -55,38 +57,37 @@ namespace InstantTraceViewerUI
             return rebuildFilteredView;
         }
 
-        public FilteredTraceRecordCollectionView Snapshot()
+        public FilteredTraceTableSnapshot Snapshot()
         {
-            return new FilteredTraceRecordCollectionView(_lastUnfilteredTraceRecordSnapshot, _visibleRowsBuilder.CreateSnapshot(), _errorCount);
+            return new FilteredTraceTableSnapshot(_lastUnfilteredTraceRecordSnapshot, _visibleRowsBuilder.CreateSnapshot(), _errorCount);
         }
     }
 
     /// <summary>
     /// A read-only view of the trace records that are included by the user's rules.
     /// </summary>
-    class FilteredTraceRecordCollectionView : IReadOnlyList<int>
+    class FilteredTraceTableSnapshot : IReadOnlyList<int>  // TODO: Consider implementing ITraceTableSnapshot instead.
     {
-        protected IReadOnlyList<int> _visibleRowsSnapshot;
+        protected IReadOnlyList<int> _visibleRowIndiciesSnapshot;
         protected int _errorCount = 0;
 
-        public FilteredTraceRecordCollectionView(ITraceTableSnapshot unfilteredSnapshot, IReadOnlyList<int> visibleRowsSnapshot, int errorCount)
+        public FilteredTraceTableSnapshot(ITraceTableSnapshot traceTableSnapshot, IReadOnlyList<int> visibleRowIndiciesSnapshot, int errorCount)
         {
-            _visibleRowsSnapshot = visibleRowsSnapshot;
+            _visibleRowIndiciesSnapshot = visibleRowIndiciesSnapshot;
             _errorCount = errorCount;
-            UnfilteredSnapshot = unfilteredSnapshot;
+            TraceTableSnapshot = traceTableSnapshot;
         }
 
-        #region IReadOnlyList<int>
-        public int this[int traceSourceIndex] => _visibleRowsSnapshot[traceSourceIndex];
+        // Given a filtered row index, returns an unfiltered row index into the ITraceTableSnapshot.
+        public int this[int filteredRowIndex] => _visibleRowIndiciesSnapshot[filteredRowIndex];
 
-        public int Count => _visibleRowsSnapshot.Count;
+        public int Count => _visibleRowIndiciesSnapshot.Count;
 
-        public IEnumerator<int> GetEnumerator() => _visibleRowsSnapshot.GetEnumerator();
+        public IEnumerator<int> GetEnumerator() => _visibleRowIndiciesSnapshot.GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-        #endregion
 
-        public ITraceTableSnapshot UnfilteredSnapshot { get; init; }
+        public ITraceTableSnapshot TraceTableSnapshot { get; init; }
 
         public int ErrorCount => _errorCount;
     }
