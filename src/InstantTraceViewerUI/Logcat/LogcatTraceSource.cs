@@ -24,7 +24,9 @@ namespace InstantTraceViewerUI.Logcat
         {
             Columns = [ColumnProcess, ColumnThread, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime,
-            UnifiedLevelColumn = ColumnPriority
+            UnifiedLevelColumn = ColumnPriority,
+            ProcessIdColumn = ColumnProcess,
+            ThreadIdColumn = ColumnThread,
         };
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();

@@ -207,21 +207,19 @@ namespace InstantTraceViewerUI
 
                         ImGui.TableNextRow();
 
-                        /*
-                        if (traceRecord.ProcessId == _hoveredProcessId)
+                        if (visibleTraceTable.Schema.ProcessIdColumn != null && visibleTraceTable.GetProcessId(i) == _hoveredProcessId)
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 0);
                         }
-                        if (traceRecord.ThreadId == _hoveredThreadId)
+                        if (visibleTraceTable.Schema.ThreadIdColumn != null && visibleTraceTable.GetThreadId(i) == _hoveredThreadId)
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 1);
                         }
-                        */
 
                         Vector4 rowColor = LevelToColor(UnifiedLevel.Info);
                         if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
                         {
-                            UnifiedLevel unifiedLevel = visibleTraceTable.GetColumnUnifiedLevel(i, visibleTraceTable.Schema.UnifiedLevelColumn);
+                            UnifiedLevel unifiedLevel = visibleTraceTable.GetUnifiedLevel(i);
                             rowColor = LevelToColor(unifiedLevel);
                         }
                         setColor(rowColor);
@@ -257,17 +255,17 @@ namespace InstantTraceViewerUI
                         bool isRowHovered = ImGui.IsItemHovered();
                         int hoveredCol = ImGui.TableGetHoveredColumn();
 
-                        /*if (isRowHovered)
+                        if (isRowHovered)
                         {
-                            if (hoveredCol == 0)
+                            if (visibleTraceTable.Schema.ProcessIdColumn != null && hoveredCol == 0)
                             {
-                                newHoveredProcessId = traceRecord.ProcessId;
+                                newHoveredProcessId = visibleTraceTable.GetProcessId(i);
                             }
-                            else if (hoveredCol == 1)
+                            else if (visibleTraceTable.Schema.ThreadIdColumn != null && hoveredCol == 1)
                             {
-                                newHoveredThreadId = traceRecord.ThreadId;
+                                newHoveredThreadId = visibleTraceTable.GetThreadId(i);
                             }
-                        }*/
+                        }
 
                         int columnIndex = 0;
                         foreach (var column in visibleTraceTable.Schema.Columns)

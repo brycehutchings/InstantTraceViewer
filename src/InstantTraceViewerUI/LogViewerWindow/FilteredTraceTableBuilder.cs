@@ -35,7 +35,7 @@ namespace InstantTraceViewerUI
                 {
                     if (newSnapshot.Schema.UnifiedLevelColumn != null)
                     {
-                        UnifiedLevel level = newSnapshot.GetColumnUnifiedLevel(i, newSnapshot.Schema.UnifiedLevelColumn);
+                        UnifiedLevel level = newSnapshot.GetUnifiedLevel(i);
                         if (level == UnifiedLevel.Error || level == UnifiedLevel.Fatal)
                         {
                             _errorCount++;
@@ -91,6 +91,11 @@ namespace InstantTraceViewerUI
         public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
             return _fullTraceTableSnapshot.GetColumnString(GetFullTableRowIndex(rowIndex), column, allowMultiline);
+        }
+
+        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            return _fullTraceTableSnapshot.GetColumnInt(GetFullTableRowIndex(rowIndex), column);
         }
 
         public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)

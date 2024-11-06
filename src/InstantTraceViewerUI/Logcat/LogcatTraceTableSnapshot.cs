@@ -53,30 +53,26 @@ namespace InstantTraceViewerUI.Logcat
         }
 
         public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            if (column != LogcatTraceSource.ColumnTime)
-            {
-                throw new NotSupportedException();
-            }
+            => column == LogcatTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
+               throw new NotSupportedException();
 
-            return RecordSnapshot[rowIndex].Timestamp;
-        }
+        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
+            => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
+               column == LogcatTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
+               throw new NotSupportedException();
 
         public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            if (column != LogcatTraceSource.ColumnPriority)
-            {
-                throw new NotSupportedException();
-            }
+            => column == LogcatTraceSource.ColumnPriority ? ConvertPriority(RecordSnapshot[rowIndex].Priority) :
+               throw new NotSupportedException();
 
-            Priority priority = RecordSnapshot[rowIndex].Priority;
-            return priority == Priority.Fatal ? UnifiedLevel.Fatal :
-                    priority == Priority.Error ? UnifiedLevel.Error :
-                    priority == Priority.Assert ? UnifiedLevel.Error :
-                    priority == Priority.Warn ? UnifiedLevel.Warning :
-                    priority == Priority.Verbose ? UnifiedLevel.Verbose :
-                    priority == Priority.Debug ? UnifiedLevel.Verbose : UnifiedLevel.Info;
-        }
+        private UnifiedLevel ConvertPriority(Priority priority)
+            => priority == Priority.Fatal ? UnifiedLevel.Fatal :
+               priority == Priority.Error ? UnifiedLevel.Error :
+               priority == Priority.Assert ? UnifiedLevel.Error :
+               priority == Priority.Warn ? UnifiedLevel.Warning :
+               priority == Priority.Verbose ? UnifiedLevel.Verbose :
+               priority == Priority.Debug ? UnifiedLevel.Verbose : UnifiedLevel.Info;
+
         #endregion
     }
 }

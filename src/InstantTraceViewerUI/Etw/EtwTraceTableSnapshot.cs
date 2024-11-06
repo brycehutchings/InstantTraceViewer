@@ -113,29 +113,23 @@ namespace InstantTraceViewerUI.Etw
             throw new NotImplementedException();
         }
 
-        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            if (column != EtwTraceSource.ColumnTime)
-            {
-                throw new NotSupportedException();
-            }
+        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
+            => column == EtwTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
+               column == EtwTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
+               throw new NotSupportedException();
 
-            return RecordSnapshot[rowIndex].Timestamp;
-        }
+        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
+            =>  column == EtwTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
+                throw new NotSupportedException();
 
         public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
-        {
-            if (column != EtwTraceSource.ColumnLevel)
-            {
-                throw new NotSupportedException();
-            }
+            => column == EtwTraceSource.ColumnLevel ? ConvertLevel(RecordSnapshot[rowIndex].Level) :
+               throw new NotSupportedException();
 
-            var level = RecordSnapshot[rowIndex].Level;
-            return
-                level == TraceEventLevel.Critical ? UnifiedLevel.Fatal :
-                level == TraceEventLevel.Error ? UnifiedLevel.Error :
-                level == TraceEventLevel.Warning ? UnifiedLevel.Warning :
-                level == TraceEventLevel.Verbose ? UnifiedLevel.Verbose : UnifiedLevel.Info;
-        }
+        private UnifiedLevel ConvertLevel(TraceEventLevel level)
+            => level == TraceEventLevel.Critical ? UnifiedLevel.Fatal :
+               level == TraceEventLevel.Error ? UnifiedLevel.Error :
+               level == TraceEventLevel.Warning ? UnifiedLevel.Warning :
+               level == TraceEventLevel.Verbose ? UnifiedLevel.Verbose : UnifiedLevel.Info;
     }
 }

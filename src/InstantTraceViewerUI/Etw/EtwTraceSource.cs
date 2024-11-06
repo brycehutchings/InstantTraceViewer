@@ -36,7 +36,9 @@ namespace InstantTraceViewerUI.Etw
         {
             Columns = [ColumnProcess, ColumnThread, ColumnProvider, ColumnOpCode, ColumnKeywords, ColumnName, ColumnLevel, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime,
-            UnifiedLevelColumn = ColumnLevel
+            UnifiedLevelColumn = ColumnLevel,
+            ProcessIdColumn = ColumnProcess,
+            ThreadIdColumn = ColumnThread,
         };
 
         private static HashSet<int> SessionNums = new();
