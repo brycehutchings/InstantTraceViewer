@@ -1,4 +1,5 @@
 ﻿using InstantTraceViewer;
+using Microsoft.Diagnostics.Tracing;
 using System;
 
 namespace InstantTraceViewerUI.Etw
@@ -9,7 +10,7 @@ namespace InstantTraceViewerUI.Etw
 
         public int ThreadId;
 
-        public TraceLevel Level;
+        public TraceEventLevel Level;
 
         public string ProviderName;
 

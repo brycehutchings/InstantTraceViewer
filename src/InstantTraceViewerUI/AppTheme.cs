@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI
         public static Vector4 VerboseColor;
         public static Vector4 WarningColor;
         public static Vector4 ErrorColor;
-        public static Vector4 CriticalColor;
+        public static Vector4 FatalColor;
 
         // This color ends up alphablended over the alternating row colors.
         public static Vector4 MatchingRowBgColor = AdjustColorAlpha(ImGuiCol.TableRowBgAlt, 3.0f);
@@ -54,7 +54,7 @@ namespace InstantTraceViewerUI
             MatchingRowBgColor = AdjustColorAlpha(ImGuiCol.TableRowBgAlt, 3.0f);
             WarningColor = new Vector4(1.0f, 0.65f, 0.0f, 1.0f);      // Orange
             ErrorColor = new Vector4(0.9f, 0.0f, 0.0f, 1.0f);         // Red
-            CriticalColor = new Vector4(0.70f, 0.0f, 0.0f, 1.0f);     // Dark Red
+            FatalColor = new Vector4(0.70f, 0.0f, 0.0f, 1.0f);        // Dark Red
         }
 
         private static Vector4 InterpolateColor(float t, ImGuiCol startColor, ImGuiCol endColor)

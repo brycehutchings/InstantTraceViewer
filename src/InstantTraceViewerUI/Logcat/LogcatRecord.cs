@@ -1,4 +1,5 @@
-﻿using System;
+﻿using AdvancedSharpAdbClient.Logs;
+using System;
 
 namespace InstantTraceViewerUI.Logcat
 {
@@ -8,7 +9,7 @@ namespace InstantTraceViewerUI.Logcat
 
         public int ThreadId;
 
-        public TraceLevel Level;
+        public Priority Priority;
 
         public string Tag;
 

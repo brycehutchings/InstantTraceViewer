@@ -3,10 +3,12 @@ using System.Collections.Generic;
 
 namespace InstantTraceViewerUI
 {
-    public enum TraceLevel
+    /// <summary>
+    /// A unified level that all sources can use for a special level column type used for colorization.
+    /// </summary>
+    public enum UnifiedLevel
     {
-        Always,
-        Critical,
+        Fatal,
         Error,
         Warning,
         Info,
@@ -18,19 +20,21 @@ namespace InstantTraceViewerUI
         TraceTableSchema Schema { get; }
 
         /// <summary>
-        /// The number of trace records in the snapshot.
+        /// The number of rows in the snapshot.
         /// </summary>
         int RowCount { get; }
 
         /// <summary>
-        /// This will increment if existing records have been modified or removed or the schema has changed.
-        /// This does not increase if new records are added, so it should be a rare event.
+        /// This will increment if existing rows have been modified or removed or the schema has changed.
+        /// This does not increase if new rows are added, so it should be a rare event.
         /// </summary>
         int GenerationId { get; }
 
         string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false);
 
         DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column);
+
+        UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column);
     }
 
     public interface ITraceSource : IDisposable
@@ -60,9 +64,14 @@ namespace InstantTraceViewerUI
         public IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
 
         /// <summary>
-        /// The column which represents the timestamp of the trace record.
+        /// The column which represents the timestamp of a row.
         /// </summary>
         public TraceSourceSchemaColumn? TimestampColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the level/severity/priority of a row.
+        /// </summary>
+        public TraceSourceSchemaColumn? UnifiedLevelColumn { get; init; }
     }
 
     public static class TraceTableSnapshotExtensions

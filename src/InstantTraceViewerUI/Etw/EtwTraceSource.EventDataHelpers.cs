@@ -15,7 +15,7 @@ namespace InstantTraceViewerUI.Etw
             newRecord.ProcessId = data.ProcessID;
             newRecord.ThreadId = data.ThreadID;
             newRecord.Timestamp = data.TimeStamp;
-            newRecord.Level = ConvertLevel(data);
+            newRecord.Level = data.Level;
             newRecord.OpCode = (byte)data.Opcode;
             newRecord.Keywords = (ulong)data.Keywords;
 
@@ -31,16 +31,6 @@ namespace InstantTraceViewerUI.Etw
             }
 
             return newRecord;
-        }
-
-        private static TraceLevel ConvertLevel(TraceEvent data)
-        {
-            return
-                data.Level == TraceEventLevel.Always ? TraceLevel.Always :
-                data.Level == TraceEventLevel.Critical ? TraceLevel.Critical :
-                data.Level == TraceEventLevel.Error ? TraceLevel.Error :
-                data.Level == TraceEventLevel.Warning ? TraceLevel.Warning :
-                data.Level == TraceEventLevel.Informational ? TraceLevel.Info : TraceLevel.Verbose;
         }
     }
 }

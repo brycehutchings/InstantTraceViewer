@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using AdvancedSharpAdbClient.Logs;
 using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Logcat
@@ -33,7 +34,7 @@ namespace InstantTraceViewerUI.Logcat
             }
             else if (column == LogcatTraceSource.ColumnPriority)
             {
-                return traceRecord.Level.ToString();
+                return traceRecord.Priority.ToString();
             }
             else if (column == LogcatTraceSource.ColumnTime)
             {
@@ -59,6 +60,22 @@ namespace InstantTraceViewerUI.Logcat
             }
 
             return RecordSnapshot[rowIndex].Timestamp;
+        }
+
+        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            if (column != LogcatTraceSource.ColumnPriority)
+            {
+                throw new NotSupportedException();
+            }
+
+            Priority priority = RecordSnapshot[rowIndex].Priority;
+            return priority == Priority.Fatal ? UnifiedLevel.Fatal :
+                    priority == Priority.Error ? UnifiedLevel.Error :
+                    priority == Priority.Assert ? UnifiedLevel.Error :
+                    priority == Priority.Warn ? UnifiedLevel.Warning :
+                    priority == Priority.Verbose ? UnifiedLevel.Verbose :
+                    priority == Priority.Debug ? UnifiedLevel.Verbose : UnifiedLevel.Info;
         }
         #endregion
     }

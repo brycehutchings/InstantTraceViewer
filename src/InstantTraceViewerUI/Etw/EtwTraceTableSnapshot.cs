@@ -124,6 +124,22 @@ namespace InstantTraceViewerUI.Etw
 
             return RecordSnapshot[rowIndex].Timestamp;
         }
+
+        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            if (column != EtwTraceSource.ColumnLevel)
+            {
+                throw new NotSupportedException();
+            }
+
+            var level = RecordSnapshot[rowIndex].Level;
+            return
+                level == TraceEventLevel.Critical ? UnifiedLevel.Fatal :
+                level == TraceEventLevel.Error ? UnifiedLevel.Error :
+                level == TraceEventLevel.Warning ? UnifiedLevel.Warning :
+                level == TraceEventLevel.Verbose ? UnifiedLevel.Verbose : UnifiedLevel.Info;
+        }
+
         #endregion
     }
 }

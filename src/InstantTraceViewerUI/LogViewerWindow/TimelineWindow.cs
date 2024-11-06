@@ -167,20 +167,27 @@ namespace InstantTraceViewerUI
                 // Due to rounding errors the sectionIndex can go too high. Protect against too low in case there is a rogue event that is not in chronological order.
                 sectionIndex = Math.Clamp(sectionIndex, 0, sectionCount - 1);
 
-                /*
-                if (traceRecord.Level == TraceLevel.Error || traceRecord.Level == TraceLevel.Critical)
+                if (visibleTraceRecords.UnfilteredSnapshot.Schema.UnifiedLevelColumn != null)
                 {
-                    errorCounts[sectionIndex]++;
+                    UnifiedLevel level = visibleTraceRecords.UnfilteredSnapshot.GetColumnUnifiedLevel(rowIndex, visibleTraceRecords.UnfilteredSnapshot.Schema.UnifiedLevelColumn);
+                    if (level == UnifiedLevel.Error || level == UnifiedLevel.Fatal)
+                    {
+                        errorCounts[sectionIndex]++;
+                    }
+                    else if (level == UnifiedLevel.Warning)
+                    {
+                        warningCounts[sectionIndex]++;
+                    }
+                    else if (level == UnifiedLevel.Verbose)
+                    {
+                        verboseCounts[sectionIndex]++;
+                    }
+                    else
+                    {
+                        otherCounts[sectionIndex]++;
+                    }
                 }
-                else if (traceRecord.Level == TraceLevel.Warning)
-                {
-                    warningCounts[sectionIndex]++;
-                }
-                else if (traceRecord.Level == TraceLevel.Verbose)
-                {
-                    verboseCounts[sectionIndex]++;
-                }
-                else*/
+                else
                 {
                     otherCounts[sectionIndex]++;
                 }

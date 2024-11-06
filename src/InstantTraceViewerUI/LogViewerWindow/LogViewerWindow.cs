@@ -218,7 +218,12 @@ namespace InstantTraceViewerUI
                         }
                         */
 
-                        Vector4 rowColor = LevelToColor(TraceLevel.Info); //traceRecord.Level);
+                        Vector4 rowColor = LevelToColor(UnifiedLevel.Info);
+                        if (visibleTraceRecords.UnfilteredSnapshot.Schema.UnifiedLevelColumn != null)
+                        {
+                            UnifiedLevel unifiedLevel = visibleTraceRecords.UnfilteredSnapshot.GetColumnUnifiedLevel(unfilteredRowIndex, visibleTraceRecords.UnfilteredSnapshot.Schema.UnifiedLevelColumn);
+                            rowColor = LevelToColor(unifiedLevel);
+                        }
                         setColor(rowColor);
 
                         ImGui.TableNextColumn();
@@ -529,7 +534,7 @@ namespace InstantTraceViewerUI
             if (visibleTraceRecords.ErrorCount > 0)
             {
                 ImGui.SameLine();
-                ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(TraceLevel.Error));
+                ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(UnifiedLevel.Error));
                 ImGui.TextUnformatted($"{visibleTraceRecords.ErrorCount:N0} Errors");
                 ImGui.PopStyleColor();
             }
@@ -562,13 +567,13 @@ namespace InstantTraceViewerUI
             return newWindow;
         }
 
-        private static Vector4 LevelToColor(TraceLevel level)
+        private static Vector4 LevelToColor(UnifiedLevel level)
         {
-            return level == TraceLevel.Verbose ? AppTheme.VerboseColor
-                   : level == TraceLevel.Warning ? AppTheme.WarningColor
-                   : level == TraceLevel.Error ? AppTheme.ErrorColor
-                   : level == TraceLevel.Critical ? AppTheme.CriticalColor
-                                                   : AppTheme.InfoColor;
+            return level == UnifiedLevel.Verbose ? AppTheme.VerboseColor
+                   : level == UnifiedLevel.Warning ? AppTheme.WarningColor
+                   : level == UnifiedLevel.Error ? AppTheme.ErrorColor
+                   : level == UnifiedLevel.Fatal ? AppTheme.FatalColor
+                                                 : AppTheme.InfoColor;
         }
 
         private void CopySelectedRows(FilteredTraceRecordCollectionView visibleTraceRecords)

@@ -23,7 +23,8 @@ namespace InstantTraceViewerUI.Logcat
         private static readonly TraceTableSchema _schema = new TraceTableSchema
         {
             Columns = [ColumnProcess, ColumnThread, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
-            TimestampColumn = ColumnTime
+            TimestampColumn = ColumnTime,
+            UnifiedLevelColumn = ColumnPriority
         };
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
@@ -124,14 +125,7 @@ namespace InstantTraceViewerUI.Logcat
                             ProcessId = androidLogEntry.ProcessId,
                             ThreadId = (int)androidLogEntry.ThreadId,
                             Timestamp = preciseTimestamp.DateTime,
-                            Level =
-                                androidLogEntry.Priority == Priority.Fatal ? TraceLevel.Critical :
-                                androidLogEntry.Priority == Priority.Error ? TraceLevel.Error :
-                                androidLogEntry.Priority == Priority.Assert ? TraceLevel.Error :
-                                androidLogEntry.Priority == Priority.Warn ? TraceLevel.Warning :
-                                androidLogEntry.Priority == Priority.Verbose ? TraceLevel.Verbose :
-                                androidLogEntry.Priority == Priority.Debug ? TraceLevel.Verbose :       // TODO: Should we add a Debug trace level to map into?
-                                                                                TraceLevel.Info,
+                            Priority = androidLogEntry.Priority,
                             Message = androidLogEntry.Message,
                             Tag = androidLogEntry.Tag,
                         };
