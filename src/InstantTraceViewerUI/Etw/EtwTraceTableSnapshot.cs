@@ -40,7 +40,10 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (column == EtwTraceSource.ColumnLevel)
             {
-                return traceRecord.Level.ToString();
+                // Shorten "Informational" to "Info" to save space.
+                return
+                    traceRecord.Level == TraceEventLevel.Informational ? "Info" :
+                    traceRecord.Level.ToString();
             }
             else if (column == EtwTraceSource.ColumnTime)
             {
