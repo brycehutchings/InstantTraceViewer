@@ -595,7 +595,6 @@ namespace InstantTraceViewerUI
 
         private int? FindText(FilteredTraceTableSnapshot visibleTraceTable, string text)
         {
-            int? setScrollIndex = null;
             int visibleRowIndex =
                 _findFoward ?
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value + 1 : 0) :
@@ -607,17 +606,16 @@ namespace InstantTraceViewerUI
                     string displayText = visibleTraceTable.GetColumnString(visibleRowIndex, column, allowMultiline: false);
                     if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
                     {
-                        setScrollIndex = visibleRowIndex;
                         _lastSelectedVisibleRowIndex = visibleRowIndex;
                         _selectedFullTableRowIndices.Clear();
                         _selectedFullTableRowIndices.Add(visibleTraceTable.GetFullTableRowIndex(visibleRowIndex));
-                        break;
+                        return visibleRowIndex;
                     }
                 }
 
                 visibleRowIndex = (_findFoward ? visibleRowIndex + 1 : visibleRowIndex - 1);
             }
-            return setScrollIndex;
+            return null;
         }
 
         protected virtual void Dispose(bool disposing)
