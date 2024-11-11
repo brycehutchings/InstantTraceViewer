@@ -66,8 +66,9 @@ namespace UnitTests
             select Expression.Not(expr);
 
         private Parser<Expression> Factor => SubExpression
-            .Or(StringEquals).Or(StringEqualsCaseInsensitive)
-            .Or(RegexEquals).Or(RegexEqualsCaseInsensitive);
+            .Or(StringEquals).Or(StringEqualsCS)
+            .Or(Matches).Or(MatchesCS)
+            .Or(MatchesRegex).Or(MatchesRegexCS);
 
         private Parser<Expression> SubExpression =>
             from lparen in Parse.Char('(').Token()
@@ -87,7 +88,7 @@ namespace UnitTests
                 .Or(Parse.String("\\t"))
                 .Or(Parse.AnyChar.Except(Parse.String("\\")).Except(Parse.Char('"')).Many()).Many()
             from end in Parse.Char('"')
-            select Expression.Constant(string.Concat(v.Select(v2 => UnescapeString(v2))));
+            select Expression.Constant(string.Concat(v.Select(UnescapeString)));
 
         private static string UnescapeString(IEnumerable<char> charSequence)
         {
@@ -105,25 +106,35 @@ namespace UnitTests
             from op in Parse.IgnoreCase("equals").Token()
             from right in StringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCultureIgnoreCase);
-
-        private Parser<Expression> StringEqualsCaseInsensitive =>
+        private Parser<Expression> StringEqualsCS =>
             from left in ColumnVariable
             from op in Parse.IgnoreCase("equals_cs").Token()
             from right in StringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCulture);
 
-        private Parser<Expression> RegexEquals =>
+        private Parser<Expression> MatchesRegex =>
             from left in ColumnVariable
             from op1 in Parse.IgnoreCase("matches").Token()
             from op2 in Parse.IgnoreCase("regex").Token()
             from right in StringLiteral
-            select RegexEqualsExpression(left, right, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private Parser<Expression> RegexEqualsCaseInsensitive =>
+            select RegexMatchesExpression(left, right, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private Parser<Expression> MatchesRegexCS =>
             from left in ColumnVariable
             from op1 in Parse.IgnoreCase("matches_cs").Token()
             from op2 in Parse.IgnoreCase("regex").Token()
             from right in StringLiteral
-            select RegexEqualsExpression(left, right, RegexOptions.Compiled);
+            select RegexMatchesExpression(left, right, RegexOptions.Compiled);
+
+        private Parser<Expression> Matches =>
+            from left in ColumnVariable
+            from op1 in Parse.IgnoreCase("matches").Token()
+            from right in StringLiteral
+            select MatchesExpression(left, right, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private Parser<Expression> MatchesCS =>
+            from left in ColumnVariable
+            from op1 in Parse.IgnoreCase("matches_cs").Token()
+            from right in StringLiteral
+            select MatchesExpression(left, right, RegexOptions.Compiled);
 
         private static Expression StringEqualsExpression(Expression left, Expression right, StringComparison comparison)
         {
@@ -131,13 +142,25 @@ namespace UnitTests
             return Expression.Call(method, left, right, Expression.Constant(comparison));
         }
 
-        private static Expression RegexEqualsExpression(Expression left, Expression right, RegexOptions options)
+        private static Expression MatchesExpression(Expression left, Expression right, RegexOptions options)
         {
-            // Convert the string literal to a regex at parse time so it can efficiently be reused for each row.
-            var regex = new Regex((string)((ConstantExpression)right).Value, options);
+            // Convert * and ? to regex pattern.
+            string matchPattern = (string)((ConstantExpression)right).Value;
+            matchPattern = "^" + Regex.Escape(matchPattern).Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
             var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)]);
             return Expression.Call(
-                Expression.Constant(regex),
+                Expression.Constant(new Regex(matchPattern, options)),
+                method,
+                left);
+        }
+
+        private static Expression RegexMatchesExpression(Expression left, Expression right, RegexOptions options)
+        {
+            // Convert the string literal to a regex at parse time so it can efficiently be reused for each row.
+            string matchPattern = (string)((ConstantExpression)right).Value;
+            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)]);
+            return Expression.Call(
+                Expression.Constant(new Regex(matchPattern, options)),
                 method,
                 left);
         }
@@ -171,6 +194,13 @@ namespace UnitTests
                 ("@Column1 equals \"column1_0\"", true),
                 ("@Column1 equals_cs \"Column1_0\"", true),
                 ("@Column1 equals_cs \"column1_0\"", false),
+
+                // matches
+                ("@Column1 matches \"Col*1_?\"", true),
+                ("@Column1 matches \"col*1_?\"", true),
+                ("@Column1 matches \"col*1_1\"", false),
+                ("@Column1 matches_cs \"Col*1_?\"", true),
+                ("@Column1 matches_cs \"col*1_?\"", false),
 
                 // matches regex
                 ("@Column1 matches regex \"Col.+1_0\"", true),
