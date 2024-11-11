@@ -1,10 +1,6 @@
 ﻿using InstantTraceViewer;
 using Sprache;
-using System.Data.Common;
 using System.Linq.Expressions;
-using System.Reflection;
-using System.Xml.Linq;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace UnitTests
 {
@@ -26,6 +22,10 @@ namespace UnitTests
     }
 
     // https://stackoverflow.com/a/51738050
+    // TODOs:
+    // * Operators: contains, contains_cs, startswith, startswith_cs, endswith, endswith_cs, matches, matches_cs, matches_regex, matches_regex_cs
+    // * Timestamp support. With less/greater than
+    // * Int support. With less/greater than
     public class ConditionParser
     {
         private static readonly ParameterExpression Param1 = Expression.Parameter(typeof(ITraceTableSnapshot), "_");
@@ -35,67 +35,85 @@ namespace UnitTests
         public ConditionParser(TraceTableSchema schema)
         {
             _schema = schema;
-            foreach (TraceSourceSchemaColumn col in schema.Columns)
-            {
-                if (_anyColumnVariable == null)
-                {
-                    _anyColumnVariable = Parse.Char('@').Then(_ => Parse.IgnoreCase(col.Name).Return(col));
-                }
-                else
-                {
-                    _anyColumnVariable = _anyColumnVariable.Or(Parse.Char('@').Then(_ => Parse.IgnoreCase(col.Name).Return(col)));
-                }
-            }
+
+            // Column variables are in the form '@<column name>' and are case-insensitive. This expression will match any of them.
+            _anyColumnVariable =
+                schema.Columns.Select(col => Parse.Char('@').Then(_ => Parse.IgnoreCase(col.Name).Return(col)))
+                    .Aggregate((a, b) => a.Or(b));
+
         }
 
         public IResult<Expression<Func<ITraceTableSnapshot, bool>>> TryParseCondition(string text) => Lambda.TryParse(text);
 
-        Parser<Expression<Func<ITraceTableSnapshot, bool>>> Lambda => ExpressionTerm.End().Select(body => Expression.Lambda<Func<ITraceTableSnapshot, bool>>(body, Param1));
+        private Parser<Expression<Func<ITraceTableSnapshot, bool>>> Lambda => ExpressionTerm.End().Select(body => Expression.Lambda<Func<ITraceTableSnapshot, bool>>(body, Param1));
 
         // lowest priority first
-        Parser<Expression> ExpressionTerm => OrTerm;
-        Parser<Expression> OrTerm => Parse.ChainOperator(OpOr, AndTerm, Expression.MakeBinary);
-        Parser<Expression> AndTerm => Parse.ChainOperator(OpAnd, NegateTerm, Expression.MakeBinary);
-        Parser<ExpressionType> OpOr = Parse.IgnoreCase("or").Token().Return(ExpressionType.OrElse);
-        Parser<ExpressionType> OpAnd = Parse.IgnoreCase("and").Token().Return(ExpressionType.AndAlso);
+        private Parser<Expression> ExpressionTerm => OrTerm;
+        private Parser<Expression> OrTerm => Parse.ChainOperator(OpOr, AndTerm, Expression.MakeBinary);
+        private Parser<Expression> AndTerm => Parse.ChainOperator(OpAnd, NegateTerm, Expression.MakeBinary);
+        private Parser<ExpressionType> OpOr = Parse.IgnoreCase("or").Token().Return(ExpressionType.OrElse);
+        private Parser<ExpressionType> OpAnd = Parse.IgnoreCase("and").Token().Return(ExpressionType.AndAlso);
 
-        Parser<Expression> NegateTerm => NegatedFactor.Or(Factor);
+        private Parser<Expression> NegateTerm => NegatedFactor.Or(Factor);
 
-        Parser<Expression> NegatedFactor =>
+        private Parser<Expression> NegatedFactor =>
             from negate in Parse.IgnoreCase("not").Token()
             from expr in Factor
             select Expression.Not(expr);
 
-        Parser<Expression> Factor => SubExpression.Or(StringEquals);
+        private Parser<Expression> Factor => SubExpression.Or(StringEquals).Or(StringEqualsCaseInsensitive);
 
-        Parser<Expression> SubExpression =>
+        private Parser<Expression> SubExpression =>
             from lparen in Parse.Char('(').Token()
             from expr in ExpressionTerm
             from rparen in Parse.Char(')').Token()
             select expr;
 
-        Parser<Expression> ColumnVariable => _anyColumnVariable.Select(GetTableString);
+        private Parser<Expression> ColumnVariable => _anyColumnVariable.Select(GetTableString);
 
-        Parser < Expression > StringLiteral =>
-            (from open in Parse.Char('"')
-             from content in Parse.CharExcept('"').Many().Text()
-             from close in Parse.Char('"')
-             select Expression.Constant(content)).Token();
+        private Parser<Expression> StringLiteral =>
+            from start in Parse.Char('"')
+            from v in
+                    Parse.String("\\\"")
+                .Or(Parse.String("\\\\"))
+                .Or(Parse.String("\\r"))
+                .Or(Parse.String("\\n"))
+                .Or(Parse.String("\\t"))
+                .Or(Parse.AnyChar.Except(Parse.String("\\")).Except(Parse.Char('"')).Many()).Many()
+            from end in Parse.Char('"')
+            select Expression.Constant(string.Concat(v.Select(v2 => UnescapeString(v2))));
 
-        Parser<Expression> StringEquals =>
+        private static string UnescapeString(IEnumerable<char> charSequence)
+        {
+            string str = new string(charSequence.ToArray());
+            return str == "\\\"" ? "\"" :
+                   str == "\\\\" ? "\\" :
+                   str == "\\r" ? "\r" :
+                   str == "\\n" ? "\n" :
+                   str == "\\t" ? "\t" :
+                   str;
+        }
+
+        private Parser<Expression> StringEquals =>
             from left in ColumnVariable.Or(StringLiteral)
             from op in Parse.IgnoreCase("equals").Token()
             from right in ColumnVariable.Or(StringLiteral)
-            select Expression.Equal(left, right);
+            select StringEqualsExpression(left, right, StringComparison.CurrentCultureIgnoreCase);
 
-        Expression GetTableString(TraceSourceSchemaColumn column)
+        private Parser<Expression> StringEqualsCaseInsensitive =>
+            from left in ColumnVariable.Or(StringLiteral)
+            from op in Parse.IgnoreCase("equals_cs").Token()
+            from right in ColumnVariable.Or(StringLiteral)
+            select StringEqualsExpression(left, right, StringComparison.CurrentCulture);
+
+        private static Expression StringEqualsExpression(Expression left, Expression right, StringComparison comparison)
         {
-            //var column = _schema.Columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.InvariantCultureIgnoreCase));
-            //if (column == null)
-            //{
-            //    throw new ParseException($"Column '{name}' not found in schema.");
-            //}
+            var method = typeof(string).GetMethod("Equals", new[] { typeof(string), typeof(string), typeof(StringComparison) });
+            return Expression.Call(method, left, right, Expression.Constant(comparison));
+        }
 
+        private static Expression GetTableString(TraceSourceSchemaColumn column)
+        {
             var method = typeof(ITraceTableSnapshot).GetMethod("GetColumnString"); // TODO nameof?
             return Expression.Call(
                 Param1, // The instance that we call the method on is a parameter to this expression.
@@ -114,8 +132,6 @@ namespace UnitTests
         {
             MockTraceTableSnapshot mockTraceTableSnapshot = new();
 
-            //var condition1 = ConditionParser.Parse("true and false or true");
-            //Console.WriteLine(condition1.ToString());
             ConditionParser conditionParser = new(mockTraceTableSnapshot.Schema);
 
             List<(string, bool)> validConditionTests = new()
@@ -128,19 +144,27 @@ namespace UnitTests
                 ("@Column1 equals \"foo\"", false),
                 ("\"foo\" equals @Column1", false),
 
+                // equals and equals_cs
+                ("@Column1 equals \"Column1_0\"", true),
+                ("@Column1 equals \"column1_0\"", true),
+                ("@Column1 equals_cs \"Column1_0\"", true),
+                ("@Column1 equals_cs \"column1_0\"", false),
+
+                // TODO: escaping in string literals
+
                 // Case-insensitive column name
                 ("@column1 equals \"Column1_0\"", true),
 
-                // Two subexpressions with AND
+                // Two subexpressions connected with 'and'
                 ("@Column1 equals \"Column1_0\" and @Column2 equals \"Column2_0\"", true),
-                ("@Column1 equals \"Column1_0\" and @Column2 equals \"foo\"", false),
+                ("@Column1 equals \"Column1_0\" AND @Column2 equals \"foo\"", false),
                 ("@Column1 equals \"foo\"       and @Column2 equals \"Column2_0\"", false),
                 ("@Column1 equals \"foo bar\"   and @Column2 equals \"Column2_0\"", false),
 
-                // Two subexpressions with OR
+                // Two subexpressions connected with 'or'
                 ("@Column1 equals \"Column1_0\" or @Column2 equals \"foo\"", true),
-                ("@Column1 equals \"foo\" or @Column2 equals \"Column2_0\"", true),
-                ("@Column1 equals \"foo\" or @Column2 equals \"foo\"", false),
+                ("@Column1 equals \"foo\"       OR @Column2 equals \"Column2_0\"", true),
+                ("@Column1 equals \"foo\"       or @Column2 equals \"foo\"", false),
             };
 
             foreach (var (text, expected) in validConditionTests)
@@ -153,6 +177,7 @@ namespace UnitTests
 
             List<string> invalidSyntaxTests = new()
             {
+                "@",
                 "notstringorcolumn",
                 "@Column1 equals noquote",
                 "noquote equals @Column1",
