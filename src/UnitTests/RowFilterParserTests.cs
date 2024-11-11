@@ -76,7 +76,6 @@ namespace UnitTests
             select expr;
 
         private Parser<Expression> ColumnVariable => _anyColumnVariable.Select(GetTableString);
-        private Parser<Expression> ColumnVarOrStringLiteral => ColumnVariable.Or(StringLiteral);
 
         private Parser<Expression> StringLiteral =>
             from start in Parse.Char('"')
@@ -102,15 +101,15 @@ namespace UnitTests
         }
 
         private Parser<Expression> StringEquals =>
-            from left in ColumnVarOrStringLiteral
+            from left in ColumnVariable
             from op in Parse.IgnoreCase("equals").Token()
-            from right in ColumnVarOrStringLiteral
+            from right in StringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCultureIgnoreCase);
 
         private Parser<Expression> StringEqualsCaseInsensitive =>
-            from left in ColumnVarOrStringLiteral
+            from left in ColumnVariable
             from op in Parse.IgnoreCase("equals_cs").Token()
-            from right in ColumnVarOrStringLiteral
+            from right in StringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCulture);
 
         private Parser<Expression> RegexEquals =>
@@ -182,21 +181,14 @@ namespace UnitTests
 
                 // Single subexpression either order
                 ("@Column1 equals \"Column1_0\"", true),
-                ("\"Column1_0\" equals @Column1", true),
                 ("(@Column1 equals \"Column1_0\")", true),
-                ("(\"Column1_0\" equals @Column1)", true),
                 ("@Column1 equals \"foo\"", false),
-                ("\"foo\" equals @Column1", false),
-                ("@Column1 equals @Column2", false),
-                ("\"a\" equals \"A\"", true),
 
                 // 'not' operator
                 ("not @Column1 equals \"Column1_0\"", false),
                 ("not @Column1 equals \"foo\"", true),
-                ("not \"foo\" equals @Column1", true),
                 ("not (@Column1 equals \"Column1_0\")", false),
                 ("not (@Column1 equals \"foo\")", true),
-                ("not (\"foo\" equals @Column1)", true),
 
                 // TODO: escaping in string literals
 
@@ -223,8 +215,7 @@ namespace UnitTests
                 Assert.AreEqual(expected, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Value}");
             }
 
-            List<string> invalidSyntaxTests = new()
-            {
+            List<string> invalidSyntaxTests = [
                 "@",
                 "notstringorcolumn",
                 "@Column1 equals noquote",
@@ -236,7 +227,14 @@ namespace UnitTests
                 "()",
                 "(@Column1 equals \"Column1_0\"",
                 "@Column1 equals \"Column1_0\")",
-            };
+                "\"Column1_0\" equals @Column1",
+                "(\"Column1_0\" equals @Column1)",
+                "\"foo\" equals @Column1",
+                "\"a\" equals \"A\"",
+                "not \"foo\" equals @Column1",
+                "not (\"foo\" equals @Column1)",
+                "@Column1 equals @Column2",
+            ];
 
             foreach (var text in invalidSyntaxTests)
             {
