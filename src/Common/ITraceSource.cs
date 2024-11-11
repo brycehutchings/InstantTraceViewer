@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace InstantTraceViewerUI
+namespace InstantTraceViewer
 {
     /// <summary>
     /// A unified level that all sources can use for a special level column type used for colorization.
