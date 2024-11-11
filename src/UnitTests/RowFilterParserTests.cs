@@ -1,6 +1,7 @@
 ﻿using InstantTraceViewer;
 using Sprache;
 using System.Linq.Expressions;
+using System.Text.RegularExpressions;
 
 namespace UnitTests
 {
@@ -64,7 +65,9 @@ namespace UnitTests
             from expr in Factor
             select Expression.Not(expr);
 
-        private Parser<Expression> Factor => SubExpression.Or(StringEquals).Or(StringEqualsCaseInsensitive);
+        private Parser<Expression> Factor => SubExpression
+            .Or(StringEquals).Or(StringEqualsCaseInsensitive)
+            .Or(RegexEquals).Or(RegexEqualsCaseInsensitive);
 
         private Parser<Expression> SubExpression =>
             from lparen in Parse.Char('(').Token()
@@ -73,6 +76,7 @@ namespace UnitTests
             select expr;
 
         private Parser<Expression> ColumnVariable => _anyColumnVariable.Select(GetTableString);
+        private Parser<Expression> ColumnVarOrStringLiteral => ColumnVariable.Or(StringLiteral);
 
         private Parser<Expression> StringLiteral =>
             from start in Parse.Char('"')
@@ -98,21 +102,45 @@ namespace UnitTests
         }
 
         private Parser<Expression> StringEquals =>
-            from left in ColumnVariable.Or(StringLiteral)
+            from left in ColumnVarOrStringLiteral
             from op in Parse.IgnoreCase("equals").Token()
-            from right in ColumnVariable.Or(StringLiteral)
+            from right in ColumnVarOrStringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCultureIgnoreCase);
 
         private Parser<Expression> StringEqualsCaseInsensitive =>
-            from left in ColumnVariable.Or(StringLiteral)
+            from left in ColumnVarOrStringLiteral
             from op in Parse.IgnoreCase("equals_cs").Token()
-            from right in ColumnVariable.Or(StringLiteral)
+            from right in ColumnVarOrStringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCulture);
+
+        private Parser<Expression> RegexEquals =>
+            from left in ColumnVariable
+            from op1 in Parse.IgnoreCase("matches").Token()
+            from op2 in Parse.IgnoreCase("regex").Token()
+            from right in StringLiteral
+            select RegexEqualsExpression(left, right, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private Parser<Expression> RegexEqualsCaseInsensitive =>
+            from left in ColumnVariable
+            from op1 in Parse.IgnoreCase("matches_cs").Token()
+            from op2 in Parse.IgnoreCase("regex").Token()
+            from right in StringLiteral
+            select RegexEqualsExpression(left, right, RegexOptions.Compiled);
 
         private static Expression StringEqualsExpression(Expression left, Expression right, StringComparison comparison)
         {
             var method = typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string), typeof(StringComparison)]);
             return Expression.Call(method, left, right, Expression.Constant(comparison));
+        }
+
+        private static Expression RegexEqualsExpression(Expression left, Expression right, RegexOptions options)
+        {
+            // Convert the string literal to a regex at parse time so it can efficiently be reused for each row.
+            var regex = new Regex((string)((ConstantExpression)right).Value, options);
+            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)]);
+            return Expression.Call(
+                Expression.Constant(regex),
+                method,
+                left);
         }
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)
@@ -139,19 +167,36 @@ namespace UnitTests
 
             List<(string, bool)> validConditionTests = new()
             {
-                // Single subexpression
+                // equals and equals_cs
+                ("@Column1 equals \"Column1_0\"", true),
+                ("@Column1 equals \"column1_0\"", true),
+                ("@Column1 equals_cs \"Column1_0\"", true),
+                ("@Column1 equals_cs \"column1_0\"", false),
+
+                // matches regex
+                ("@Column1 matches regex \"Col.+1_0\"", true),
+                ("@Column1 matches regex \"col.+1_0\"", true),
+                ("@Column1 matches regex \"col.+1_1\"", false),
+                ("@Column1 matches_cs regex \"Col.+1_0\"", true),
+                ("@Column1 matches_cs regex \"col.+1_0\"", false),
+
+                // Single subexpression either order
                 ("@Column1 equals \"Column1_0\"", true),
                 ("\"Column1_0\" equals @Column1", true),
                 ("(@Column1 equals \"Column1_0\")", true),
                 ("(\"Column1_0\" equals @Column1)", true),
                 ("@Column1 equals \"foo\"", false),
                 ("\"foo\" equals @Column1", false),
+                ("@Column1 equals @Column2", false),
+                ("\"a\" equals \"A\"", true),
 
-                // equals and equals_cs
-                ("@Column1 equals \"Column1_0\"", true),
-                ("@Column1 equals \"column1_0\"", true),
-                ("@Column1 equals_cs \"Column1_0\"", true),
-                ("@Column1 equals_cs \"column1_0\"", false),
+                // 'not' operator
+                ("not @Column1 equals \"Column1_0\"", false),
+                ("not @Column1 equals \"foo\"", true),
+                ("not \"foo\" equals @Column1", true),
+                ("not (@Column1 equals \"Column1_0\")", false),
+                ("not (@Column1 equals \"foo\")", true),
+                ("not (\"foo\" equals @Column1)", true),
 
                 // TODO: escaping in string literals
 
@@ -183,9 +228,11 @@ namespace UnitTests
                 "@",
                 "notstringorcolumn",
                 "@Column1 equals noquote",
+                "@Column1 not equals \"foo\"",
                 "noquote equals @Column1",
                 "@NoSuchColumn equals \"Column1_0\"",
                 "equals",
+                "not",
                 "()",
                 "(@Column1 equals \"Column1_0\"",
                 "@Column1 equals \"Column1_0\")",
