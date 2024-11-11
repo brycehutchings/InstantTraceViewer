@@ -52,7 +52,7 @@ namespace InstantTraceViewer
 
     public class TraceSourceSchemaColumn
     {
-        public string Name { get; init; }
+        public required string Name { get; init; }
 
         /// <summary>
         /// Size is multipled by the current font height in pixels.
@@ -63,7 +63,7 @@ namespace InstantTraceViewer
 
     public class TraceTableSchema
     {
-        public IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
+        public required IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
 
         /// <summary>
         /// The column which represents the timestamp of a row. Must support queries using GetColumnDateTime.

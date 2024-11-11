@@ -7,7 +7,7 @@ namespace InstantTraceViewerUI.Etw
     internal class EtwSessionEnabledProvider
     {
         // This may be a GUID or special provider string.
-        public string Name { get; set; }
+        public required string Name { get; set; }
 
         public TraceEventLevel Level { get; set; } = TraceEventLevel.Verbose;
 
@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI.Etw
 
     internal class EtwSessionProfile
     {
-        public string DisplayName { get; set; }
+        public required string DisplayName { get; set; }
 
         public KernelTraceEventParser.Keywords KernelKeywords { get; set; } = KernelTraceEventParser.Keywords.None;
 
