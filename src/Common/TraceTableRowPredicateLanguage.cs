@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 
 namespace InstantTraceViewer
 {
+    public delegate bool TraceTableRowPredicate(ITraceTableSnapshot traceTableSnapshot, int rowIndex);
+
     public class TraceTableRowPredicateLanguage
     {
         public const string StringEqualsBinaryOperatorName = "equals";
@@ -40,10 +42,10 @@ namespace InstantTraceViewer
             return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
         }
 
-        public IResult<Expression<Func<ITraceTableSnapshot, int, bool>>> TryParse(string text) => Lambda.TryParse(text);
+        public IResult<Expression<TraceTableRowPredicate>> TryParse(string text) => Lambda.TryParse(text);
 
-        private Parser<Expression<Func<ITraceTableSnapshot, int, bool>>> Lambda =>
-            ExpressionTerm.End().Select(body => Expression.Lambda<Func<ITraceTableSnapshot, int, bool>>(body, Param1TraceTableSnapshot, Param2RowIndex));
+        private Parser<Expression<TraceTableRowPredicate>> Lambda =>
+            ExpressionTerm.End().Select(body => Expression.Lambda<TraceTableRowPredicate>(body, Param1TraceTableSnapshot, Param2RowIndex));
 
         // lowest priority first
         private Parser<Expression> ExpressionTerm => OrTerm;

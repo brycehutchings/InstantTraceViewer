@@ -63,16 +63,16 @@ namespace InstantTraceViewerTests
 
             {
                 // When two columns end up with the same variable name, the first one wins (for no particular reason really, so this behavior can change if needed).
-                IResult<Expression<Func<ITraceTableSnapshot, int, bool>>> result = conditionParser.TryParse("@Column1 equals \"Column1_0\"");
+                IResult<Expression<TraceTableRowPredicate>> result = conditionParser.TryParse("@Column1 equals \"Column1_0\"");
                 Assert.IsTrue(result.WasSuccessful);
-                Func<ITraceTableSnapshot, int, bool> compiledFunc = result.Value.Compile();
+                TraceTableRowPredicate compiledFunc = result.Value.Compile();
                 Assert.IsTrue(compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */));
             }
 
             {
-                IResult<Expression<Func<ITraceTableSnapshot, int, bool>>> result = conditionParser.TryParse("@Column2 equals \"@[ Column 2 *] _0\"");
+                IResult<Expression<TraceTableRowPredicate>> result = conditionParser.TryParse("@Column2 equals \"@[ Column 2 *] _0\"");
                 Assert.IsTrue(result.WasSuccessful);
-                Func<ITraceTableSnapshot, int, bool> compiledFunc = result.Value.Compile();
+                TraceTableRowPredicate compiledFunc = result.Value.Compile();
                 Assert.IsTrue(compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */));
             }
         }
@@ -150,9 +150,9 @@ namespace InstantTraceViewerTests
 
             foreach (var (text, expected) in validConditionTests)
             {
-                IResult<Expression<Func<ITraceTableSnapshot, int, bool>>> expressionResult = conditionParser.TryParse(text);
+                IResult<Expression<TraceTableRowPredicate>> expressionResult = conditionParser.TryParse(text);
                 Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse");
-                Func<ITraceTableSnapshot, int, bool> compiledFunc = expressionResult.Value.Compile();
+                TraceTableRowPredicate compiledFunc = expressionResult.Value.Compile();
                 Assert.AreEqual(expected, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Value}");
             }
 

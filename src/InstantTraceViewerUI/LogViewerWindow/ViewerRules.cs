@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using InstantTraceViewer;
+using Microsoft.Diagnostics.Tracing.Parsers;
 
 namespace InstantTraceViewerUI
 {
@@ -11,28 +13,46 @@ namespace InstantTraceViewerUI
         Exclude
     }
 
-    internal struct TraceRowRule
-    {
-        // TODO: Needed later for editing rules.
-        // public string Rule { get; }
-
-        public Func<ITraceTableSnapshot, int, bool> IsMatch { get; set; }
-    }
-
-    internal record TraceRowVisibleRule(TraceRowRule Rule, TraceRowRuleAction Action);
-
     internal class ViewerRules
     {
-        public List<TraceRowVisibleRule> VisibleRules { get; set; } = new List<TraceRowVisibleRule>();
+        private List<(string Rule, TraceRowRuleAction Action)> _visibleRules = new();
 
-        public int GenerationId { get; set; } = 1;
+        private IReadOnlyList<(TraceTableRowPredicate Predicate, TraceRowRuleAction Action)> _visibleRulePredicates;
+        private int _visibleRulePredicatesRuleGenerationId = -1;
+        private int _visibleRulePredicatesTableGenerationId = -1;
+
+        // Bumping this id will trigger a complete rebuild of the filtered trace table.
+        public int GenerationId { get; private set; }
+
+        public int RuleCount => _visibleRules.Count;
+
+        public void ClearRules()
+        {
+            _visibleRules.Clear();
+            GenerationId++;
+        }
+
+        public void AddIncludeRule(string rule)
+        {
+            // Include rules go last to ensure anything already excluded stays excluded.
+            _visibleRules.Add((rule, TraceRowRuleAction.Include));
+            GenerationId++;
+        }
+
+        public void AddExcludeRule(string rule)
+        {
+            _visibleRules.Insert(0, (rule, TraceRowRuleAction.Exclude));
+            GenerationId++;
+        }
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {
+            EnsureVisibleRulePredicates(traceTable);
+
             TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
-            foreach (var rule in VisibleRules)
+            foreach (var rule in _visibleRulePredicates)
             {
-                if (rule.Rule.IsMatch(traceTable, unfilteredRowIndex))
+                if (rule.Predicate(traceTable, unfilteredRowIndex))
                 {
                     return rule.Action;
                 }
@@ -51,8 +71,35 @@ namespace InstantTraceViewerUI
         {
             return new ViewerRules
             {
-                VisibleRules = VisibleRules.ToList()
+                _visibleRules = _visibleRules.ToList(),
+                GenerationId = GenerationId
             };
+        }
+
+        private void EnsureVisibleRulePredicates(ITraceTableSnapshot traceTable)
+        {
+            if (_visibleRulePredicatesRuleGenerationId != GenerationId ||
+                _visibleRulePredicatesTableGenerationId != traceTable.GenerationId)
+            {
+                Trace.WriteLine("Recompiling rule predicates...");
+                var parser = new TraceTableRowPredicateLanguage(traceTable.Schema);
+                List<(TraceTableRowPredicate Predicate, TraceRowRuleAction Action)> newPredicates = new();
+                foreach (var rule in _visibleRules)
+                {
+                    var parseResult = parser.TryParse(rule.Rule);
+                    if (!parseResult.WasSuccessful)
+                    {
+                        Trace.WriteLine($"Failed to parse rule '{rule.Rule}': {parseResult.Message}");
+                        continue;
+                    }
+
+                    newPredicates.Add((parseResult.Value.Compile(), rule.Action));
+                }
+                _visibleRulePredicates = newPredicates;
+            }
+
+            _visibleRulePredicatesRuleGenerationId = GenerationId;
+            _visibleRulePredicatesTableGenerationId = traceTable.GenerationId;
         }
     }
 }
