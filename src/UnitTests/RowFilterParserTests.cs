@@ -28,7 +28,9 @@ namespace UnitTests
     // * Int support. With less/greater than
     public class ConditionParser
     {
-        private static readonly ParameterExpression Param1 = Expression.Parameter(typeof(ITraceTableSnapshot), "_");
+        private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
+        private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
+
         private readonly TraceTableSchema _schema;
         private Parser<TraceSourceSchemaColumn> _anyColumnVariable;
 
@@ -43,9 +45,10 @@ namespace UnitTests
 
         }
 
-        public IResult<Expression<Func<ITraceTableSnapshot, bool>>> TryParseCondition(string text) => Lambda.TryParse(text);
+        public IResult<Expression<Func<ITraceTableSnapshot, int, bool>>> TryParseCondition(string text) => Lambda.TryParse(text);
 
-        private Parser<Expression<Func<ITraceTableSnapshot, bool>>> Lambda => ExpressionTerm.End().Select(body => Expression.Lambda<Func<ITraceTableSnapshot, bool>>(body, Param1));
+        private Parser<Expression<Func<ITraceTableSnapshot, int, bool>>> Lambda =>
+            ExpressionTerm.End().Select(body => Expression.Lambda<Func<ITraceTableSnapshot, int, bool>>(body, Param1TraceTableSnapshot, Param2RowIndex));
 
         // lowest priority first
         private Parser<Expression> ExpressionTerm => OrTerm;
@@ -108,17 +111,17 @@ namespace UnitTests
 
         private static Expression StringEqualsExpression(Expression left, Expression right, StringComparison comparison)
         {
-            var method = typeof(string).GetMethod("Equals", new[] { typeof(string), typeof(string), typeof(StringComparison) });
+            var method = typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string), typeof(StringComparison)]);
             return Expression.Call(method, left, right, Expression.Constant(comparison));
         }
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)
         {
-            var method = typeof(ITraceTableSnapshot).GetMethod("GetColumnString"); // TODO nameof?
+            var method = typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnString));
             return Expression.Call(
-                Param1, // The instance that we call the method on is a parameter to this expression.
+                Param1TraceTableSnapshot,
                 method,
-                Expression.Constant(0) /* rowIndex */,
+                Param2RowIndex,
                 Expression.Constant(column),
                 Expression.Constant(false) /* allowMultiline */);
         }
@@ -169,10 +172,10 @@ namespace UnitTests
 
             foreach (var (text, expected) in validConditionTests)
             {
-                IResult<Expression<Func<ITraceTableSnapshot, bool>>> expressionResult = conditionParser.TryParseCondition(text);
+                IResult<Expression<Func<ITraceTableSnapshot, int, bool>>> expressionResult = conditionParser.TryParseCondition(text);
                 Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse");
-                Func<ITraceTableSnapshot, bool> compiledFunc = expressionResult.Value.Compile();
-                Assert.AreEqual(expected, compiledFunc(mockTraceTableSnapshot), $"\nCondition: {text}\nExpression: {expressionResult.Value}");
+                Func<ITraceTableSnapshot, int, bool> compiledFunc = expressionResult.Value.Compile();
+                Assert.AreEqual(expected, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Value}");
             }
 
             List<string> invalidSyntaxTests = new()
