@@ -1,6 +1,7 @@
 ﻿using InstantTraceViewer;
 using Sprache;
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Text.RegularExpressions;
 
 namespace UnitTests
@@ -24,7 +25,7 @@ namespace UnitTests
 
     // https://stackoverflow.com/a/51738050
     // TODOs:
-    // * Operators: contains, contains_cs, startswith, startswith_cs, endswith, endswith_cs, matches, matches_cs, matches_regex, matches_regex_cs
+    // * Operators: contains, contains_cs, startswith, startswith_cs, endswith, endswith_cs
     // * Timestamp support. With less/greater than
     // * Int support. With less/greater than
     public class ConditionParser
@@ -67,8 +68,9 @@ namespace UnitTests
 
         private Parser<Expression> Factor => SubExpression
             .Or(StringEquals).Or(StringEqualsCS)
-            .Or(Matches).Or(MatchesCS)
-            .Or(MatchesRegex).Or(MatchesRegexCS);
+            .Or(StringContains).Or(StringContainsCS)
+            .Or(StringMatches).Or(StringMatchesCS)
+            .Or(StringMatchesRegex).Or(StringMatchesRegexCS);
 
         private Parser<Expression> SubExpression =>
             from lparen in Parse.Char('(').Token()
@@ -101,6 +103,17 @@ namespace UnitTests
                    str;
         }
 
+        private Parser<Expression> StringContains =>
+            from left in ColumnVariable
+            from op in Parse.IgnoreCase("contains").Token()
+            from right in StringLiteral
+            select StringContainsExpression(left, right, StringComparison.CurrentCultureIgnoreCase);
+        private Parser<Expression> StringContainsCS =>
+            from left in ColumnVariable
+            from op in Parse.IgnoreCase("contains_cs").Token()
+            from right in StringLiteral
+            select StringContainsExpression(left, right, StringComparison.CurrentCulture);
+
         private Parser<Expression> StringEquals =>
             from left in ColumnVariable
             from op in Parse.IgnoreCase("equals").Token()
@@ -112,25 +125,25 @@ namespace UnitTests
             from right in StringLiteral
             select StringEqualsExpression(left, right, StringComparison.CurrentCulture);
 
-        private Parser<Expression> MatchesRegex =>
+        private Parser<Expression> StringMatchesRegex =>
             from left in ColumnVariable
             from op1 in Parse.IgnoreCase("matches").Token()
             from op2 in Parse.IgnoreCase("regex").Token()
             from right in StringLiteral
             select RegexMatchesExpression(left, right, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private Parser<Expression> MatchesRegexCS =>
+        private Parser<Expression> StringMatchesRegexCS =>
             from left in ColumnVariable
             from op1 in Parse.IgnoreCase("matches_cs").Token()
             from op2 in Parse.IgnoreCase("regex").Token()
             from right in StringLiteral
             select RegexMatchesExpression(left, right, RegexOptions.Compiled);
 
-        private Parser<Expression> Matches =>
+        private Parser<Expression> StringMatches =>
             from left in ColumnVariable
             from op1 in Parse.IgnoreCase("matches").Token()
             from right in StringLiteral
             select MatchesExpression(left, right, RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private Parser<Expression> MatchesCS =>
+        private Parser<Expression> StringMatchesCS =>
             from left in ColumnVariable
             from op1 in Parse.IgnoreCase("matches_cs").Token()
             from right in StringLiteral
@@ -138,16 +151,28 @@ namespace UnitTests
 
         private static Expression StringEqualsExpression(Expression left, Expression right, StringComparison comparison)
         {
-            var method = typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string), typeof(StringComparison)]);
+            var method = typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string), typeof(StringComparison)])!;
             return Expression.Call(method, left, right, Expression.Constant(comparison));
         }
+
+        private static Expression StringContainsExpression(Expression left, Expression right, StringComparison comparison)
+        {
+            var method = typeof(ConditionParser).GetMethod(
+                nameof(StringContainsImpl),
+                BindingFlags.NonPublic | BindingFlags.Static,
+                [typeof(string), typeof(string), typeof(StringComparison)])!;
+            return Expression.Call(method, left, right, Expression.Constant(comparison));
+        }
+
+        // Null is not expected but just in case the expression uses our own wrapper to protect against it.
+        private static bool StringContainsImpl(string left, string right, StringComparison comparison) => left?.Contains(right, comparison) ?? (right == null);
 
         private static Expression MatchesExpression(Expression left, Expression right, RegexOptions options)
         {
             // Convert * and ? to regex pattern.
-            string matchPattern = (string)((ConstantExpression)right).Value;
+            string matchPattern = (string)((ConstantExpression)right).Value!;
             matchPattern = "^" + Regex.Escape(matchPattern).Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
-            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)]);
+            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)])!;
             return Expression.Call(
                 Expression.Constant(new Regex(matchPattern, options)),
                 method,
@@ -157,8 +182,8 @@ namespace UnitTests
         private static Expression RegexMatchesExpression(Expression left, Expression right, RegexOptions options)
         {
             // Convert the string literal to a regex at parse time so it can efficiently be reused for each row.
-            string matchPattern = (string)((ConstantExpression)right).Value;
-            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)]);
+            string matchPattern = (string)((ConstantExpression)right).Value!;
+            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)])!;
             return Expression.Call(
                 Expression.Constant(new Regex(matchPattern, options)),
                 method,
@@ -167,7 +192,7 @@ namespace UnitTests
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)
         {
-            var method = typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnString));
+            var method = typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnString))!;
             return Expression.Call(
                 Param1TraceTableSnapshot,
                 method,
@@ -189,20 +214,26 @@ namespace UnitTests
 
             List<(string, bool)> validConditionTests = new()
             {
-                // equals and equals_cs
+                // equals/equals_cs
                 ("@Column1 equals \"Column1_0\"", true),
                 ("@Column1 equals \"column1_0\"", true),
                 ("@Column1 equals_cs \"Column1_0\"", true),
                 ("@Column1 equals_cs \"column1_0\"", false),
 
-                // matches
+                // contains/contains_cs
+                ("@Column1 contains \"OLUM\"", true),
+                ("@Column1 contains \"foo\"", false),
+                ("@Column1 contains_cs \"OLUM\"", false),
+                ("@Column1 contains_cs \"olum\"", true),
+
+                // matches/matches_cs
                 ("@Column1 matches \"Col*1_?\"", true),
                 ("@Column1 matches \"col*1_?\"", true),
                 ("@Column1 matches \"col*1_1\"", false),
                 ("@Column1 matches_cs \"Col*1_?\"", true),
                 ("@Column1 matches_cs \"col*1_?\"", false),
 
-                // matches regex
+                // matches regex/matches_cs regex
                 ("@Column1 matches regex \"Col.+1_0\"", true),
                 ("@Column1 matches regex \"col.+1_0\"", true),
                 ("@Column1 matches regex \"col.+1_1\"", false),
@@ -219,8 +250,8 @@ namespace UnitTests
                 ("not @Column1 equals \"foo\"", true),
                 ("not (@Column1 equals \"Column1_0\")", false),
                 ("not (@Column1 equals \"foo\")", true),
-
-                // TODO: escaping in string literals
+                ("not  @Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\"", true),
+                ("not (@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
 
                 // Case-insensitive column name
                 ("@column1 equals \"Column1_0\"", true),
@@ -235,6 +266,14 @@ namespace UnitTests
                 ("@Column1 equals \"Column1_0\" or @Column2 equals \"foo\"", true),
                 ("@Column1 equals \"foo\"       OR @Column2 equals \"Column2_0\"", true),
                 ("@Column1 equals \"foo\"       or @Column2 equals \"foo\"", false),
+
+                // And/or applied left to right
+                ("@Column1 equals \"Column1_0\" and @Column2 equals \"Column2_0\" or @Column2 equals \"foo\"", true), // true && true || false == true
+                ("@Column1 equals \"Column1_0\" and @Column2 equals \"foo\" or @Column2 equals \"Column2_0\"", true), // true && false || true == true
+                ("@Column1 equals \"foo\" and @Column2 equals \"Column2_0\" or @Column2 equals \"foo\"", false), // false && true || false == false
+                ("@Column1 equals \"foo\" and @Column2 equals \"bar\" or @Column2 equals \"Column2_0\"", true), // false && false || true == true
+
+                // TODO: escaping in string literals
             };
 
             foreach (var (text, expected) in validConditionTests)
