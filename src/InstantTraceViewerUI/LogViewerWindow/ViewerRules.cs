@@ -4,21 +4,38 @@ using System.Linq;
 using System.Linq.Expressions;
 using InstantTraceViewer;
 using Sprache;
+using Windows.Devices.Display.Core;
 
 namespace InstantTraceViewerUI
 {
-    internal enum TraceRowRuleAction
+    public enum TraceRowRuleAction
     {
         Include,
         Exclude
     }
 
+    public interface IRule
+    {
+        public string Query { get; }
+        public TraceRowRuleAction Action { get; }
+
+        public bool Enabled { get; set; }
+
+        // The result of parsing the query.
+        public IResult<Expression<TraceTableRowPredicate>> ParseResult { get; }
+
+        // Predicate is compiled from the query if successful.
+        public TraceTableRowPredicate? Predicate { get; }
+    }
+
     internal class ViewerRules
     {
-        class Rule
+        class Rule : IRule
         {
             public required string Query { get; init; }
             public required TraceRowRuleAction Action { get; init; }
+
+            public bool Enabled { get; set; } = true;
 
             // The result of parsing the query.
             public IResult<Expression<TraceTableRowPredicate>> ParseResult { get; set; }
@@ -35,8 +52,6 @@ namespace InstantTraceViewerUI
         // Bumping this id will trigger a complete rebuild of the filtered trace table.
         public int GenerationId { get; private set; } = 1;
 
-        public int RuleCount => _visibleRules.Count;
-
         public void ClearRules()
         {
             _visibleRules.Clear();
@@ -52,9 +67,12 @@ namespace InstantTraceViewerUI
 
         public void AddExcludeRule(string query)
         {
+            // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
             _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
             GenerationId++;
         }
+
+        public IReadOnlyList<IRule> Rules => _visibleRules;
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {

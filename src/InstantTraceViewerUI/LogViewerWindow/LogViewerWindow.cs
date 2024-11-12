@@ -38,6 +38,7 @@ namespace InstantTraceViewerUI
         private int? _hoveredThreadId;
 
         private TimelineWindow _timelineInline = null;
+        private FiltersEditorWindow _filtersEditorWindow;
 
         private int? _cellContentPopupFullTableRowIndex = null;
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
@@ -81,6 +82,14 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.End();
+
+            if (_filtersEditorWindow != null)
+            {
+                if (!_filtersEditorWindow.DrawWindow(uiCommands, _viewerRules))
+                {
+                    _filtersEditorWindow = null;
+                }
+            }
 
             if (!opened)
             {
@@ -288,7 +297,6 @@ namespace InstantTraceViewerUI
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
-                                    // Include rules go last to ensure anything already excluded stays excluded.
                                     _viewerRules.AddIncludeRule(newRule);
                                 }
                                 if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
@@ -451,14 +459,19 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            string filterCountSuffix = _viewerRules.RuleCount > 0 ? $" ({_viewerRules.RuleCount})" : string.Empty;
+            string filterCountSuffix = _viewerRules.Rules.Count > 0 ? $" ({_viewerRules.Rules.Count})" : string.Empty;
             if (ImGui.Button($"Filtering{filterCountSuffix}..."))
             {
                 ImGui.OpenPopup("Filtering");
             }
             if (ImGui.BeginPopup("Filtering"))
             {
-                ImGui.BeginDisabled(_viewerRules.RuleCount == 0);
+                if (ImGui.MenuItem("Edit filters..."))
+                {
+                    _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName);
+                }
+
+                ImGui.BeginDisabled(_viewerRules.Rules.Count == 0);
                 if (ImGui.MenuItem($"Clear filters"))
                 {
                     _viewerRules.ClearRules();
