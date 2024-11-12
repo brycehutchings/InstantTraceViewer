@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Linq.Expressions;
 using InstantTraceViewer;
-using Microsoft.Diagnostics.Tracing.Parsers;
+using Sprache;
 
 namespace InstantTraceViewerUI
 {
@@ -15,14 +15,25 @@ namespace InstantTraceViewerUI
 
     internal class ViewerRules
     {
-        private List<(string Rule, TraceRowRuleAction Action)> _visibleRules = new();
+        class Rule
+        {
+            public required string Query { get; init; }
+            public required TraceRowRuleAction Action { get; init; }
 
-        private IReadOnlyList<(TraceTableRowPredicate Predicate, TraceRowRuleAction Action)> _visibleRulePredicates;
+            // The result of parsing the query.
+            public IResult<Expression<TraceTableRowPredicate>> ParseResult { get; set; }
+
+            // Predicate is compiled from the query if successful.
+            public TraceTableRowPredicate? Predicate { get; set; }
+        }
+
+        private List<Rule> _visibleRules = new();
+
         private int _visibleRulePredicatesRuleGenerationId = -1;
         private int _visibleRulePredicatesTableGenerationId = -1;
 
         // Bumping this id will trigger a complete rebuild of the filtered trace table.
-        public int GenerationId { get; private set; }
+        public int GenerationId { get; private set; } = 1;
 
         public int RuleCount => _visibleRules.Count;
 
@@ -32,26 +43,36 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
-        public void AddIncludeRule(string rule)
+        public void AddIncludeRule(string query)
         {
             // Include rules go last to ensure anything already excluded stays excluded.
-            _visibleRules.Add((rule, TraceRowRuleAction.Include));
+            _visibleRules.Add(new Rule { Query = query, Action = TraceRowRuleAction.Include });
             GenerationId++;
         }
 
-        public void AddExcludeRule(string rule)
+        public void AddExcludeRule(string query)
         {
-            _visibleRules.Insert(0, (rule, TraceRowRuleAction.Exclude));
+            _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
             GenerationId++;
         }
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {
+            if (_visibleRules.Count == 0)
+            {
+                return TraceRowRuleAction.Include;
+            }
+
             EnsureVisibleRulePredicates(traceTable);
 
             TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
-            foreach (var rule in _visibleRulePredicates)
+            foreach (var rule in _visibleRules)
             {
+                if (rule.Predicate == null)
+                {
+                    continue; // This rule could not be parsed.
+                }
+
                 if (rule.Predicate(traceTable, unfilteredRowIndex))
                 {
                     return rule.Action;
@@ -81,21 +102,21 @@ namespace InstantTraceViewerUI
             if (_visibleRulePredicatesRuleGenerationId != GenerationId ||
                 _visibleRulePredicatesTableGenerationId != traceTable.GenerationId)
             {
-                Trace.WriteLine("Recompiling rule predicates...");
+                Trace.WriteLine("Recompiling query predicates...");
                 var parser = new TraceTableRowPredicateLanguage(traceTable.Schema);
-                List<(TraceTableRowPredicate Predicate, TraceRowRuleAction Action)> newPredicates = new();
                 foreach (var rule in _visibleRules)
                 {
-                    var parseResult = parser.TryParse(rule.Rule);
-                    if (!parseResult.WasSuccessful)
+                    rule.ParseResult = parser.TryParse(rule.Query);
+                    if (!rule.ParseResult.WasSuccessful)
                     {
-                        Trace.WriteLine($"Failed to parse rule '{rule.Rule}': {parseResult.Message}");
-                        continue;
+                        Trace.WriteLine($"Failed to parse query '{rule.Query}': {rule.ParseResult.Message}");
+                        rule.Predicate = null;
                     }
-
-                    newPredicates.Add((parseResult.Value.Compile(), rule.Action));
+                    else
+                    {
+                        rule.Predicate = rule.ParseResult.Value.Compile();
+                    }
                 }
-                _visibleRulePredicates = newPredicates;
             }
 
             _visibleRulePredicatesRuleGenerationId = GenerationId;
