@@ -87,7 +87,7 @@ namespace InstantTraceViewerTests
             List<(string, bool)> validConditionTests = new()
             {
                 // equals/equals_cs
-                ("@Column1 equals \"Column1_0\"", true),
+                ("   @Column1  equals  \"Column1_0\"  ", true),
                 ("@Column1 equals \"column1_0\"", true),
                 ("@Column1 equals_cs \"Column1_0\"", true),
                 ("@Column1 equals_cs \"column1_0\"", false),
@@ -124,6 +124,7 @@ namespace InstantTraceViewerTests
                 ("not (@Column1 equals \"foo\")", true),
                 ("not  @Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\"", true),
                 ("not (@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
+                ("not(@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
 
                 // Case-insensitive column name
                 ("@column1 equals \"Column1_0\"", true),
@@ -145,20 +146,26 @@ namespace InstantTraceViewerTests
                 ("@Column1 equals \"foo\" and @Column2 equals \"Column2_0\" or @Column2 equals \"foo\"", false), // false && true || false == false
                 ("@Column1 equals \"foo\" and @Column2 equals \"bar\" or @Column2 equals \"Column2_0\"", true), // false && false || true == true
 
+                // Or takes precedence over And
+                // Effectively this test is doing "true or true and false" which should be parsed as "(true) or (true and false)" and not "(true or true) and (false)"
+                ("@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\" and @Column2 equals \"foo\"", true),
+
                 // TODO: escaping in string literals
             };
 
             foreach (var (text, expected) in validConditionTests)
             {
                 IResult<Expression<TraceTableRowPredicate>> expressionResult = conditionParser.TryParse(text);
-                Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse");
+                Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse\n{expressionResult}");
                 TraceTableRowPredicate compiledFunc = expressionResult.Value.Compile();
                 Assert.AreEqual(expected, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Value}");
             }
 
             List<string> invalidSyntaxTests = [
+                "@Column1 equals \"Column1_0\" and@Column2 equals \"Column2_t\"",
                 "@",
                 "notstringorcolumn",
+                "@Column1equals\"nospaces\"",
                 "@Column1 equals noquote",
                 "@Column1 not equals \"foo\"",
                 "noquote equals @Column1",
@@ -166,6 +173,7 @@ namespace InstantTraceViewerTests
                 "equals",
                 "not",
                 "()",
+                "not()",
                 "(@Column1 equals \"Column1_0\"",
                 "@Column1 equals \"Column1_0\")",
                 "\"Column1_0\" equals @Column1",
@@ -175,6 +183,7 @@ namespace InstantTraceViewerTests
                 "not \"foo\" equals @Column1",
                 "not (\"foo\" equals @Column1)",
                 "@Column1 equals @Column2",
+                "not@Column1 equals \"Column1_0\"", // must be space or ( after not.
             ];
 
             foreach (var text in invalidSyntaxTests)
