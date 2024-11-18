@@ -124,12 +124,12 @@ namespace InstantTraceViewerTests
             {
                 Console.WriteLine($"Condition: {text}");
 
-                TraceTableRowSelectorParseResults expressionResult = conditionParser.Parse(text);
+                ITraceTableRowSelectorParseResults parseResult = conditionParser.Parse(text);
 
-                Console.WriteLine($"Expression: {expressionResult.Expression}\n");
+                Console.WriteLine($"Expression: {parseResult.Expression}\n");
 
-                TraceTableRowSelector compiledFunc = expressionResult.Expression.Compile();
-                Assert.AreEqual(expectMatch, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Expression}");
+                TraceTableRowSelector compiledFunc = parseResult.Expression.Compile();
+                Assert.AreEqual(expectMatch, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {parseResult.Expression}");
             }
         }
 

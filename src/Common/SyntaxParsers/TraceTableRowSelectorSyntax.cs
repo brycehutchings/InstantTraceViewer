@@ -6,35 +6,40 @@ namespace InstantTraceViewer
 {
     public delegate bool TraceTableRowSelector(ITraceTableSnapshot traceTableSnapshot, int rowIndex);
 
-    public class TraceTableRowSelectorParseResults
+    public interface ITraceTableRowSelectorParseResults
     {
-        private bool _eof = false;
-
-        public IEnumerator<string> TokenEnumerator;
-        public Expression<TraceTableRowSelector> Expression;
-
-        public string CurrentToken
-        {
-            get
-            {
-                if (_eof)
-                {
-                    throw new ArgumentException("Unexpected end of input");
-                }
-                return TokenEnumerator.Current;
-            }
-        }
-
-        public bool Eof => _eof;
-
-        public void MoveNextToken()
-        {
-            _eof = !TokenEnumerator.MoveNext();
-        }
+        Expression<TraceTableRowSelector> Expression { get; }
     }
 
     public class TraceTableRowSelectorSyntax
     {
+        public class ParserState : ITraceTableRowSelectorParseResults
+        {
+            private bool _eof = false;
+
+            public IEnumerator<string> TokenEnumerator;
+            public Expression<TraceTableRowSelector> Expression { get; set; }
+
+            public string CurrentToken
+            {
+                get
+                {
+                    if (_eof)
+                    {
+                        throw new ArgumentException("Unexpected end of input");
+                    }
+                    return TokenEnumerator.Current;
+                }
+            }
+
+            public bool Eof => _eof;
+
+            public void MoveNextToken()
+            {
+                _eof = !TokenEnumerator.MoveNext();
+            }
+        }
+
         public const string StringEqualsOperatorName = "equals";
         public const string StringEqualsCSOperatorName = "equals_cs";
         public const string StringContainsOperatorName = "contains";
@@ -53,17 +58,17 @@ namespace InstantTraceViewer
             _columns = schema.Columns.ToDictionary(c => CreateColumnVariableName(c), c => c, StringComparer.CurrentCultureIgnoreCase);
         }
 
-        public TraceTableRowSelectorParseResults Parse(string text)
+        public ITraceTableRowSelectorParseResults Parse(string text)
         {
             // Split the text up by whitespace or punctuation
-            IEnumerable<string> tokens = Tokenize(text);
+            IEnumerable<string> tokens = SyntaxTokenizer.Tokenize(text);
 
-            TraceTableRowSelectorParseResults result = new() { TokenEnumerator = tokens.GetEnumerator() };
-            result.MoveNextToken(); // Move to first token.
+            ParserState state = new() { TokenEnumerator = tokens.GetEnumerator() };
+            state.MoveNextToken(); // Move to first token.
 
-            Expression expressionBody = ParseExpression(result, true);
-            result.Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex);
-            return result;
+            Expression expressionBody = ParseExpression(state, true);
+            state.Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex);
+            return state;
         }
 
         public static string CreateEscapedStringLiteral(string text)
@@ -71,51 +76,51 @@ namespace InstantTraceViewer
             return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
         }
 
-        private Expression ParseExpression(TraceTableRowSelectorParseResults result, bool allowBinaryLogicalOperators, bool stopAtCloseParenthesis = false)
+        private Expression ParseExpression(ParserState state, bool allowBinaryLogicalOperators, bool stopAtCloseParenthesis = false)
         {
             Expression expression = null;
 
             do
             {
-                if (string.Equals(result.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
+                if (string.Equals(state.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    result.MoveNextToken();
-                    expression = ParseExpression(result, true, true);
+                    state.MoveNextToken();
+                    expression = ParseExpression(state, true, true);
                 }
-                else if (stopAtCloseParenthesis && expression != null && string.Equals(result.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
+                else if (stopAtCloseParenthesis && expression != null && string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    result.MoveNextToken();
+                    state.MoveNextToken();
                     return expression;
                 }
-                else if (string.Equals(result.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
+                else if (string.Equals(state.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    result.MoveNextToken();
-                    expression = Expression.Not(ParseExpression(result, false, false));
+                    state.MoveNextToken();
+                    expression = Expression.Not(ParseExpression(state, false, false));
                 }
-                else if (allowBinaryLogicalOperators && expression != null && string.Equals(result.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
+                else if (allowBinaryLogicalOperators && expression != null && string.Equals(state.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    result.MoveNextToken();
-                    // allowBinaryLogicalOperators is set to false because "AND" has higher precedence than "OR". The result is that only one predicate is parsed before
+                    state.MoveNextToken();
+                    // allowBinaryLogicalOperators is set to false because "AND" has higher precedence than "OR". The state is that only one predicate is parsed before
                     // control is returned back to this method.
-                    expression = Expression.AndAlso(expression, ParseExpression(result, false, stopAtCloseParenthesis));
+                    expression = Expression.AndAlso(expression, ParseExpression(state, false, stopAtCloseParenthesis));
                 }
-                else if (allowBinaryLogicalOperators && expression != null && string.Equals(result.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
+                else if (allowBinaryLogicalOperators && expression != null && string.Equals(state.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    result.MoveNextToken();
+                    state.MoveNextToken();
                     // allowBinaryLogicalOperators is set to true because "OR" has lower precedence than "AND". This allows multiple predicates to be parsed before control
                     // is returned back to this method.
-                    expression = Expression.OrElse(expression, ParseExpression(result, true, stopAtCloseParenthesis));
+                    expression = Expression.OrElse(expression, ParseExpression(state, true, stopAtCloseParenthesis));
                 }
                 else if (expression == null)
                 {
-                    expression = ParsePredicate(result);
+                    expression = ParsePredicate(state);
                 }
                 else
                 {
-                    throw new ArgumentException($"Unexpected token: {result.CurrentToken}");
+                    throw new ArgumentException($"Unexpected token: {state.CurrentToken}");
                 }
             }
-            while (!result.Eof && allowBinaryLogicalOperators);
+            while (!state.Eof && allowBinaryLogicalOperators);
 
             if (expression == null)
             {
@@ -125,56 +130,56 @@ namespace InstantTraceViewer
             return expression;
         }
 
-        private Expression ParsePredicate(TraceTableRowSelectorParseResults result)
+        private Expression ParsePredicate(ParserState state)
         {
-            if (!_columns.TryGetValue(result.CurrentToken, out TraceSourceSchemaColumn column))
+            if (!_columns.TryGetValue(state.CurrentToken, out TraceSourceSchemaColumn column))
             {
-                throw new ArgumentException($"Unknown column: {result.CurrentToken}");
+                throw new ArgumentException($"Unknown column: {state.CurrentToken}");
             }
 
-            result.MoveNextToken();
+            state.MoveNextToken();
 
-            string operatorName = result.CurrentToken;
+            string operatorName = state.CurrentToken;
             if (operatorName.Equals(StringEqualsOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
                 operatorName.Equals(StringEqualsCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
             {
-                result.MoveNextToken();
-                string value = ReadStringLiteral(result.CurrentToken);
-                result.MoveNextToken();
+                state.MoveNextToken();
+                string value = ReadStringLiteral(state.CurrentToken);
+                state.MoveNextToken();
                 return ComparisonExpressions.StringEquals(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
             }
             else if (operatorName.Equals(StringContainsOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
                      operatorName.Equals(StringContainsCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
             {
-                result.MoveNextToken();
-                string value = ReadStringLiteral(result.CurrentToken);
-                result.MoveNextToken();
+                state.MoveNextToken();
+                string value = ReadStringLiteral(state.CurrentToken);
+                state.MoveNextToken();
                 return ComparisonExpressions.StringContains(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
             }
             else if (operatorName.Equals(StringMatchesOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
                      operatorName.Equals(StringMatchesCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
             {
-                result.MoveNextToken();
+                state.MoveNextToken();
 
                 // Token following matches/matches_cs may be an optional "regex" modifier.
-                string token = result.CurrentToken;
-                if (result.CurrentToken.Equals(StringMatchesRegexModifierName, StringComparison.InvariantCultureIgnoreCase))
+                string token = state.CurrentToken;
+                if (state.CurrentToken.Equals(StringMatchesRegexModifierName, StringComparison.InvariantCultureIgnoreCase))
                 {
-                    result.MoveNextToken();
-                    string value = ReadStringLiteral(result.CurrentToken);
-                    result.MoveNextToken();
+                    state.MoveNextToken();
+                    string value = ReadStringLiteral(state.CurrentToken);
+                    state.MoveNextToken();
                     return ComparisonExpressions.MatchesRegex(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
                 }
                 else
                 {
-                    string value = ReadStringLiteral(result.CurrentToken);
-                    result.MoveNextToken();
+                    string value = ReadStringLiteral(state.CurrentToken);
+                    state.MoveNextToken();
                     return ComparisonExpressions.Matches(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
                 }
             }
             else
             {
-                throw new ArgumentException($"Unknown operator: {result.CurrentToken}");
+                throw new ArgumentException($"Unknown operator: {state.CurrentToken}");
             }
         }
 
@@ -205,75 +210,6 @@ namespace InstantTraceViewer
                 Param2RowIndex,
                 Expression.Constant(column),
                 Expression.Constant(false) /* allowMultiline */);
-        }
-
-        private static IEnumerable<string> Tokenize(string text)
-        {
-            int i = 0;
-            while (i < text.Length)
-            {
-                // Skip whitespace
-                for (; i < text.Length && char.IsWhiteSpace(text[i]); i++) ;
-
-                if (i >= text.Length)
-                {
-                    break;
-                }
-                else if (text[i] == '"')
-                {
-                    StringBuilder sb = new();
-                    sb.Append(text[i]); // Start quote
-                    i++;
-                    while (true)
-                    {
-                        if (i == text.Length)
-                        {
-                            throw new ArgumentException("Unterminated string literal");
-                        }
-                        if (text[i] == '\\')
-                        {
-                            i++;
-                            if (i == text.Length)
-                            {
-                                throw new ArgumentException("Unterminated string literal");
-                            }
-
-                            sb.Append(text[i] switch
-                            {
-                                '"' => '"',
-                                '\\' => '\\',
-                                'n' => '\n',
-                                't' => '\t',
-                                'r' => '\r',
-                                _ => throw new ArgumentException($"Invalid escape sequence: \\{text[i]}")
-                            });
-                        }
-                        else if (text[i] == '"')
-                        {
-                            sb.Append(text[i]);
-                            i++;
-                            yield return sb.ToString();
-                            break;
-                        }
-                        else
-                        {
-                            sb.Append(text[i]);
-                            i++;
-                        }
-                    }
-                }
-                else if (text[i] == '(' || text[i] == ')')
-                {
-                    yield return text[i++].ToString();
-                }
-                else
-                {
-                    // Read a token until parenthesis or whitespace
-                    int startIndex = i;
-                    for (; i < text.Length && text[i] != '(' && text[i] != ')' && !char.IsWhiteSpace(text[i]); i++) ;
-                    yield return text.Substring(startIndex, i - startIndex).ToString();
-                }
-            }
         }
 
         // Column names could contain spaces and other characters that would make parsing ambiguous/troublesome so strip out everything except for letters and numbers

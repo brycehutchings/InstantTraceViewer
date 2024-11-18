@@ -20,7 +20,7 @@ namespace InstantTraceViewerUI
         public bool Enabled { get; set; }
 
         // The result of parsing the query.
-        public TraceTableRowSelectorParseResults ParseResult { get; }
+        public ITraceTableRowSelectorParseResults ParseResult { get; }
 
         // Predicate is compiled from the query if successful.
         public TraceTableRowSelector? Predicate { get; }
@@ -36,7 +36,7 @@ namespace InstantTraceViewerUI
             public bool Enabled { get; set; } = true;
 
             // The result of parsing the query.
-            public TraceTableRowSelectorParseResults ParseResult { get; set; }
+            public ITraceTableRowSelectorParseResults ParseResult { get; set; }
 
             // Predicate is compiled from the query if successful.
             public TraceTableRowSelector? Predicate { get; set; }
