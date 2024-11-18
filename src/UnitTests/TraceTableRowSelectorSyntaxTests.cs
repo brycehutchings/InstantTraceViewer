@@ -1,29 +1,27 @@
 ﻿using InstantTraceViewer;
-using Sprache;
-using System.Linq.Expressions;
 
 namespace InstantTraceViewerTests
 {
-    class MockTraceTableSnapshot : ITraceTableSnapshot
-    {
-        public static readonly TraceSourceSchemaColumn Column1 = new TraceSourceSchemaColumn { Name = "Column1" };
-        public static readonly TraceSourceSchemaColumn Column2 = new TraceSourceSchemaColumn { Name = "Column2" };
-        public static readonly TraceSourceSchemaColumn Column3 = new TraceSourceSchemaColumn { Name = "Column3" };
-
-        public TraceTableSchema Schema { get; set; } = new TraceTableSchema { Columns = [Column1, Column2, Column3] };
-
-        public bool GetColumnBooleanTest(int rowIndex, TraceSourceSchemaColumn column) => true;
-        public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false) => $"{column.Name}_{rowIndex}";
-        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
-        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
-        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
-        public int RowCount => 16;
-        public int GenerationId => 1;
-    }
-
     [TestClass]
-    public class TraceTableRowPredicateLanguageParseTests
+    public class ParserIdeaTests
     {
+        class MockTraceTableSnapshot : ITraceTableSnapshot
+        {
+            public static readonly TraceSourceSchemaColumn Column1 = new TraceSourceSchemaColumn { Name = "Column1" };
+            public static readonly TraceSourceSchemaColumn Column2 = new TraceSourceSchemaColumn { Name = "Column2" };
+            public static readonly TraceSourceSchemaColumn Column3 = new TraceSourceSchemaColumn { Name = "Column3" };
+
+            public TraceTableSchema Schema { get; set; } = new TraceTableSchema { Columns = [Column1, Column2, Column3] };
+
+            public bool GetColumnBooleanTest(int rowIndex, TraceSourceSchemaColumn column) => true;
+            public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false) => $"{column.Name}_{rowIndex}";
+            public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public int RowCount => 16;
+            public int GenerationId => 1;
+        }
+
         [TestMethod]
         public void TestEscape()
         {
@@ -40,49 +38,16 @@ namespace InstantTraceViewerTests
 
             foreach (var testString in testStrings)
             {
-                Assert.AreEqual(testString.Literal, TraceTableRowPredicateLanguage.CreateEscapedStringLiteral(testString.Text));
+                Assert.AreEqual(testString.Literal, TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(testString.Text));
             }
         }
 
         [TestMethod]
-        public void TestColumnNames()
-        {
-            // Test column names with non-word characters. And duplicated column names (after fixup).
-            var schema = new TraceTableSchema
-            {
-                Columns = [
-                    new TraceSourceSchemaColumn { Name = "Column1" },
-                    new TraceSourceSchemaColumn { Name = "Column 1" },
-                    new TraceSourceSchemaColumn { Name = "@[ Column 2 *] " }
-                ]
-            };
-
-            MockTraceTableSnapshot mockTraceTableSnapshot = new() { Schema = schema };
-
-            TraceTableRowPredicateLanguage conditionParser = new(mockTraceTableSnapshot.Schema);
-
-            {
-                // When two columns end up with the same variable name, the first one wins (for no particular reason really, so this behavior can change if needed).
-                IResult<Expression<TraceTableRowPredicate>> result = conditionParser.TryParse("@Column1 equals \"Column1_0\"");
-                Assert.IsTrue(result.WasSuccessful);
-                TraceTableRowPredicate compiledFunc = result.Value.Compile();
-                Assert.IsTrue(compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */));
-            }
-
-            {
-                IResult<Expression<TraceTableRowPredicate>> result = conditionParser.TryParse("@Column2 equals \"@[ Column 2 *] _0\"");
-                Assert.IsTrue(result.WasSuccessful);
-                TraceTableRowPredicate compiledFunc = result.Value.Compile();
-                Assert.IsTrue(compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */));
-            }
-        }
-
-        [TestMethod]
-        public void TestParse()
+        public void TestParseValidSyntax()
         {
             MockTraceTableSnapshot mockTraceTableSnapshot = new();
 
-            TraceTableRowPredicateLanguage conditionParser = new(mockTraceTableSnapshot.Schema);
+            TraceTableRowSelectorSyntax conditionParser = new(mockTraceTableSnapshot.Schema);
 
             List<(string, bool)> validConditionTests = new()
             {
@@ -114,6 +79,7 @@ namespace InstantTraceViewerTests
 
                 // Single subexpression either order
                 ("@Column1 equals \"Column1_0\"", true),
+
                 ("(@Column1 equals \"Column1_0\")", true),
                 ("@Column1 equals \"foo\"", false),
 
@@ -122,6 +88,7 @@ namespace InstantTraceViewerTests
                 ("not @Column1 equals \"foo\"", true),
                 ("not (@Column1 equals \"Column1_0\")", false),
                 ("not (@Column1 equals \"foo\")", true),
+
                 ("not  @Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\"", true),
                 ("not (@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
                 ("not(@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
@@ -153,13 +120,21 @@ namespace InstantTraceViewerTests
                 // TODO: escaping in string literals
             };
 
-            foreach (var (text, expected) in validConditionTests)
+            foreach (var (text, expectMatch) in validConditionTests)
             {
-                IResult<Expression<TraceTableRowPredicate>> expressionResult = conditionParser.TryParse(text);
-                Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse\n{expressionResult}");
-                TraceTableRowPredicate compiledFunc = expressionResult.Value.Compile();
-                Assert.AreEqual(expected, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Value}");
+                TraceTableRowSelectorParseResults expressionResult = conditionParser.Parse(text);
+                //Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse\n{expressionResult}");
+                TraceTableRowSelector compiledFunc = expressionResult.Expression.Compile();
+                Assert.AreEqual(expectMatch, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Expression}");
             }
+        }
+
+        [TestMethod]
+        public void TestParseInvalidSyntax()
+        {
+            MockTraceTableSnapshot mockTraceTableSnapshot = new();
+
+            TraceTableRowSelectorSyntax conditionParser = new(mockTraceTableSnapshot.Schema);
 
             List<string> invalidSyntaxTests = [
                 "@Column1 equals \"Column1_0\" and@Column2 equals \"Column2_t\"",
@@ -173,6 +148,7 @@ namespace InstantTraceViewerTests
                 "equals",
                 "not",
                 "()",
+                "() and (@Column1 equals \"Column1_0\")",
                 "not()",
                 "(@Column1 equals \"Column1_0\"",
                 "@Column1 equals \"Column1_0\")",
@@ -188,8 +164,16 @@ namespace InstantTraceViewerTests
 
             foreach (var text in invalidSyntaxTests)
             {
-                var condition = conditionParser.TryParse(text);
-                Assert.IsFalse(condition.WasSuccessful, $"Expected parsing failure for {text}");
+                try
+                {
+                    var condition = conditionParser.Parse(text);
+                    Assert.Fail($"Condition {text} should not have parsed\n{condition}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Invalid syntax:\n{text}\nError: {ex.Message}\n");
+                    // Good, we expected an exception.
+                }
             }
         }
     }

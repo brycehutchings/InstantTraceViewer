@@ -1,111 +1,126 @@
-﻿using System.Diagnostics;
-using System.Linq.Expressions;
-using System.Reflection;
+﻿using System.Linq.Expressions;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace InstantTraceViewer
 {
-    public class ParserIdea
+    public delegate bool TraceTableRowSelector(ITraceTableSnapshot traceTableSnapshot, int rowIndex);
+
+    public class TraceTableRowSelectorParseResults
     {
-        public class Result
+        public IReadOnlyList<string> Tokens;
+        public int Index;
+        public Expression<TraceTableRowSelector> Expression;
+
+        public string CurrentToken
         {
-            public IReadOnlyList<string> Tokens;
-            public int Index;
-            public Expression<TraceTableRowPredicate> Expression;
-
-            public string CurrentToken
+            get
             {
-                get
+                if (Eof)
                 {
-                    if (Index >= Tokens.Count)
-                    {
-                        throw new ArgumentException("Unexpected end of input");
-                    }
-                    return Tokens[Index];
+                    throw new ArgumentException("Unexpected end of input");
                 }
-            }
-
-            public bool Eof => Index >= Tokens.Count;
-
-            public void MoveNextToken()
-            {
-                Index++;
+                return Tokens[Index];
             }
         }
+
+        public bool Eof => Index >= Tokens.Count;
+
+        public void MoveNextToken()
+        {
+            Index++;
+        }
+    }
+
+    public class TraceTableRowSelectorSyntax
+    {
+        public const string StringEqualsOperatorName = "equals";
+        public const string StringEqualsCSOperatorName = "equals_cs";
+        public const string StringContainsOperatorName = "contains";
+        public const string StringContainsCSOperatorName = "contains_cs";
+        public const string StringMatchesOperatorName = "matches";
+        public const string StringMatchesCSOperatorName = "matches_cs";
+        public const string StringMatchesRegexModifierName = $"regex";
 
         private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
         private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
         private readonly IReadOnlyDictionary<string, TraceSourceSchemaColumn> _columns;
 
-        public ParserIdea(TraceTableSchema schema)
+        public TraceTableRowSelectorSyntax(TraceTableSchema schema)
         {
             // Column variables are in the form '@<column name>' and are case-insensitive.
             _columns = schema.Columns.ToDictionary(c => CreateColumnVariableName(c), c => c, StringComparer.CurrentCultureIgnoreCase);
         }
 
-        public Result Parse(string text)
+        public TraceTableRowSelectorParseResults Parse(string text)
         {
             // Split the text up by whitespace or punctuation
             string[] tokens = Tokenize(text).ToArray();
 
-            Result result = new() { Index = 0, Tokens = tokens };
+            TraceTableRowSelectorParseResults result = new() { Index = 0, Tokens = tokens };
             Expression expressionBody = ParseExpression(result, true);
-            result.Expression = Expression.Lambda<TraceTableRowPredicate>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex);
+            result.Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex);
             return result;
         }
 
-        private Expression ParseExpression(Result result, bool allowChaining, bool stopAtCloseParenthesis = false)
+        public static string CreateEscapedStringLiteral(string text)
         {
-            Expression leftExpression = null;
+            return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
+        }
+
+        private Expression ParseExpression(TraceTableRowSelectorParseResults result, bool allowChaining, bool stopAtCloseParenthesis = false)
+        {
+            Expression expression = null;
 
             do
             {
-                if (result.Eof)
-                {
-                    Trace.Assert(leftExpression != null); // TODO: Need a check here?
-                    break;
-                }
-                else if (string.Equals(result.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
+                if (string.Equals(result.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    leftExpression = ParseExpression(result, true, true);
+                    expression = ParseExpression(result, true, true);
                 }
-                else if (stopAtCloseParenthesis && leftExpression != null && string.Equals(result.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
+                else if (stopAtCloseParenthesis && expression != null && string.Equals(result.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    return leftExpression;
+                    return expression;
                 }
                 else if (string.Equals(result.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    leftExpression = Expression.Not(ParseExpression(result, false, false));
+                    expression = Expression.Not(ParseExpression(result, false, false));
                 }
-                else if (allowChaining && leftExpression != null && string.Equals(result.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
+                else if (allowChaining && expression != null && string.Equals(result.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    leftExpression = Expression.AndAlso(leftExpression, ParseExpression(result, false, stopAtCloseParenthesis));
+                    // Don't allow chaining after 'and' because 'or' has higher precedence.
+                    expression = Expression.AndAlso(expression, ParseExpression(result, false, stopAtCloseParenthesis));
                 }
-                else if (allowChaining && leftExpression != null && string.Equals(result.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
+                else if (allowChaining && expression != null && string.Equals(result.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    leftExpression = Expression.OrElse(leftExpression, ParseExpression(result, true, stopAtCloseParenthesis));
+                    // Allow chaining after 'or' because it has higher precedence than 'and'.
+                    expression = Expression.OrElse(expression, ParseExpression(result, true, stopAtCloseParenthesis));
                 }
-                else if (leftExpression == null)
+                else if (expression == null)
                 {
-                    leftExpression = ParseComparison(result);
+                    expression = ParseComparison(result);
                 }
                 else
                 {
                     throw new ArgumentException($"Unexpected token: {result.CurrentToken}");
                 }
             }
-            while (allowChaining);
+            while (!result.Eof && allowChaining);
 
-            return leftExpression;
+            if (expression == null)
+            {
+                throw new ArgumentException($"Expected expression");
+            }
+
+            return expression;
         }
 
-        private Expression ParseComparison(Result result)
+        private Expression ParseComparison(TraceTableRowSelectorParseResults result)
         {
             if (!_columns.TryGetValue(result.CurrentToken, out TraceSourceSchemaColumn column))
             {
@@ -115,41 +130,41 @@ namespace InstantTraceViewer
             result.MoveNextToken();
 
             string operatorName = result.CurrentToken;
-            if (operatorName.Equals("equals", StringComparison.InvariantCultureIgnoreCase) ||
-                operatorName.Equals("equals_cs", StringComparison.InvariantCultureIgnoreCase))
+            if (operatorName.Equals(StringEqualsOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
+                operatorName.Equals(StringEqualsCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
             {
                 result.MoveNextToken();
                 string value = ReadStringLiteral(result.CurrentToken);
                 result.MoveNextToken();
-                return StringEqualsExpression(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
+                return ComparisonExpressions.StringEquals(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
             }
-            else if (operatorName.Equals("contains", StringComparison.InvariantCultureIgnoreCase) ||
-                     operatorName.Equals("contains_cs", StringComparison.InvariantCultureIgnoreCase))
+            else if (operatorName.Equals(StringContainsOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
+                     operatorName.Equals(StringContainsCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
             {
                 result.MoveNextToken();
                 string value = ReadStringLiteral(result.CurrentToken);
                 result.MoveNextToken();
-                return StringContainsExpression(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
+                return ComparisonExpressions.StringContains(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
             }
-            else if (operatorName.Equals("matches", StringComparison.InvariantCultureIgnoreCase) ||
-                     operatorName.Equals("matches_cs", StringComparison.InvariantCultureIgnoreCase))
+            else if (operatorName.Equals(StringMatchesOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
+                     operatorName.Equals(StringMatchesCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
             {
                 result.MoveNextToken();
 
                 // Token following matches/matches_cs may be an optional "regex" modifier.
                 string token = result.CurrentToken;
-                if (result.CurrentToken.Equals("regex", StringComparison.InvariantCultureIgnoreCase))
+                if (result.CurrentToken.Equals(StringMatchesRegexModifierName, StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
                     string value = ReadStringLiteral(result.CurrentToken);
                     result.MoveNextToken();
-                    return MatchesRegexExpression(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
+                    return ComparisonExpressions.MatchesRegex(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
                 }
                 else
                 {
                     string value = ReadStringLiteral(result.CurrentToken);
                     result.MoveNextToken();
-                    return MatchesExpression(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
+                    return ComparisonExpressions.Matches(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
                 }
             }
             else
@@ -185,47 +200,6 @@ namespace InstantTraceViewer
                 Param2RowIndex,
                 Expression.Constant(column),
                 Expression.Constant(false) /* allowMultiline */);
-        }
-
-        private static Expression StringEqualsExpression(Expression left, Expression right, StringComparison comparison)
-        {
-            var method = typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string), typeof(StringComparison)])!;
-            return Expression.Call(method, left, right, Expression.Constant(comparison));
-        }
-
-        private static Expression StringContainsExpression(Expression left, Expression right, StringComparison comparison)
-        {
-            var method = typeof(TraceTableRowPredicateLanguage).GetMethod(
-                nameof(StringContainsImpl),
-                BindingFlags.NonPublic | BindingFlags.Static,
-                [typeof(string), typeof(string), typeof(StringComparison)])!;
-            return Expression.Call(method, left, right, Expression.Constant(comparison));
-        }
-
-        // Null is not expected but just in case the Expression uses our own wrapper to protect against it.
-        private static bool StringContainsImpl(string left, string right, StringComparison comparison) => left?.Contains(right, comparison) ?? (right == null);
-
-        private static Expression MatchesExpression(Expression left, Expression right, RegexOptions options)
-        {
-            // Convert * and ? to regex pattern.
-            string matchPattern = (string)((ConstantExpression)right).Value!;
-            matchPattern = "^" + Regex.Escape(matchPattern).Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
-            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)])!;
-            return Expression.Call(
-                Expression.Constant(new Regex(matchPattern, options)),
-                method,
-                left);
-        }
-
-        private static Expression MatchesRegexExpression(Expression left, Expression right, RegexOptions options)
-        {
-            // Convert the string literal to a regex at parse time so it can efficiently be reused for each row.
-            string matchPattern = (string)((ConstantExpression)right).Value!;
-            var method = typeof(Regex).GetMethod(nameof(Regex.IsMatch), [typeof(string)])!;
-            return Expression.Call(
-                Expression.Constant(new Regex(matchPattern, options)),
-                method,
-                left);
         }
 
         private static IEnumerable<string> Tokenize(string text)

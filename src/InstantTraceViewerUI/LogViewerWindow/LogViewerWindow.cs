@@ -85,7 +85,7 @@ namespace InstantTraceViewerUI
 
             if (_filtersEditorWindow != null)
             {
-                if (!_filtersEditorWindow.DrawWindow(uiCommands, _viewerRules))
+                if (!_filtersEditorWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable.Schema))
                 {
                     _filtersEditorWindow = null;
                 }
@@ -290,9 +290,9 @@ namespace InstantTraceViewerUI
 
                                 string newRule =
                                     string.Join(' ', [
-                                        TraceTableRowPredicateLanguage.CreateColumnVariableName(column),
-                                        TraceTableRowPredicateLanguage.StringEqualsBinaryOperatorName,
-                                        TraceTableRowPredicateLanguage.CreateEscapedStringLiteral(displayText)]);
+                                        TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
+                                        TraceTableRowSelectorSyntax.StringEqualsOperatorName,
+                                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(displayText)]);
 
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))

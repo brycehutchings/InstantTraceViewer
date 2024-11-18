@@ -1,10 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Linq.Expressions;
 using InstantTraceViewer;
-using Sprache;
-using Windows.Devices.Display.Core;
 
 namespace InstantTraceViewerUI
 {
@@ -22,10 +20,10 @@ namespace InstantTraceViewerUI
         public bool Enabled { get; set; }
 
         // The result of parsing the query.
-        public IResult<Expression<TraceTableRowPredicate>> ParseResult { get; }
+        public TraceTableRowSelectorParseResults ParseResult { get; }
 
         // Predicate is compiled from the query if successful.
-        public TraceTableRowPredicate? Predicate { get; }
+        public TraceTableRowSelector? Predicate { get; }
     }
 
     internal class ViewerRules
@@ -38,10 +36,10 @@ namespace InstantTraceViewerUI
             public bool Enabled { get; set; } = true;
 
             // The result of parsing the query.
-            public IResult<Expression<TraceTableRowPredicate>> ParseResult { get; set; }
+            public TraceTableRowSelectorParseResults ParseResult { get; set; }
 
             // Predicate is compiled from the query if successful.
-            public TraceTableRowPredicate? Predicate { get; set; }
+            public TraceTableRowSelector? Predicate { get; set; }
         }
 
         private List<Rule> _visibleRules = new();
@@ -121,18 +119,18 @@ namespace InstantTraceViewerUI
                 _visibleRulePredicatesTableGenerationId != traceTable.GenerationId)
             {
                 Trace.WriteLine("Recompiling query predicates...");
-                var parser = new TraceTableRowPredicateLanguage(traceTable.Schema);
+                var parser = new TraceTableRowSelectorSyntax(traceTable.Schema);
                 foreach (var rule in _visibleRules)
                 {
-                    rule.ParseResult = parser.TryParse(rule.Query);
-                    if (!rule.ParseResult.WasSuccessful)
+                    try
                     {
-                        Trace.WriteLine($"Failed to parse query '{rule.Query}': {rule.ParseResult.Message}");
-                        rule.Predicate = null;
+                        rule.ParseResult = parser.Parse(rule.Query);
+                        rule.Predicate = rule.ParseResult.Expression.Compile();
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        rule.Predicate = rule.ParseResult.Value.Compile();
+                        Trace.WriteLine($"Failed to parse query '{rule.Query}': {ex.Message}");
+                        rule.Predicate = null;
                     }
                 }
             }
