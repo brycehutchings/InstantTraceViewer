@@ -126,7 +126,7 @@ namespace InstantTraceViewerUI
             using var commandKey = progIdKey.CreateSubKey("shell\\open\\command");
 
             progIdKey.SetValue("", "ETL Trace file");
-            iconKey.SetValue("", Path.Combine(AppContext.BaseDirectory, "Assets", "InstantTraceViewerUI.exe"));
+            iconKey.SetValue("", Path.Combine(AppContext.BaseDirectory, "Assets", "Logo.ico"));
             openKey.SetValue("Icon", $"\"{exePath}\"");
             commandKey.SetValue("", $"\"{exePath}\" \"%1\"");
 
