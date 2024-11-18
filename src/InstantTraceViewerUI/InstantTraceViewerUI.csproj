@@ -36,7 +36,9 @@
     <None Remove="FieldMap_Win32Errors.tsv" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Assets\Logo.ico" />
+    <Content Include="Assets\Logo.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="FieldMap_HResults.tsv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
