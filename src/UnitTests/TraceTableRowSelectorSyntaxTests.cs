@@ -3,7 +3,7 @@
 namespace InstantTraceViewerTests
 {
     [TestClass]
-    public class ParserIdeaTests
+    public class TraceTableRowSelectorSyntaxTests
     {
         class MockTraceTableSnapshot : ITraceTableSnapshot
         {
@@ -122,8 +122,12 @@ namespace InstantTraceViewerTests
 
             foreach (var (text, expectMatch) in validConditionTests)
             {
+                Console.WriteLine($"Condition: {text}");
+
                 TraceTableRowSelectorParseResults expressionResult = conditionParser.Parse(text);
-                //Assert.IsTrue(expressionResult.WasSuccessful, $"Condition {text} did not parse\n{expressionResult}");
+
+                Console.WriteLine($"Expression: {expressionResult.Expression}\n");
+
                 TraceTableRowSelector compiledFunc = expressionResult.Expression.Compile();
                 Assert.AreEqual(expectMatch, compiledFunc(mockTraceTableSnapshot, 0 /* rowIndex */), $"\nCondition: {text}\nExpression: {expressionResult.Expression}");
             }

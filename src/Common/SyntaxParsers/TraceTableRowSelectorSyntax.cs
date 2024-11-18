@@ -8,27 +8,28 @@ namespace InstantTraceViewer
 
     public class TraceTableRowSelectorParseResults
     {
-        public IReadOnlyList<string> Tokens;
-        public int Index;
+        private bool _eof = false;
+
+        public IEnumerator<string> TokenEnumerator;
         public Expression<TraceTableRowSelector> Expression;
 
         public string CurrentToken
         {
             get
             {
-                if (Eof)
+                if (_eof)
                 {
                     throw new ArgumentException("Unexpected end of input");
                 }
-                return Tokens[Index];
+                return TokenEnumerator.Current;
             }
         }
 
-        public bool Eof => Index >= Tokens.Count;
+        public bool Eof => _eof;
 
         public void MoveNextToken()
         {
-            Index++;
+            _eof = !TokenEnumerator.MoveNext();
         }
     }
 
@@ -55,9 +56,11 @@ namespace InstantTraceViewer
         public TraceTableRowSelectorParseResults Parse(string text)
         {
             // Split the text up by whitespace or punctuation
-            string[] tokens = Tokenize(text).ToArray();
+            IEnumerable<string> tokens = Tokenize(text);
 
-            TraceTableRowSelectorParseResults result = new() { Index = 0, Tokens = tokens };
+            TraceTableRowSelectorParseResults result = new() { TokenEnumerator = tokens.GetEnumerator() };
+            result.MoveNextToken(); // Move to first token.
+
             Expression expressionBody = ParseExpression(result, true);
             result.Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex);
             return result;
@@ -68,7 +71,7 @@ namespace InstantTraceViewer
             return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
         }
 
-        private Expression ParseExpression(TraceTableRowSelectorParseResults result, bool allowChaining, bool stopAtCloseParenthesis = false)
+        private Expression ParseExpression(TraceTableRowSelectorParseResults result, bool allowBinaryLogicalOperators, bool stopAtCloseParenthesis = false)
         {
             Expression expression = null;
 
@@ -89,28 +92,30 @@ namespace InstantTraceViewer
                     result.MoveNextToken();
                     expression = Expression.Not(ParseExpression(result, false, false));
                 }
-                else if (allowChaining && expression != null && string.Equals(result.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
+                else if (allowBinaryLogicalOperators && expression != null && string.Equals(result.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    // Don't allow chaining after 'and' because 'or' has higher precedence.
+                    // allowBinaryLogicalOperators is set to false because "AND" has higher precedence than "OR". The result is that only one predicate is parsed before
+                    // control is returned back to this method.
                     expression = Expression.AndAlso(expression, ParseExpression(result, false, stopAtCloseParenthesis));
                 }
-                else if (allowChaining && expression != null && string.Equals(result.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
+                else if (allowBinaryLogicalOperators && expression != null && string.Equals(result.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
                 {
                     result.MoveNextToken();
-                    // Allow chaining after 'or' because it has higher precedence than 'and'.
+                    // allowBinaryLogicalOperators is set to true because "OR" has lower precedence than "AND". This allows multiple predicates to be parsed before control
+                    // is returned back to this method.
                     expression = Expression.OrElse(expression, ParseExpression(result, true, stopAtCloseParenthesis));
                 }
                 else if (expression == null)
                 {
-                    expression = ParseComparison(result);
+                    expression = ParsePredicate(result);
                 }
                 else
                 {
                     throw new ArgumentException($"Unexpected token: {result.CurrentToken}");
                 }
             }
-            while (!result.Eof && allowChaining);
+            while (!result.Eof && allowBinaryLogicalOperators);
 
             if (expression == null)
             {
@@ -120,7 +125,7 @@ namespace InstantTraceViewer
             return expression;
         }
 
-        private Expression ParseComparison(TraceTableRowSelectorParseResults result)
+        private Expression ParsePredicate(TraceTableRowSelectorParseResults result)
         {
             if (!_columns.TryGetValue(result.CurrentToken, out TraceSourceSchemaColumn column))
             {
