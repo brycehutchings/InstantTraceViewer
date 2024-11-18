@@ -99,6 +99,11 @@ namespace InstantTraceViewerUI
                 {
                     if (ImGui.BeginMenu("Settings"))
                     {
+                        if (ImGui.MenuItem("Associate with .etl extension"))
+                        {
+                            Settings.AssociateWithEtlExtensions();
+                        }
+
                         ImGuiTheme theme = Settings.Theme;
                         if (ImGui.BeginMenu("Theme"))
                         {

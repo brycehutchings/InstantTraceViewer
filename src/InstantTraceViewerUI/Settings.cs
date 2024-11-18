@@ -41,7 +41,7 @@ namespace InstantTraceViewerUI
 
         public static FontType Font
         {
-            get =>  _cachedFont;
+            get => _cachedFont;
             set
             {
                 _cachedFont = value;
@@ -114,6 +114,31 @@ namespace InstantTraceViewerUI
 
             recentlyOpenedStr = string.Join(";", recentlyOpenedList);
             Key.SetValue(settingsName, recentlyOpenedStr);
+        }
+
+        public static void AssociateWithEtlExtensions()
+        {
+            string exePath = Path.Combine(AppContext.BaseDirectory, "InstantTraceViewerUI.exe");
+
+            using var progIdKey = Registry.CurrentUser.CreateSubKey(@"Software\Classes\InstantTraceViewerUI.etl");
+            using var iconKey = progIdKey.CreateSubKey("DefaultIcon");
+            using var openKey = progIdKey.CreateSubKey("shell\\open\\command");
+
+            progIdKey.SetValue("", "ETL Trace file");
+            iconKey.SetValue("", Path.Combine(AppContext.BaseDirectory, "Assets", "InstantTraceViewerUI.exe"));
+            openKey.SetValue("", $"\"{exePath}\" \"%1\"");
+
+            using var openWithKey = Registry.CurrentUser.CreateSubKey(@"Software\Classes\.etl\OpenWithProgids");
+            openWithKey.SetValue("", "InstantTraceViewerUI.etl");
+            openWithKey.SetValue("InstantTraceViewerUI.etl", "");
+
+            // Autologgers save the etl extensions with a number suffix. Associate a handful of them
+            for (int i = 1; i <= 15; i++)
+            {
+                using var extKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\.{i:D3}\OpenWithProgids");
+                extKey.SetValue("", "InstantTraceViewerUI.etl");
+                extKey.SetValue("InstantTraceViewerUI.etl", "");
+            }
         }
     }
 }
