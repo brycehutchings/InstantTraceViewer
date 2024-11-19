@@ -1,5 +1,4 @@
 ﻿using System.Linq.Expressions;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace InstantTraceViewer
@@ -11,14 +10,27 @@ namespace InstantTraceViewer
         Expression<TraceTableRowSelector> Expression { get; }
     }
 
+    public class SyntaxParseException : Exception
+    {
+        public SyntaxParseException(string message)
+            : base(message)
+        {
+        }
+    }
+
     public class TraceTableRowSelectorSyntax
     {
-        public class ParserState : ITraceTableRowSelectorParseResults
+        private class ParseResults : ITraceTableRowSelectorParseResults
+        {
+            public Expression<TraceTableRowSelector> Expression { get; set; }
+        }
+
+        private class ParserState
         {
             private bool _eof = false;
 
             public IEnumerator<string> TokenEnumerator;
-            public Expression<TraceTableRowSelector> Expression { get; set; }
+            //public Expression<TraceTableRowSelector> Expression { get; set; }
 
             public string CurrentToken
             {
@@ -67,8 +79,11 @@ namespace InstantTraceViewer
             state.MoveNextToken(); // Move to first token.
 
             Expression expressionBody = ParseExpression(state, true);
-            state.Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex);
-            return state;
+
+            return new ParseResults
+            {
+                Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex)
+            };
         }
 
         public static string CreateEscapedStringLiteral(string text)
@@ -82,14 +97,31 @@ namespace InstantTraceViewer
 
             do
             {
-                if (string.Equals(state.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
+                if (state.Eof)
+                {
+                    if (stopAtCloseParenthesis)
+                    {
+                        throw new ArgumentException("Expected ')'");
+                    }
+
+                    break;
+                }
+                else if (string.Equals(state.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
                 {
                     state.MoveNextToken();
                     expression = ParseExpression(state, true, true);
+
+                    if (!string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        throw new ArgumentException("Expected ')'");
+                    }
+                    state.MoveNextToken();
                 }
                 else if (stopAtCloseParenthesis && expression != null && string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    state.MoveNextToken();
+                    // Unlike other parsing which advances after consuming a token, we do not advance the token when we hit a ')' because there are potentially
+                    // multiple levels of recursive expression parsing that need to observe the ')' token so they know to pop up the stack until we get back to
+                    // the handler that encountered the '('.
                     return expression;
                 }
                 else if (string.Equals(state.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
@@ -120,7 +152,7 @@ namespace InstantTraceViewer
                     throw new ArgumentException($"Unexpected token: {state.CurrentToken}");
                 }
             }
-            while (!state.Eof && allowBinaryLogicalOperators);
+            while (allowBinaryLogicalOperators);
 
             if (expression == null)
             {
@@ -191,6 +223,7 @@ namespace InstantTraceViewer
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
                  ? RegexOptions.None : RegexOptions.IgnoreCase;
 
+        // The tokenizer will handle escaped characters so at this stage just the quotes need to be trimmed off.
         private static string ReadStringLiteral(string quotedStringLiteral)
         {
             if (quotedStringLiteral.Length < 2 || quotedStringLiteral[0] != '"' || quotedStringLiteral[^1] != '"')

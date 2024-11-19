@@ -85,6 +85,8 @@ namespace InstantTraceViewerTests
 
                 // 'not' operator
                 ("not @Column1 equals \"Column1_0\"", false),
+                ("not not @Column1 equals \"Column1_0\"", true),
+                ("not not not @Column1 equals \"Column1_0\"", false),
                 ("not @Column1 equals \"foo\"", true),
                 ("not (@Column1 equals \"Column1_0\")", false),
                 ("not (@Column1 equals \"foo\")", true),
@@ -141,6 +143,7 @@ namespace InstantTraceViewerTests
             TraceTableRowSelectorSyntax conditionParser = new(mockTraceTableSnapshot.Schema);
 
             List<string> invalidSyntaxTests = [
+                "(@Column1 equals \"Column1_0\"",
                 "@Column1 equals \"Column1_0\" and@Column2 equals \"Column2_t\"",
                 "@",
                 "notstringorcolumn",
