@@ -44,6 +44,7 @@ namespace InstantTraceViewer
                                 'r' => '\r',
                                 _ => throw new ArgumentException($"Invalid escape sequence: \\{text[i]}")
                             });
+                            i++;
                         }
                         else if (text[i] == '"')
                         {
