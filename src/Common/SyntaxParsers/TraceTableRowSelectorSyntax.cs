@@ -78,7 +78,7 @@ namespace InstantTraceViewer
             ParserState state = new() { TokenEnumerator = tokens.GetEnumerator() };
             state.MoveNextToken(); // Move to first token.
 
-            Expression expressionBody = ParseExpression(state, true);
+            Expression expressionBody = ParseExpression(state);
 
             return new ParseResults
             {
@@ -91,75 +91,64 @@ namespace InstantTraceViewer
             return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
         }
 
-        private Expression ParseExpression(ParserState state, bool allowBinaryLogicalOperators, bool stopAtCloseParenthesis = false)
+        private Expression ParseExpression(ParserState state)
         {
-            Expression expression = null;
+            Expression leftExpression = ParseTerm(state);
 
-            do
+            while (!state.Eof)
             {
-                if (state.Eof)
+                if (string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
                 {
-                    if (stopAtCloseParenthesis)
-                    {
-                        throw new ArgumentException("Expected ')'");
-                    }
-
+                    // Unlike other parsing which advances after observing a token, we do not advance the token when we hit a ')' because there are potentially
+                    // multiple levels of recursive leftExpression parsing that need to observe the ')' token so they know to pop up the stack until we get back to
+                    // the "term" handler that encountered the '('.
                     break;
                 }
-                else if (string.Equals(state.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
+                else if (string.Equals(state.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
                 {
                     state.MoveNextToken();
-                    expression = ParseExpression(state, true, true);
-
-                    if (!string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
-                    {
-                        throw new ArgumentException("Expected ')'");
-                    }
-                    state.MoveNextToken();
+                    // "AND" has higher precedence than "OR" so we only parse a single term rather than a full leftExpression.
+                    leftExpression = Expression.AndAlso(leftExpression, ParseTerm(state));
                 }
-                else if (stopAtCloseParenthesis && expression != null && string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    // Unlike other parsing which advances after consuming a token, we do not advance the token when we hit a ')' because there are potentially
-                    // multiple levels of recursive expression parsing that need to observe the ')' token so they know to pop up the stack until we get back to
-                    // the handler that encountered the '('.
-                    return expression;
-                }
-                else if (string.Equals(state.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
+                else if (string.Equals(state.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
                 {
                     state.MoveNextToken();
-                    expression = Expression.Not(ParseExpression(state, false, false));
-                }
-                else if (allowBinaryLogicalOperators && expression != null && string.Equals(state.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    state.MoveNextToken();
-                    // allowBinaryLogicalOperators is set to false because "AND" has higher precedence than "OR". The state is that only one predicate is parsed before
-                    // control is returned back to this method.
-                    expression = Expression.AndAlso(expression, ParseExpression(state, false, stopAtCloseParenthesis));
-                }
-                else if (allowBinaryLogicalOperators && expression != null && string.Equals(state.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
-                {
-                    state.MoveNextToken();
-                    // allowBinaryLogicalOperators is set to true because "OR" has lower precedence than "AND". This allows multiple predicates to be parsed before control
-                    // is returned back to this method.
-                    expression = Expression.OrElse(expression, ParseExpression(state, true, stopAtCloseParenthesis));
-                }
-                else if (expression == null)
-                {
-                    expression = ParsePredicate(state);
+                    // "OR" has lower precedence than "AND" and so we parse everything to the right as if it was a grouped leftExpression.
+                    leftExpression = Expression.OrElse(leftExpression, ParseExpression(state));
                 }
                 else
                 {
                     throw new ArgumentException($"Unexpected token: {state.CurrentToken}");
                 }
             }
-            while (allowBinaryLogicalOperators);
 
-            if (expression == null)
+            return leftExpression;
+        }
+
+        private Expression ParseTerm(ParserState state)
+        {
+            if (string.Equals(state.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
             {
-                throw new ArgumentException($"Expected expression");
-            }
+                state.MoveNextToken();
+                Expression expression = ParseExpression(state);
 
-            return expression;
+                if (state.Eof || !string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    throw new ArgumentException("Expected ')'");
+                }
+                state.MoveNextToken();
+
+                return expression;
+            }
+            else if (string.Equals(state.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
+            {
+                state.MoveNextToken();
+                return Expression.Not(ParseTerm(state));
+            }
+            else
+            {
+                return ParsePredicate(state);
+            }
         }
 
         private Expression ParsePredicate(ParserState state)
