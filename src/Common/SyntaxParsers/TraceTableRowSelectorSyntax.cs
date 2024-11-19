@@ -5,9 +5,11 @@ namespace InstantTraceViewer
 {
     public delegate bool TraceTableRowSelector(ITraceTableSnapshot traceTableSnapshot, int rowIndex);
 
-    public interface ITraceTableRowSelectorParseResults
+    public class TraceTableRowSelectorParseResults
     {
-        Expression<TraceTableRowSelector> Expression { get; }
+        public Expression<TraceTableRowSelector> Expression { get; init; }
+
+        public IReadOnlyList<string> ExpectedTokens { get; init; }
     }
 
     public class SyntaxParseException : Exception
@@ -20,35 +22,45 @@ namespace InstantTraceViewer
 
     public class TraceTableRowSelectorSyntax
     {
-        private class ParseResults : ITraceTableRowSelectorParseResults
-        {
-            public Expression<TraceTableRowSelector> Expression { get; set; }
-        }
-
         private class ParserState
         {
-            private bool _eof = false;
+            public List<string> ExpectedTokens = new();
 
             public IEnumerator<string> TokenEnumerator;
-            //public Expression<TraceTableRowSelector> Expression { get; set; }
+
+            public bool CurrentTokenMatches(string expectedToken)
+            {
+                ExpectedTokens.Add(expectedToken);
+                if (Eof)
+                {
+                    return false;
+                }
+
+                return CurrentToken.Equals(expectedToken, StringComparison.InvariantCultureIgnoreCase);
+            }
 
             public string CurrentToken
             {
                 get
                 {
-                    if (_eof)
+                    if (Eof)
                     {
                         throw new ArgumentException("Unexpected end of input");
                     }
+
                     return TokenEnumerator.Current;
                 }
             }
 
-            public bool Eof => _eof;
+            public bool Eof { get; private set; }
 
             public void MoveNextToken()
             {
-                _eof = !TokenEnumerator.MoveNext();
+                Eof = !TokenEnumerator.MoveNext();
+
+                // If we moved to the next token, then that token was valid and any tracked tokens that were expected can be cleared
+                // for building a new set of expected tokens for this new token.
+                ExpectedTokens.Clear();
             }
         }
 
@@ -62,27 +74,34 @@ namespace InstantTraceViewer
 
         private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
         private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
-        private readonly IReadOnlyDictionary<string, TraceSourceSchemaColumn> _columns;
+        private readonly TraceTableSchema _schema;
 
         public TraceTableRowSelectorSyntax(TraceTableSchema schema)
         {
-            // Column variables are in the form '@<column name>' and are case-insensitive.
-            _columns = schema.Columns.ToDictionary(c => CreateColumnVariableName(c), c => c, StringComparer.CurrentCultureIgnoreCase);
+            _schema = schema;
         }
 
-        public ITraceTableRowSelectorParseResults Parse(string text)
+        public TraceTableRowSelectorParseResults Parse(string text)
         {
             // Split the text up by whitespace or punctuation
             IEnumerable<string> tokens = SyntaxTokenizer.Tokenize(text);
-
             ParserState state = new() { TokenEnumerator = tokens.GetEnumerator() };
-            state.MoveNextToken(); // Move to first token.
 
-            Expression expressionBody = ParseExpression(state);
-
-            return new ParseResults
+            Expression expressionBody = null;
+            try
             {
-                Expression = Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex)
+                state.MoveNextToken(); // Move to first token.
+                expressionBody = ParseExpression(state);
+            }
+            catch (Exception)
+            {
+                // FIXME: Don't use exceptions for control flow.
+            }
+
+            return new TraceTableRowSelectorParseResults
+            {
+                Expression = expressionBody != null ? Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex) : null,
+                ExpectedTokens = state.ExpectedTokens,
             };
         }
 
@@ -91,30 +110,31 @@ namespace InstantTraceViewer
             return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
         }
 
-        private Expression ParseExpression(ParserState state)
+        private Expression ParseExpression(ParserState state, bool closeParenthesisExpected = false)
         {
             Expression leftExpression = ParseTerm(state);
 
-            while (!state.Eof)
+            while (closeParenthesisExpected || !state.Eof)
             {
-                if (string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
+                // The ")" check must come first so that it is captured as an allowed token before failing.
+                if (closeParenthesisExpected && state.CurrentTokenMatches(")"))
                 {
                     // Unlike other parsing which advances after observing a token, we do not advance the token when we hit a ')' because there are potentially
                     // multiple levels of recursive leftExpression parsing that need to observe the ')' token so they know to pop up the stack until we get back to
                     // the "term" handler that encountered the '('.
                     break;
                 }
-                else if (string.Equals(state.CurrentToken, "and", StringComparison.InvariantCultureIgnoreCase))
+                else if (state.CurrentTokenMatches("and"))
                 {
                     state.MoveNextToken();
                     // "AND" has higher precedence than "OR" so we only parse a single term rather than a full leftExpression.
                     leftExpression = Expression.AndAlso(leftExpression, ParseTerm(state));
                 }
-                else if (string.Equals(state.CurrentToken, "or", StringComparison.InvariantCultureIgnoreCase))
+                else if (state.CurrentTokenMatches("or"))
                 {
                     state.MoveNextToken();
                     // "OR" has lower precedence than "AND" and so we parse everything to the right as if it was a grouped leftExpression.
-                    leftExpression = Expression.OrElse(leftExpression, ParseExpression(state));
+                    leftExpression = Expression.OrElse(leftExpression, ParseExpression(state, closeParenthesisExpected));
                 }
                 else
                 {
@@ -127,12 +147,12 @@ namespace InstantTraceViewer
 
         private Expression ParseTerm(ParserState state)
         {
-            if (string.Equals(state.CurrentToken, "(", StringComparison.InvariantCultureIgnoreCase))
+            if (state.CurrentTokenMatches("("))
             {
                 state.MoveNextToken();
-                Expression expression = ParseExpression(state);
+                Expression expression = ParseExpression(state, closeParenthesisExpected: true);
 
-                if (state.Eof || !string.Equals(state.CurrentToken, ")", StringComparison.InvariantCultureIgnoreCase))
+                if (!state.CurrentTokenMatches(")"))
                 {
                     throw new ArgumentException("Expected ')'");
                 }
@@ -140,7 +160,7 @@ namespace InstantTraceViewer
 
                 return expression;
             }
-            else if (string.Equals(state.CurrentToken, "not", StringComparison.InvariantCultureIgnoreCase))
+            else if (state.CurrentTokenMatches("not"))
             {
                 state.MoveNextToken();
                 return Expression.Not(ParseTerm(state));
@@ -153,49 +173,63 @@ namespace InstantTraceViewer
 
         private Expression ParsePredicate(ParserState state)
         {
-            if (!_columns.TryGetValue(state.CurrentToken, out TraceSourceSchemaColumn column))
+            // Loop through ALL columns rather than do a dictionary lookup so the parser state can log each expected token.
+            TraceSourceSchemaColumn? matchedColumn = null;
+            foreach (var column in _schema.Columns)
+            {
+                string columnVariableName = CreateColumnVariableName(column);
+                if (matchedColumn == null && state.CurrentTokenMatches(columnVariableName))
+                {
+                    matchedColumn = column;
+                }
+            }
+
+            if (matchedColumn == null)
             {
                 throw new ArgumentException($"Unknown column: {state.CurrentToken}");
             }
 
             state.MoveNextToken();
 
-            string operatorName = state.CurrentToken;
-            if (operatorName.Equals(StringEqualsOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
-                operatorName.Equals(StringEqualsCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
+            if (state.CurrentTokenMatches(StringEqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
             {
+                StringComparison comparisonType = GetStringComparisonType(state.CurrentToken);
                 state.MoveNextToken();
-                string value = ReadStringLiteral(state.CurrentToken);
+
+                string value = ReadStringLiteral(state);
                 state.MoveNextToken();
-                return ComparisonExpressions.StringEquals(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
+
+                return ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType);
             }
-            else if (operatorName.Equals(StringContainsOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
-                     operatorName.Equals(StringContainsCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
+            else if (state.CurrentTokenMatches(StringContainsOperatorName) || state.CurrentTokenMatches(StringContainsCSOperatorName))
             {
+                StringComparison comparisonType = GetStringComparisonType(state.CurrentToken);
                 state.MoveNextToken();
-                string value = ReadStringLiteral(state.CurrentToken);
+
+                string value = ReadStringLiteral(state);
                 state.MoveNextToken();
-                return ComparisonExpressions.StringContains(GetTableString(column), Expression.Constant(value, typeof(string)), GetStringComparisonType(operatorName));
+
+                return ComparisonExpressions.StringContains(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType);
             }
-            else if (operatorName.Equals(StringMatchesOperatorName, StringComparison.InvariantCultureIgnoreCase) ||
-                     operatorName.Equals(StringMatchesCSOperatorName, StringComparison.InvariantCultureIgnoreCase))
+            else if (state.CurrentTokenMatches(StringMatchesOperatorName) || state.CurrentTokenMatches(StringMatchesCSOperatorName))
             {
+                RegexOptions regexOptions = GetRegexOptions(state.CurrentToken);
                 state.MoveNextToken();
 
                 // Token following matches/matches_cs may be an optional "regex" modifier.
-                string token = state.CurrentToken;
-                if (state.CurrentToken.Equals(StringMatchesRegexModifierName, StringComparison.InvariantCultureIgnoreCase))
+                if (state.CurrentTokenMatches(StringMatchesRegexModifierName))
                 {
                     state.MoveNextToken();
-                    string value = ReadStringLiteral(state.CurrentToken);
+
+                    string value = ReadStringLiteral(state);
                     state.MoveNextToken();
-                    return ComparisonExpressions.MatchesRegex(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
+                    return ComparisonExpressions.MatchesRegex(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions);
                 }
                 else
                 {
-                    string value = ReadStringLiteral(state.CurrentToken);
+                    string value = ReadStringLiteral(state);
                     state.MoveNextToken();
-                    return ComparisonExpressions.Matches(GetTableString(column), Expression.Constant(value, typeof(string)), GetRegexOptions(operatorName));
+                    return ComparisonExpressions.Matches(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions);
                 }
             }
             else
@@ -213,14 +247,20 @@ namespace InstantTraceViewer
                  ? RegexOptions.None : RegexOptions.IgnoreCase;
 
         // The tokenizer will handle escaped characters so at this stage just the quotes need to be trimmed off.
-        private static string ReadStringLiteral(string quotedStringLiteral)
+        private static string ReadStringLiteral(ParserState state)
         {
-            if (quotedStringLiteral.Length < 2 || quotedStringLiteral[0] != '"' || quotedStringLiteral[^1] != '"')
+            if (state.Eof || state.CurrentToken.Length == 0 || state.CurrentToken[0] != '"')
             {
+                state.CurrentTokenMatches("\""); // Add quote as expected token.
+                throw new ArgumentException("Invalid string literal");
+            }
+            else if (state.CurrentToken.Length == 1 || state.CurrentToken[^1] != '"')
+            {
+                state.CurrentTokenMatches(state.CurrentToken + '"'); // Add closing quote as expected token.
                 throw new ArgumentException("Invalid string literal");
             }
 
-            return quotedStringLiteral.Substring(1, quotedStringLiteral.Length - 2);
+            return state.CurrentToken.Substring(1, state.CurrentToken.Length - 2);
         }
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)
@@ -235,7 +275,7 @@ namespace InstantTraceViewer
         }
 
         // Column names could contain spaces and other characters that would make parsing ambiguous/troublesome so strip out everything except for letters and numbers
-        // and have every column variable start with '@'.
+        // and have every matchedColumn variable start with '@'.
         public static string CreateColumnVariableName(TraceSourceSchemaColumn column) => '@' + GetColumnNameForParsing(column);
         private static string GetColumnNameForParsing(TraceSourceSchemaColumn column) => Regex.Replace(column.Name, "[^\\w]", "");
     };

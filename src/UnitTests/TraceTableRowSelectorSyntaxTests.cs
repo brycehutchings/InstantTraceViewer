@@ -126,7 +126,7 @@ namespace InstantTraceViewerTests
             {
                 Console.WriteLine($"Condition: {text}");
 
-                ITraceTableRowSelectorParseResults parseResult = conditionParser.Parse(text);
+                TraceTableRowSelectorParseResults parseResult = conditionParser.Parse(text);
 
                 Console.WriteLine($"Expression: {parseResult.Expression}\n");
 
@@ -171,15 +171,15 @@ namespace InstantTraceViewerTests
 
             foreach (var text in invalidSyntaxTests)
             {
-                try
+                Console.WriteLine($"Condition: {text}");
+                var condition = conditionParser.Parse(text);
+                if (condition.Expression != null)
                 {
-                    var condition = conditionParser.Parse(text);
                     Assert.Fail($"Condition {text} should not have parsed\n{condition}");
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"Invalid syntax:\n{text}\nError: {ex.Message}\n");
-                    // Good, we expected an exception.
+                    Console.WriteLine($"Expected: {string.Join(", ", condition.ExpectedTokens)}\n");
                 }
             }
         }

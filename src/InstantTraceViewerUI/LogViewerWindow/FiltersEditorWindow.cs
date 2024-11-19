@@ -57,13 +57,10 @@ namespace InstantTraceViewerUI
                     Trace.WriteLine($"Filter changed: {_editFilter}");
                 }
 
-                try
+                var result = _parser.Parse(_editFilter);
+                if (result.Expression == null)
                 {
-                    var result = _parser.Parse(_editFilter);
-                }
-                catch (Exception ex)
-                {
-                    ImGui.TextUnformatted($"Parse error: {ex.Message}");
+                    ImGui.TextUnformatted($"Parsing error. Expected: {string.Join(", ", result.ExpectedTokens)}");
                 }
 
                 /*
@@ -80,7 +77,7 @@ namespace InstantTraceViewerUI
                     float dpiBase = ImGui.GetFontSize();
 
                     ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                    ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, dpiBase * 3.0f);
+                    ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, dpiBase * 3.5f);
                     ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
                     ImGui.TableSetupColumn("Query", ImGuiTableColumnFlags.WidthStretch, 1);
                     ImGui.TableHeadersRow();

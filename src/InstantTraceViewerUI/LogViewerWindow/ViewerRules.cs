@@ -20,7 +20,7 @@ namespace InstantTraceViewerUI
         public bool Enabled { get; set; }
 
         // The result of parsing the query.
-        public ITraceTableRowSelectorParseResults ParseResult { get; }
+        public TraceTableRowSelectorParseResults ParseResult { get; }
 
         // Predicate is compiled from the query if successful.
         public TraceTableRowSelector? Predicate { get; }
@@ -36,7 +36,7 @@ namespace InstantTraceViewerUI
             public bool Enabled { get; set; } = true;
 
             // The result of parsing the query.
-            public ITraceTableRowSelectorParseResults ParseResult { get; set; }
+            public TraceTableRowSelectorParseResults ParseResult { get; set; }
 
             // Predicate is compiled from the query if successful.
             public TraceTableRowSelector? Predicate { get; set; }
@@ -122,16 +122,8 @@ namespace InstantTraceViewerUI
                 var parser = new TraceTableRowSelectorSyntax(traceTable.Schema);
                 foreach (var rule in _visibleRules)
                 {
-                    try
-                    {
-                        rule.ParseResult = parser.Parse(rule.Query);
-                        rule.Predicate = rule.ParseResult.Expression.Compile();
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"Failed to parse query '{rule.Query}': {ex.Message}");
-                        rule.Predicate = null;
-                    }
+                    rule.ParseResult = parser.Parse(rule.Query);
+                    rule.Predicate = rule.ParseResult.Expression?.Compile();
                 }
             }
 
