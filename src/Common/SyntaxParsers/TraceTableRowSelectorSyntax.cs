@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions;
+﻿using System.Diagnostics;
+using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 
 namespace InstantTraceViewer
@@ -10,14 +11,8 @@ namespace InstantTraceViewer
         public Expression<TraceTableRowSelector> Expression { get; init; }
 
         public IReadOnlyList<string> ExpectedTokens { get; init; }
-    }
 
-    public class SyntaxParseException : Exception
-    {
-        public SyntaxParseException(string message)
-            : base(message)
-        {
-        }
+        public int ExpectedTokenStartIndex { get; init; }
     }
 
     public class TraceTableRowSelectorSyntax
@@ -26,7 +21,9 @@ namespace InstantTraceViewer
         {
             public List<string> ExpectedTokens = new();
 
-            public IEnumerator<string> TokenEnumerator;
+            public int ExpectedTokenStartIndex = 0;
+
+            public IEnumerator<Token> TokenEnumerator;
 
             public bool CurrentTokenMatches(string expectedToken)
             {
@@ -48,7 +45,7 @@ namespace InstantTraceViewer
                         throw new ArgumentException("Unexpected end of input");
                     }
 
-                    return TokenEnumerator.Current;
+                    return TokenEnumerator.Current.Text;
                 }
             }
 
@@ -56,11 +53,14 @@ namespace InstantTraceViewer
 
             public void MoveNextToken()
             {
-                Eof = !TokenEnumerator.MoveNext();
+                bool movedNext = !TokenEnumerator.MoveNext();
+                Debug.Assert(!movedNext); // We should never move past the last token because the EOF token should be hit instead.
 
-                // If we moved to the next token, then that token was valid and any tracked tokens that were expected can be cleared
+                // If we moved to the next token, then the previous token was valid and any tracked expected tokens can be cleared
                 // for building a new set of expected tokens for this new token.
                 ExpectedTokens.Clear();
+                Eof = TokenEnumerator.Current.Text == SyntaxTokenizer.EofText;
+                ExpectedTokenStartIndex = TokenEnumerator.Current.StartIndex;
             }
         }
 
@@ -84,7 +84,7 @@ namespace InstantTraceViewer
         public TraceTableRowSelectorParseResults Parse(string text)
         {
             // Split the text up by whitespace or punctuation
-            IEnumerable<string> tokens = SyntaxTokenizer.Tokenize(text);
+            IEnumerable<Token> tokens = SyntaxTokenizer.Tokenize(text);
             ParserState state = new() { TokenEnumerator = tokens.GetEnumerator() };
 
             Expression expressionBody = null;
@@ -95,13 +95,14 @@ namespace InstantTraceViewer
             }
             catch (Exception)
             {
-                // FIXME: Don't use exceptions for control flow.
+                // FIXME: Don't use exceptions for control flow. The caller will get the details from ExpectedTokens.
             }
 
             return new TraceTableRowSelectorParseResults
             {
                 Expression = expressionBody != null ? Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex) : null,
                 ExpectedTokens = state.ExpectedTokens,
+                ExpectedTokenStartIndex = state.ExpectedTokenStartIndex
             };
         }
 
@@ -261,7 +262,7 @@ namespace InstantTraceViewer
             }
             else if (state.CurrentToken.Length == 1)
             {
-                state.CurrentTokenMatches("\"[text]\"");
+                state.CurrentTokenMatches("\"[text]\""); // We just have a starting quote. Encourage some content with closing quote.
                 throw new ArgumentException("Invalid string literal");
             }
             else if (state.CurrentToken[^1] != '"')

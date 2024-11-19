@@ -2,9 +2,13 @@
 
 namespace InstantTraceViewer
 {
+    public record struct Token(string Text, int StartIndex);
+
     public static class SyntaxTokenizer
     {
-        public static IEnumerable<string> Tokenize(string text)
+        public const string EofText = "\0";
+
+        public static IEnumerable<Token> Tokenize(string text)
         {
             bool IsDelimiter(char c) => c == '"' || c == '(' || c == ')' || char.IsWhiteSpace(c);
 
@@ -14,35 +18,39 @@ namespace InstantTraceViewer
                 // Skip whitespace
                 for (; i < text.Length && char.IsWhiteSpace(text[i]); i++) ;
 
+                int startIndex = i;
                 if (i >= text.Length)
                 {
                     break;
                 }
                 else if (text[i] == '"')
                 {
-                    int startIndex = i++;
+                    i++;
                     for (; i < text.Length && text[i] != '"'; i++)
                     {
-                        if (text[i] == '\\')
+                        if (text[i] == '\\') // Skip escape character.
                         {
                             i++;
                         }
                     }
                     i++;
-                    yield return i < text.Length ? text.Substring(startIndex, i - startIndex) : text.Substring(startIndex);
+                    string token = i < text.Length ? text[startIndex..i] : text[startIndex..];
+                    yield return new Token(token, startIndex);
                 }
                 else if (text[i] == '(' || text[i] == ')')
                 {
-                    yield return text[i++].ToString();
+                    yield return new Token(text[i++].ToString(), startIndex);
                 }
                 else
                 {
                     // Read a token until a delimiter.
-                    int startIndex = i;
                     for (; i < text.Length && !IsDelimiter(text[i]); i++) ;
-                    yield return text.Substring(startIndex, i - startIndex).ToString();
+                    yield return new Token(text[startIndex..i], startIndex);
                 }
             }
+
+            // Return a special EOF token which makes it easier for the syntax parsers to provide next token suggestions.
+            yield return new Token(EofText, text.Length);
         }
     }
 }

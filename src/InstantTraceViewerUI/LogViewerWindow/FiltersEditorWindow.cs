@@ -26,19 +26,8 @@ namespace InstantTraceViewerUI
         }
 
 
-        unsafe int TextInputCallback(ImGuiInputTextCallbackData* data)
-        {
-            Trace.WriteLine("Callback");
-
-            if (data->EventChar == '\t')
-            {
-                Trace.WriteLine("Tab pressed");
-            }
-
-            return 0;
-        }
-
         private string _editFilter = "";
+        private TraceTableRowSelectorParseResults _lastParseResult; 
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules rules, TraceTableSchema tableSchema)
         {
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
@@ -52,23 +41,23 @@ namespace InstantTraceViewerUI
                     _parser = new TraceTableRowSelectorSyntax(tableSchema);
                 }
 
-                if (ImGui.InputText("Filter", ref _editFilter, 1024, ImGuiInputTextFlags.CallbackAlways | ImGuiInputTextFlags.CallbackCompletion, TextInputCallback))
+                if (ImGui.InputText("Filter", ref _editFilter, 1024) || _lastParseResult == null)
                 {
                     Trace.WriteLine($"Filter changed: {_editFilter}");
+                    _lastParseResult = _parser.Parse(_editFilter);
                 }
 
-                var result = _parser.Parse(_editFilter);
-                if (result.Expression == null)
+                if (_lastParseResult != null && _lastParseResult.Expression == null)
                 {
-                    ImGui.TextUnformatted($"Parsing error. Expected: {string.Join(", ", result.ExpectedTokens)}");
+                    Vector2 size = ImGui.CalcTextSize(_editFilter.Substring(0, _lastParseResult.ExpectedTokenStartIndex));
+                    ImGui.Indent(size.X + 4);
+                    ImGui.TextUnformatted($"^ Expected: {string.Join(", ", _lastParseResult.ExpectedTokens)}");
+                    ImGui.Unindent(size.X + 4);
                 }
-
-                /*
-                foreach (var a in result.Expectations)
+                else
                 {
-                    ImGui.TextUnformatted(a);
+                    ImGui.Text("");
                 }
-                */
 
                 if (ImGui.BeginTable("Rules", 3,
                     ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
