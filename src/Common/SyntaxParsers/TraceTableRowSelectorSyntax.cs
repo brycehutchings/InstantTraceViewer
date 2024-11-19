@@ -110,6 +110,11 @@ namespace InstantTraceViewer
             return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
         }
 
+        private static string UnescapeStringLiteral(string text)
+        {
+            return text.Substring(1, text.Length - 2).Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\r", "\r").Replace("\\\\", "\\");
+        }
+
         private Expression ParseExpression(ParserState state, bool closeParenthesisExpected = false)
         {
             Expression leftExpression = ParseTerm(state);
@@ -246,7 +251,7 @@ namespace InstantTraceViewer
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
                  ? RegexOptions.None : RegexOptions.IgnoreCase;
 
-        // The tokenizer will handle escaped characters so at this stage just the quotes need to be trimmed off.
+        // Validates the token is a quoted string literal, provides proper "expected" content
         private static string ReadStringLiteral(ParserState state)
         {
             if (state.Eof || state.CurrentToken.Length == 0 || state.CurrentToken[0] != '"')
@@ -254,13 +259,18 @@ namespace InstantTraceViewer
                 state.CurrentTokenMatches("\""); // Add quote as expected token.
                 throw new ArgumentException("Invalid string literal");
             }
-            else if (state.CurrentToken.Length == 1 || state.CurrentToken[^1] != '"')
+            else if (state.CurrentToken.Length == 1)
+            {
+                state.CurrentTokenMatches("\"[text]\"");
+                throw new ArgumentException("Invalid string literal");
+            }
+            else if (state.CurrentToken[^1] != '"')
             {
                 state.CurrentTokenMatches(state.CurrentToken + '"'); // Add closing quote as expected token.
                 throw new ArgumentException("Invalid string literal");
             }
 
-            return state.CurrentToken.Substring(1, state.CurrentToken.Length - 2);
+            return UnescapeStringLiteral(state.CurrentToken);
         }
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)

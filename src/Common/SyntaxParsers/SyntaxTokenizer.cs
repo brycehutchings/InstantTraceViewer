@@ -6,6 +6,8 @@ namespace InstantTraceViewer
     {
         public static IEnumerable<string> Tokenize(string text)
         {
+            bool IsDelimiter(char c) => c == '"' || c == '(' || c == ')' || char.IsWhiteSpace(c);
+
             int i = 0;
             while (i < text.Length)
             {
@@ -18,47 +20,16 @@ namespace InstantTraceViewer
                 }
                 else if (text[i] == '"')
                 {
-                    StringBuilder sb = new();
-                    sb.Append(text[i]); // Start quote
-                    i++;
-                    while (true)
+                    int startIndex = i++;
+                    for (; i < text.Length && text[i] != '"'; i++)
                     {
-                        if (i == text.Length)
-                        {
-                            throw new ArgumentException("Unterminated string literal");
-                        }
                         if (text[i] == '\\')
                         {
                             i++;
-                            if (i == text.Length)
-                            {
-                                throw new ArgumentException("Unterminated string literal");
-                            }
-
-                            sb.Append(text[i] switch
-                            {
-                                '"' => '"',
-                                '\\' => '\\',
-                                'n' => '\n',
-                                't' => '\t',
-                                'r' => '\r',
-                                _ => throw new ArgumentException($"Invalid escape sequence: \\{text[i]}")
-                            });
-                            i++;
-                        }
-                        else if (text[i] == '"')
-                        {
-                            sb.Append(text[i]);
-                            i++;
-                            yield return sb.ToString();
-                            break;
-                        }
-                        else
-                        {
-                            sb.Append(text[i]);
-                            i++;
                         }
                     }
+                    i++;
+                    yield return i < text.Length ? text.Substring(startIndex, i - startIndex) : text.Substring(startIndex);
                 }
                 else if (text[i] == '(' || text[i] == ')')
                 {
@@ -66,9 +37,9 @@ namespace InstantTraceViewer
                 }
                 else
                 {
-                    // Read a token until parenthesis or whitespace
+                    // Read a token until a delimiter.
                     int startIndex = i;
-                    for (; i < text.Length && text[i] != '(' && text[i] != ')' && !char.IsWhiteSpace(text[i]); i++) ;
+                    for (; i < text.Length && !IsDelimiter(text[i]); i++) ;
                     yield return text.Substring(startIndex, i - startIndex).ToString();
                 }
             }
