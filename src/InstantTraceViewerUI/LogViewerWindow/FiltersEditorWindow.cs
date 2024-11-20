@@ -2,6 +2,7 @@
 using InstantTraceViewer;
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 
 namespace InstantTraceViewerUI
@@ -47,11 +48,22 @@ namespace InstantTraceViewerUI
                     _lastParseResult = _parser.Parse(_editFilter);
                 }
 
-                if (_lastParseResult != null && _lastParseResult.Expression == null)
+                if (_lastParseResult != null)
                 {
+                    var expectedTokens = _lastParseResult.ExpectedTokens.ToArray();
+                    var matchingExpectedTokens = expectedTokens.Where(t => t.StartsWith(_lastParseResult.ActualToken.Text)).ToArray();
+                    var autocompleteOptions = matchingExpectedTokens.Any() ? matchingExpectedTokens : expectedTokens;
+
                     Vector2 size = ImGui.CalcTextSize(_editFilter.Substring(0, _lastParseResult.ExpectedTokenStartIndex));
                     ImGui.Indent(size.X + 4);
-                    ImGui.TextUnformatted($"^ Expected: {string.Join(", ", _lastParseResult.ExpectedTokens)}");
+                    if (_lastParseResult.Expression != null) // Parsing was successful so any expected tokens are to continue writing more expression.
+                    {
+                        ImGui.TextUnformatted($"{string.Join(", ", autocompleteOptions)}");
+                    }
+                    else
+                    {
+                        ImGui.TextUnformatted($"^ Expected: {string.Join(", ", autocompleteOptions)}");
+                    }
                     ImGui.Unindent(size.X + 4);
                 }
                 else

@@ -13,6 +13,8 @@ namespace InstantTraceViewer
         public IReadOnlyList<string> ExpectedTokens { get; init; }
 
         public int ExpectedTokenStartIndex { get; init; }
+
+        public Token ActualToken { get; init; }
     }
 
     public class TraceTableRowSelectorSyntax
@@ -102,7 +104,8 @@ namespace InstantTraceViewer
             {
                 Expression = expressionBody != null ? Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex) : null,
                 ExpectedTokens = state.ExpectedTokens,
-                ExpectedTokenStartIndex = state.ExpectedTokenStartIndex
+                ExpectedTokenStartIndex = state.ExpectedTokenStartIndex,
+                ActualToken = state.TokenEnumerator.Current
             };
         }
 
@@ -120,9 +123,8 @@ namespace InstantTraceViewer
         {
             Expression leftExpression = ParseTerm(state);
 
-            while (closeParenthesisExpected || !state.Eof)
+            while (true)
             {
-                // The ")" check must come first so that it is captured as an allowed token before failing.
                 if (closeParenthesisExpected && state.CurrentTokenMatches(")"))
                 {
                     // Unlike other parsing which advances after observing a token, we do not advance the token when we hit a ')' because there are potentially
@@ -144,6 +146,12 @@ namespace InstantTraceViewer
                 }
                 else
                 {
+                    if (state.Eof)
+                    {
+                        // Break out of the loop after all of the token match checks so that the Expected field is populated.
+                        break;
+                    }
+
                     throw new ArgumentException($"Unexpected token: {state.CurrentToken}");
                 }
             }
