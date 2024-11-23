@@ -72,7 +72,10 @@ namespace InstantTraceViewer
         public const string StringContainsCSOperatorName = "contains_cs";
         public const string StringMatchesOperatorName = "matches";
         public const string StringMatchesCSOperatorName = "matches_cs";
-        public const string StringMatchesRegexModifierName = $"regex";
+        public const string StringMatchesRegexModifierName = "regex";
+
+        public const string MinimumLevelOperatorName = "minimum";
+        public const string MaximumLevelOperatorName = "maximum";
 
         private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
         private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
@@ -205,7 +208,27 @@ namespace InstantTraceViewer
 
             state.MoveNextToken();
 
-            if (state.CurrentTokenMatches(StringEqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
+            if (matchedColumn == _schema.UnifiedLevelColumn && state.CurrentTokenMatches(MinimumLevelOperatorName))
+            {
+                state.MoveNextToken();
+
+                UnifiedLevel level = ReadLevel(state);
+                state.MoveNextToken();
+
+                return Expression.LessThanOrEqual(
+                    Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
+            }
+            else if (matchedColumn == _schema.UnifiedLevelColumn && state.CurrentTokenMatches(MaximumLevelOperatorName))
+            {
+                state.MoveNextToken();
+
+                UnifiedLevel level = ReadLevel(state);
+                state.MoveNextToken();
+
+                return Expression.GreaterThanOrEqual(
+                    Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
+            }
+            else if (state.CurrentTokenMatches(StringEqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
             {
                 StringComparison comparisonType = GetStringComparisonType(state.CurrentToken);
                 state.MoveNextToken();
@@ -282,20 +305,47 @@ namespace InstantTraceViewer
             return UnescapeStringLiteral(state.CurrentToken);
         }
 
-        private static Expression GetTableString(TraceSourceSchemaColumn column)
+        private static UnifiedLevel ReadLevel(ParserState state)
         {
-            var method = typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnString))!;
-            return Expression.Call(
+            UnifiedLevel? matchedLevel = null;
+
+            // Read levels in reverse order so intellisense shows them in the order that semantically matches minimum/maximum.
+            foreach (var level in Enum.GetValues<UnifiedLevel>().Reverse())
+            {
+                if (state.CurrentTokenMatches(level.ToString()))
+                {
+                    matchedLevel = level; // Continue looping so all 'expected' tokens are collected.
+                }
+            }
+
+            if (matchedLevel == null)
+            {
+                throw new ArgumentException("Invalid level");
+            }
+
+            return matchedLevel.Value;
+        }
+
+        private static Expression GetTableString(TraceSourceSchemaColumn column)
+            => Expression.Call(
                 Param1TraceTableSnapshot,
-                method,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnString))!,
                 Param2RowIndex,
                 Expression.Constant(column),
                 Expression.Constant(false) /* allowMultiline */);
-        }
+
+        private static Expression GetTableLevel(TraceSourceSchemaColumn column)
+            => Expression.Call(
+                Param1TraceTableSnapshot,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnUnifiedLevel))!,
+                Param2RowIndex,
+                Expression.Constant(column));
 
         // Column names could contain spaces and other characters that would make parsing ambiguous/troublesome so strip out everything except for letters and numbers
         // and have every matchedColumn variable start with '@'.
-        public static string CreateColumnVariableName(TraceSourceSchemaColumn column) => '@' + GetColumnNameForParsing(column);
-        private static string GetColumnNameForParsing(TraceSourceSchemaColumn column) => Regex.Replace(column.Name, "[^\\w]", "");
+        public static string CreateColumnVariableName(TraceSourceSchemaColumn column)
+            => '@' + GetColumnNameForParsing(column);
+        private static string GetColumnNameForParsing(TraceSourceSchemaColumn column)
+            => Regex.Replace(column.Name, "[^\\w]", "");
     };
 }
