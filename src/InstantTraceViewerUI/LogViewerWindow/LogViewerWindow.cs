@@ -291,7 +291,7 @@ namespace InstantTraceViewerUI
                                 string newRule =
                                     string.Join(' ', [
                                         TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
-                                        TraceTableRowSelectorSyntax.StringEqualsOperatorName,
+                                        TraceTableRowSelectorSyntax.EqualsOperatorName,
                                         TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(displayText)]);
 
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;

@@ -66,7 +66,7 @@ namespace InstantTraceViewer
             }
         }
 
-        public const string StringEqualsOperatorName = "equals";
+        public const string EqualsOperatorName = "equals";
         public const string StringEqualsCSOperatorName = "equals_cs";
         public const string StringContainsOperatorName = "contains";
         public const string StringContainsCSOperatorName = "contains_cs";
@@ -208,27 +208,17 @@ namespace InstantTraceViewer
 
             state.MoveNextToken();
 
-            if (matchedColumn == _schema.UnifiedLevelColumn && state.CurrentTokenMatches(MinimumLevelOperatorName))
+            if (matchedColumn == _schema.UnifiedLevelColumn)
             {
-                state.MoveNextToken();
-
-                UnifiedLevel level = ReadLevel(state);
-                state.MoveNextToken();
-
-                return Expression.LessThanOrEqual(
-                    Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
+                return ParseLevelPredicate(state, matchedColumn);
             }
-            else if (matchedColumn == _schema.UnifiedLevelColumn && state.CurrentTokenMatches(MaximumLevelOperatorName))
-            {
-                state.MoveNextToken();
 
-                UnifiedLevel level = ReadLevel(state);
-                state.MoveNextToken();
+            return ParseStringPredicate(state, matchedColumn);
+        }
 
-                return Expression.GreaterThanOrEqual(
-                    Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
-            }
-            else if (state.CurrentTokenMatches(StringEqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
+        private Expression ParseStringPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
+        {
+            if (state.CurrentTokenMatches(EqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
             {
                 StringComparison comparisonType = GetStringComparisonType(state.CurrentToken);
                 state.MoveNextToken();
@@ -269,10 +259,35 @@ namespace InstantTraceViewer
                     return ComparisonExpressions.Matches(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions);
                 }
             }
-            else
+
+            throw new ArgumentException($"Unknown operator: {state.CurrentToken}");
+        }
+
+        private Expression ParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
+        {
+            if (state.CurrentTokenMatches(MinimumLevelOperatorName))
             {
-                throw new ArgumentException($"Unknown operator: {state.CurrentToken}");
+                state.MoveNextToken();
+                UnifiedLevel level = ReadLevel(state);
+                state.MoveNextToken();
+                return Expression.LessThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
             }
+            else if (state.CurrentTokenMatches(MaximumLevelOperatorName))
+            {
+                state.MoveNextToken();
+                UnifiedLevel level = ReadLevel(state);
+                state.MoveNextToken();
+                return Expression.GreaterThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
+            }
+            else if (state.CurrentTokenMatches(EqualsOperatorName))
+            {
+                state.MoveNextToken();
+                UnifiedLevel level = ReadLevel(state);
+                state.MoveNextToken();
+                return Expression.Equal(GetTableLevel(matchedColumn), Expression.Constant(level));
+            }
+
+            throw new ArgumentException($"Unknown operator: {state.CurrentToken}");
         }
 
         private static StringComparison GetStringComparisonType(string operatorName)

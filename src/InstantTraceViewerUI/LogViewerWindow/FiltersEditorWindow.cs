@@ -63,15 +63,17 @@ namespace InstantTraceViewerUI
                     float expectedXOffset = skipSize.X - inputState.ScrollX + InputTextPadding;
 
                     // Underline the bad token
+                    ImGui.SameLine();
+                    if (!matchingExpectedTokens.Any())
                     {
-                        ImGui.SameLine();
                         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
                         // Measure pixel length from start of text to start of parsing error.
                         Vector2 underlineSize = ImGui.CalcTextSize(_lastParseResult.ActualToken.Text);
                         drawList.AddLine(
                             inputScreenPos + new Vector2(expectedXOffset, ImGui.GetTextLineHeightWithSpacing()),
-                            inputScreenPos + new Vector2(expectedXOffset + underlineSize.X, ImGui.GetTextLineHeightWithSpacing()), ImGui.GetColorU32(AppTheme.ErrorColor));
+                            inputScreenPos + new Vector2(expectedXOffset + underlineSize.X, ImGui.GetTextLineHeightWithSpacing()),
+                            ImGui.GetColorU32(AppTheme.ErrorColor));
                     }
 
                     // Show expected tokens pointing at right spot.
