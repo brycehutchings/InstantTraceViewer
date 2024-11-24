@@ -59,7 +59,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        public static string WprpOpenLocation
+        public static string? WprpOpenLocation
         {
             get
             {
@@ -67,11 +67,11 @@ namespace InstantTraceViewerUI
             }
             set
             {
-                Key.SetValue("WprpOpenLocation", value);
+                Key.SetValue("WprpOpenLocation", value!);
             }
         }
 
-        public static string EtlOpenLocation
+        public static string? EtlOpenLocation
         {
             get
             {
@@ -79,7 +79,7 @@ namespace InstantTraceViewerUI
             }
             set
             {
-                Key.SetValue("EtlOpenLocation", value);
+                Key.SetValue("EtlOpenLocation", value!);
             }
         }
 

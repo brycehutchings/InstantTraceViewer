@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using ImGuiNET;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
@@ -37,6 +38,7 @@ namespace InstantTraceViewerUI
         private int? _hoveredThreadId;
 
         private TimelineWindow _timelineInline = null;
+        private FiltersEditorWindow _filtersEditorWindow;
 
         private int? _cellContentPopupFullTableRowIndex = null;
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
@@ -80,6 +82,14 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.End();
+
+            if (_filtersEditorWindow != null)
+            {
+                if (!_filtersEditorWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable.Schema))
+                {
+                    _filtersEditorWindow = null;
+                }
+            }
 
             if (!opened)
             {
@@ -278,26 +288,20 @@ namespace InstantTraceViewerUI
                             {
                                 setColor(null);
 
-                                // This is a delegate because we need to pass this to the lambda rule to run it on arbitrary rows and not this specific row.
-                                Func<ITraceTableSnapshot, int, bool> matchFunc = (traceTable, rowIndex) =>
-                                    traceTable.GetColumnString(rowIndex, column, allowMultiline: false) == displayText;
+                                string newRule =
+                                    string.Join(' ', [
+                                        TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
+                                        TraceTableRowSelectorSyntax.EqualsOperatorName,
+                                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(displayText)]);
 
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
                                 {
-                                    // Include rules go last to ensure anything already excluded stays excluded.
-                                    _viewerRules.VisibleRules.Add(new TraceRowVisibleRule(
-                                        Rule: new TraceRowRule { IsMatch = matchFunc },
-                                        Action: TraceRowRuleAction.Include));
-                                    _viewerRules.GenerationId++;
+                                    _viewerRules.AddIncludeRule(newRule);
                                 }
                                 if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
                                 {
-                                    // Exclude rules go first to ensure anything that was previously explicitly included becomes excluded.
-                                    _viewerRules.VisibleRules.Insert(0, new TraceRowVisibleRule(
-                                        Rule: new TraceRowRule { IsMatch = matchFunc },
-                                        Action: TraceRowRuleAction.Exclude));
-                                    _viewerRules.GenerationId++;
+                                    _viewerRules.AddExcludeRule(newRule);
                                 }
                                 ImGui.Separator();
                                 if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
@@ -434,7 +438,7 @@ namespace InstantTraceViewerUI
         private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceTableSnapshot visibleTraceTable, ref int? setScrollIndex)
         {
             ImGui.BeginDisabled(!_selectedFullTableRowIndices.Any());
-            if (ImGui.Button("Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
+            if (ImGui.Button("\uF0C5 Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
             {
                 CopySelectedRows(visibleTraceTable);
             }
@@ -455,18 +459,22 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            string filterCountSuffix = _viewerRules.VisibleRules.Any() ? $" ({_viewerRules.VisibleRules.Count()})" : string.Empty;
-            if (ImGui.Button($"Filtering{filterCountSuffix}..."))
+            string filterCountSuffix = _viewerRules.Rules.Count > 0 ? $" ({_viewerRules.Rules.Count})" : string.Empty;
+            if (ImGui.Button($"\uf0b0 Filtering {filterCountSuffix}..."))
             {
                 ImGui.OpenPopup("Filtering");
             }
             if (ImGui.BeginPopup("Filtering"))
             {
-                ImGui.BeginDisabled(!_viewerRules.VisibleRules.Any());
+                if (ImGui.MenuItem("Edit filters..."))
+                {
+                    _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName);
+                }
+
+                ImGui.BeginDisabled(_viewerRules.Rules.Count == 0);
                 if (ImGui.MenuItem($"Clear filters"))
                 {
-                    _viewerRules.VisibleRules.Clear();
-                    _viewerRules.GenerationId++;
+                    _viewerRules.ClearRules();
                 }
                 ImGui.EndDisabled();
 
@@ -474,7 +482,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Visualizations..."))
+            if (ImGui.Button("\uF080 Visualizations..."))
             {
                 // Popup menu
                 ImGui.OpenPopup("Visualizations");
@@ -491,7 +499,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Clone"))
+            if (ImGui.Button("\uf24d Clone"))
             {
                 uiCommands.AddLogViewerWindow(Clone());
             }

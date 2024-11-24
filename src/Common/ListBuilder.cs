@@ -62,7 +62,7 @@ namespace InstantTraceViewer
     public class ListBuilder<TItem>
     {
         private List<TItem[]> _blocks = new List<TItem[]>();
-        private IReadOnlyList<TItem[]> _blocksSnapshotCopy = null;
+        private IReadOnlyList<TItem[]>? _blocksSnapshotCopy = null;
         private int _lastBlockIndex = 0;
 
         public ListBuilder(int blockSize = 16 * 1024)

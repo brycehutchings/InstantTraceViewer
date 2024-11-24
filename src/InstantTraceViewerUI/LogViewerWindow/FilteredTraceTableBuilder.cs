@@ -31,7 +31,7 @@ namespace InstantTraceViewerUI
 
             for (int i = (_lastUnfilteredTraceRecordSnapshot?.RowCount ?? 0); i < newSnapshot.RowCount; i++)
             {
-                if (viewerRules.VisibleRules.Count == 0 || viewerRules.GetVisibleAction(newSnapshot, i) == TraceRowRuleAction.Include)
+                if (viewerRules.GetVisibleAction(newSnapshot, i) == TraceRowRuleAction.Include)
                 {
                     if (newSnapshot.Schema.UnifiedLevelColumn != null)
                     {

@@ -189,9 +189,7 @@ namespace InstantTraceViewerUI.Etw
         // Convert from WPRP-native format to simplified format used to create an ETW session.
         public EtwSessionProfile ConvertToSessionProfile()
         {
-            EtwSessionProfile etwSessionProfile = new();
-
-            etwSessionProfile.DisplayName = Name;
+            EtwSessionProfile etwSessionProfile = new() { DisplayName = Name };
 
             foreach (var keyword in SystemProvider?.Keywords ?? Enumerable.Empty<string>())
             {
