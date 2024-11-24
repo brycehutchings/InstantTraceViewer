@@ -70,6 +70,20 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
+        public void RemoveRule(int index)
+        {
+            _visibleRules.RemoveAt(index);
+            GenerationId++;
+        }
+
+        public void MoveRule(int index, int newIndex)
+        {
+            var rule = _visibleRules[index];
+            _visibleRules.RemoveAt(index);
+            _visibleRules.Insert(newIndex, rule);
+            GenerationId++;
+        }
+
         public IReadOnlyList<IRule> Rules => _visibleRules;
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)

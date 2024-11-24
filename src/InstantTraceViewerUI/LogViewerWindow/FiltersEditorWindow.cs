@@ -93,7 +93,7 @@ namespace InstantTraceViewerUI
                 }
                 ImGui.NewLine(); // Move the cursor down a line since this space is needed for the "expected" tokens.
 
-                if (ImGui.BeginTable("Rules", 3,
+                if (ImGui.BeginTable("Rules", 4,
                     ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
                     ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable))
                 {
@@ -101,12 +101,17 @@ namespace InstantTraceViewerUI
 
                     ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
                     ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, dpiBase * 3.5f);
+                    ImGui.TableSetupColumn("Manage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
                     ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
                     ImGui.TableSetupColumn("Query", ImGuiTableColumnFlags.WidthStretch, 1);
                     ImGui.TableHeadersRow();
 
-                    foreach (var rule in rules.Rules)
+                    for (int i = 0; i < rules.Rules.Count; i++)
                     {
+                        ImGui.PushID(i);
+
+                        IRule rule = rules.Rules[i];
+
                         ImGui.TableNextRow();
                         ImGui.TableNextColumn();
                         bool enabled = rule.Enabled;
@@ -115,9 +120,30 @@ namespace InstantTraceViewerUI
                             rule.Enabled = enabled;
                         }
                         ImGui.TableNextColumn();
+
+                        ImGuiWidgets.UndecoratedButton("\uf044", "Edit");
+                        ImGui.SameLine();
+                        if (i > 0 && ImGuiWidgets.UndecoratedButton("\uf062", "Move up"))
+                        {
+                            rules.MoveRule(i, i - 1);
+                        }
+                        ImGui.SameLine();
+                        if (i < rules.Rules.Count - 1 && ImGuiWidgets.UndecoratedButton("\uf063", "Move down"))
+                        {
+                            rules.MoveRule(i, i + 1);
+                        }
+                        ImGui.SameLine();
+                        if (ImGuiWidgets.UndecoratedButton("\uf2ed", "Delete rule"))
+                        {
+                            rules.RemoveRule(i);
+                        }
+
+                        ImGui.TableNextColumn();
                         ImGui.TextUnformatted(rule.Action.ToString());
                         ImGui.TableNextColumn();
                         ImGui.TextUnformatted(rule.Query);
+
+                        ImGui.PopID();
                     }
 
                     ImGui.EndTable();

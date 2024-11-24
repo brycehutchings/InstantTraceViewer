@@ -44,8 +44,6 @@ extern "C" int __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** i
 
     ::RegisterClassExW(&g_windowClass);
 
-    //#include <shellscalingapi.h>
-    //#pragma comment(lib, "Shcore.lib")
     g_hwnd = ::CreateWindowW(
         g_windowClass.lpszClassName, L"Instant Trace Viewer", WS_OVERLAPPEDWINDOW,
         DefaultX, DefaultY, DefaultWidth, DefaultHeight,

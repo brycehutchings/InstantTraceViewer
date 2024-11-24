@@ -438,7 +438,7 @@ namespace InstantTraceViewerUI
         private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceTableSnapshot visibleTraceTable, ref int? setScrollIndex)
         {
             ImGui.BeginDisabled(!_selectedFullTableRowIndices.Any());
-            if (ImGui.Button("Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
+            if (ImGui.Button("\uF0C5 Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
             {
                 CopySelectedRows(visibleTraceTable);
             }
@@ -460,7 +460,7 @@ namespace InstantTraceViewerUI
 
             ImGui.SameLine();
             string filterCountSuffix = _viewerRules.Rules.Count > 0 ? $" ({_viewerRules.Rules.Count})" : string.Empty;
-            if (ImGui.Button($"Filtering{filterCountSuffix}..."))
+            if (ImGui.Button($"\uf0b0 Filtering {filterCountSuffix}..."))
             {
                 ImGui.OpenPopup("Filtering");
             }
@@ -482,7 +482,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Visualizations..."))
+            if (ImGui.Button("\uF080 Visualizations..."))
             {
                 // Popup menu
                 ImGui.OpenPopup("Visualizations");
@@ -499,7 +499,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Clone"))
+            if (ImGui.Button("\uf24d Clone"))
             {
                 uiCommands.AddLogViewerWindow(Clone());
             }

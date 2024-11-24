@@ -31,6 +31,7 @@
     <None Remove="Assets\DroidSans-Bold.ttf" />
     <None Remove="Assets\DroidSans.ttf" />
     <None Remove="Assets\Fonts\CascadiaMono.ttf" />
+    <None Remove="Assets\Fonts\Font Awesome 6 Free-Solid-900.otf" />
     <None Remove="FieldMap_HResults.tsv" />
     <None Remove="FieldMap_NTStatus.tsv" />
     <None Remove="FieldMap_Win32Errors.tsv" />
@@ -72,6 +73,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Assets\Fonts\DroidSans.ttf">
       <LogicalName>DroidSans.ttf</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Assets\Fonts\Font Awesome 6 Free-Solid-900.otf">
+      <LogicalName>Font Awesome 6 Free-Solid-900.otf</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 
