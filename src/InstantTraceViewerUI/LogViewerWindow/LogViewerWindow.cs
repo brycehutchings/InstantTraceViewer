@@ -288,11 +288,21 @@ namespace InstantTraceViewerUI
                             {
                                 setColor(null);
 
-                                string newRule =
-                                    string.Join(' ', [
+                                string newRule;
+                                if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
+                                {
+                                    newRule = string.Join(' ', [
                                         TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
                                         TraceTableRowSelectorSyntax.EqualsOperatorName,
-                                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(displayText)]);
+                                        visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString()]);
+                                }
+                                else
+                                {
+                                    newRule = string.Join(' ', [
+                                        TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
+                                        TraceTableRowSelectorSyntax.EqualsOperatorName,
+                                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnString(i, column, allowMultiline: false))]);
+                                }
 
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
                                 if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
