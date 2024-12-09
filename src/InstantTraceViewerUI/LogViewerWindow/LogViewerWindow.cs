@@ -288,31 +288,10 @@ namespace InstantTraceViewerUI
                             {
                                 setColor(null);
 
-                                string newRule;
-                                if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
-                                {
-                                    newRule = string.Join(' ', [
-                                        TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
-                                        TraceTableRowSelectorSyntax.EqualsOperatorName,
-                                        visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString()]);
-                                }
-                                else
-                                {
-                                    newRule = string.Join(' ', [
-                                        TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
-                                        TraceTableRowSelectorSyntax.EqualsOperatorName,
-                                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnString(i, column, allowMultiline: false))]);
-                                }
-
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
-                                if (ImGui.MenuItem($"Include '{displayTextTruncated}'"))
-                                {
-                                    _viewerRules.AddIncludeRule(newRule);
-                                }
-                                if (ImGui.MenuItem($"Exclude '{displayTextTruncated}'"))
-                                {
-                                    _viewerRules.AddExcludeRule(newRule);
-                                }
+
+                                AddIncludeExcludeRuleMenuItems(visibleTraceTable, i, column, displayTextTruncated);
+
                                 ImGui.Separator();
                                 if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
                                 {
@@ -388,6 +367,68 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.EndTable();
+            }
+        }
+
+        private void AddIncludeExcludeRuleMenuItems(FilteredTraceTableSnapshot visibleTraceTable, int i, TraceSourceSchemaColumn column, string displayTextTruncated)
+        {
+            void AddIncludeRule(IReadOnlyList<string> newRule)
+            {
+                string newRuleStr = string.Join(' ', newRule);
+                if (ImGui.MenuItem($"Include: {newRuleStr}"))
+                {
+                    _viewerRules.AddIncludeRule(newRuleStr);
+                }
+            }
+            void AddExcludeRule(IReadOnlyList<string> newRule)
+            {
+                string newRuleStr = string.Join(' ', newRule);
+                if (ImGui.MenuItem($"Exclude: {newRuleStr}"))
+                {
+                    _viewerRules.AddExcludeRule(newRuleStr);
+                }
+            }
+
+            List<string> newRule;
+            if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
+            {
+                newRule = [
+                    TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
+                    TraceTableRowSelectorSyntax.EqualsOperatorName,
+                    visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString()];
+            }
+            else
+            {
+                newRule = [
+                    TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
+                    TraceTableRowSelectorSyntax.EqualsOperatorName,
+                    TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnString(i, column, allowMultiline: false))];
+            }
+            AddIncludeRule(newRule);
+            AddExcludeRule(newRule);
+
+            if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
+            {
+                var levelStr = visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString();
+
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastLevelOperatorName, levelStr]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostLevelOperatorName, levelStr]);
+
+                if (visibleTraceTable.Schema.ProviderColumn != null)
+                {
+                    var provStr = visibleTraceTable.GetColumnString(i, visibleTraceTable.Schema.ProviderColumn, allowMultiline: false);
+                    string[] andProvEquals = [
+                        "AND",
+                        TraceTableRowSelectorSyntax.CreateColumnVariableName(visibleTraceTable.Schema.ProviderColumn),
+                        TraceTableRowSelectorSyntax.EqualsOperatorName,
+                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(provStr)];
+
+
+                    newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastLevelOperatorName, levelStr];
+                    AddIncludeRule(newRule.Concat(andProvEquals).ToList());
+                    newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostLevelOperatorName, levelStr];
+                    AddExcludeRule(newRule.Concat(andProvEquals).ToList());
+                }
             }
         }
 

@@ -84,6 +84,11 @@ namespace InstantTraceViewer
         /// The column which represents the thread id of a row. Must support queries using GetColumnInt.
         /// </summary>
         public TraceSourceSchemaColumn? ThreadIdColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the provider/data source of the row.
+        /// </summary>
+        public TraceSourceSchemaColumn? ProviderColumn { get; init; }
     }
 
     public static class TraceTableSnapshotExtensions
