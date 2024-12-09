@@ -74,8 +74,8 @@ namespace InstantTraceViewer
         public const string StringMatchesCSOperatorName = "matches_cs";
         public const string StringMatchesRegexModifierName = "regex";
 
-        public const string MinimumLevelOperatorName = "minimum";
-        public const string MaximumLevelOperatorName = "maximum";
+        public const string AtLeastLevelOperatorName = "atleast";
+        public const string AtMostLevelOperatorName = "atmost";
 
         private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
         private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
@@ -265,14 +265,14 @@ namespace InstantTraceViewer
 
         private Expression ParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            if (state.CurrentTokenMatches(MinimumLevelOperatorName))
+            if (state.CurrentTokenMatches(AtLeastLevelOperatorName))
             {
                 state.MoveNextToken();
                 UnifiedLevel level = ReadLevel(state);
                 state.MoveNextToken();
                 return Expression.LessThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
             }
-            else if (state.CurrentTokenMatches(MaximumLevelOperatorName))
+            else if (state.CurrentTokenMatches(AtMostLevelOperatorName))
             {
                 state.MoveNextToken();
                 UnifiedLevel level = ReadLevel(state);
