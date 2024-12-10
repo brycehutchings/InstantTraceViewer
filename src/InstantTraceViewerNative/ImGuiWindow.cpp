@@ -1,4 +1,5 @@
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
 #include <d3d11.h>
@@ -43,8 +44,6 @@ extern "C" int __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** i
 
     ::RegisterClassExW(&g_windowClass);
 
-    //#include <shellscalingapi.h>
-    //#pragma comment(lib, "Shcore.lib")
     g_hwnd = ::CreateWindowW(
         g_windowClass.lpszClassName, L"Instant Trace Viewer", WS_OVERLAPPEDWINDOW,
         DefaultX, DefaultY, DefaultWidth, DefaultHeight,

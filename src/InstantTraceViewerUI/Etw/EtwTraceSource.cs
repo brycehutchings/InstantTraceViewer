@@ -47,7 +47,7 @@ namespace InstantTraceViewerUI.Etw
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
         private readonly TraceEventSession _etwSession;
-        private readonly ETWTraceEventSource _etwSource;
+        private readonly ETWTraceEventSource? _etwSource;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;

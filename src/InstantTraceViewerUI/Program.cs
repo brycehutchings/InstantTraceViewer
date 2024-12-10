@@ -59,7 +59,7 @@ namespace InstantTraceViewerUI
                     {
                         break;
                     }
-                    
+
                     if (occluded != 0)
                     {
                         System.Threading.Thread.Sleep(10);
@@ -111,6 +111,9 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().ScaleAllSizes(dpiScale);
             }
 
+            // ImGui Q&A recommends rounding down font size after applying DPI scaling.
+            float CalcScaledFontSize(float fontSize) => (float)Math.Floor(fontSize * dpiScale);
+
             bool needsRebuild = ImGui.GetIO().Fonts.TexID != nint.Zero;
             ImGui.GetIO().Fonts.Clear();
 
@@ -130,15 +133,25 @@ namespace InstantTraceViewerUI
                     font == FontType.SegoeUI && File.Exists(segoeUiPath) ? File.ReadAllBytes(segoeUiPath) : // Fallback to old segoe ui font if the new one is not available.
                     font == FontType.CascadiaMono ? GetEmbeddedResourceBytes("CascadiaMono.ttf") :
                     GetEmbeddedResourceBytes("DroidSans.ttf");
-                fixed (byte* ttfFontBytesPtr = ttfFontBytes)
-                {
-                    // ImGui Q&A recommends rounding down font size after applying DPI scaling.
-                    float scaledFontSize = (float)Math.Floor(Settings.FontSize * dpiScale);
+                AddFontFromBytes(CalcScaledFontSize(Settings.FontSize), ttfFontBytes);
+            }
 
-                    ImFontConfigPtr fontCfg = ImGuiNative.ImFontConfig_ImFontConfig();
-                    fontCfg.FontDataOwnedByAtlas = false; // https://github.com/ocornut/imgui/issues/220
-                    ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)ttfFontBytesPtr, ttfFontBytes.Length, scaledFontSize, fontCfg);
-                }
+            // Load symbol font
+            {
+                byte[] symbolFont = GetEmbeddedResourceBytes("Font Awesome 6 Free-Solid-900.otf");
+
+                // Symbol font is reduced by 2 pixels, otherwise it has full height which looks awkward.
+                AddFontFromBytes(CalcScaledFontSize(Settings.FontSize - 2), symbolFont, true /* merge */, [
+                    // Use https://fontawesome.com/v6/search?o=r&m=free to search for icons.
+                    0xF044, // "pen-to-square"
+                    0xF080, // "chart-bar"
+                    0xF0B0, // "filter"
+                    0xF0C5, // "copy"
+                    0xF062, // "arrow-up"
+                    0xF063, // "arrow-down"
+                    0xF24D, // "clone"
+                    0xF2ED, // "trash-can"
+                ]);
             }
 
             if (needsRebuild)
@@ -156,6 +169,31 @@ namespace InstantTraceViewerUI
                 byte[] ret = new byte[s.Length];
                 s.Read(ret, 0, (int)s.Length);
                 return ret;
+            }
+        }
+
+        private static unsafe void AddFontFromBytes(float scaledFontSize, byte[] fontData, bool mergeMode = false, ushort[]? glyphRanges = null)
+        {
+            // Note this ImVector is leaked but that is OK because ImGui needs the memory kept alive for the lifetime of the font atlas.
+            // It's a small amount of memory to leak and only when the user changes font settings.
+            ImVector glyphRangesVector = new ImVector();
+            if (glyphRanges != null)
+            {
+                ImFontGlyphRangesBuilderPtr builder = ImGuiNative.ImFontGlyphRangesBuilder_ImFontGlyphRangesBuilder();
+                foreach (var glyphRange in glyphRanges)
+                {
+                    builder.AddChar(glyphRange);
+                }
+                builder.BuildRanges(out glyphRangesVector);
+            }
+
+            ImFontConfigPtr fontCfg = ImGuiNative.ImFontConfig_ImFontConfig();
+            fontCfg.MergeMode = mergeMode;
+            fontCfg.FontDataOwnedByAtlas = false;
+            fontCfg.GlyphRanges = glyphRangesVector.Data;
+            fixed (byte* fontDataPtr = fontData)
+            {
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)fontDataPtr, fontData.Length, scaledFontSize, fontCfg);
             }
         }
     }
