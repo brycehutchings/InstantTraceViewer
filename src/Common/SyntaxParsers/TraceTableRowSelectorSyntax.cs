@@ -42,6 +42,9 @@ namespace InstantTraceViewer
             {
                 get
                 {
+                    // Caller should be catching Eof before accessing CurrentToken to avoid exceptions for control flow because
+                    // exception handling is too slow for real-time parsing.
+                    Debug.Assert(!Eof);
                     if (Eof)
                     {
                         throw new ArgumentException("Unexpected end of input");
@@ -96,17 +99,17 @@ namespace InstantTraceViewer
             try
             {
                 state.MoveNextToken(); // Move to first token.
-                expressionBody = ParseExpression(state);
+                expressionBody = TryParseExpression(state);
             }
             catch (Exception)
             {
-                // FIXME: Don't use exceptions for control flow. The caller will get the details from ExpectedTokens.
+                Debug.Fail("Parser should not throw exceptions. This makes real-time parsing too slow.");
             }
 
             return new TraceTableRowSelectorParseResults
             {
                 Expression = expressionBody != null ? Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex) : null,
-                ExpectedTokens = state.ExpectedTokens,
+                ExpectedTokens = state.ExpectedTokens.Distinct().ToArray(),
                 ExpectedTokenStartIndex = state.ExpectedTokenStartIndex,
                 ActualToken = state.TokenEnumerator.Current
             };
@@ -122,11 +125,11 @@ namespace InstantTraceViewer
             return text.Substring(1, text.Length - 2).Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\r", "\r").Replace("\\\\", "\\");
         }
 
-        private Expression ParseExpression(ParserState state, bool closeParenthesisExpected = false)
+        private Expression TryParseExpression(ParserState state, bool closeParenthesisExpected = false)
         {
-            Expression leftExpression = ParseTerm(state);
+            Expression leftExpression = TryParseTerm(state);
 
-            while (true)
+            while (leftExpression != null)
             {
                 if (closeParenthesisExpected && state.CurrentTokenMatches(")"))
                 {
@@ -139,13 +142,21 @@ namespace InstantTraceViewer
                 {
                     state.MoveNextToken();
                     // "AND" has higher precedence than "OR" so we only parse a single term rather than a full leftExpression.
-                    leftExpression = Expression.AndAlso(leftExpression, ParseTerm(state));
+                    Expression rightExpression = TryParseTerm(state);
+                    if (rightExpression != null)
+                    {
+                        leftExpression = Expression.AndAlso(leftExpression, rightExpression);
+                    }
                 }
                 else if (state.CurrentTokenMatches("or"))
                 {
                     state.MoveNextToken();
                     // "OR" has lower precedence than "AND" and so we parse everything to the right as if it was a grouped leftExpression.
-                    leftExpression = Expression.OrElse(leftExpression, ParseExpression(state, closeParenthesisExpected));
+                    Expression rightExpression = TryParseExpression(state, closeParenthesisExpected);
+                    if (rightExpression != null)
+                    {
+                        leftExpression = Expression.OrElse(leftExpression, rightExpression);
+                    }
                 }
                 else
                 {
@@ -155,23 +166,23 @@ namespace InstantTraceViewer
                         break;
                     }
 
-                    throw new ArgumentException($"Unexpected token: {state.CurrentToken}");
+                    return null; // Unexpected token.
                 }
             }
 
             return leftExpression;
         }
 
-        private Expression ParseTerm(ParserState state)
+        private Expression TryParseTerm(ParserState state)
         {
             if (state.CurrentTokenMatches("("))
             {
                 state.MoveNextToken();
-                Expression expression = ParseExpression(state, closeParenthesisExpected: true);
+                Expression expression = TryParseExpression(state, closeParenthesisExpected: true);
 
                 if (!state.CurrentTokenMatches(")"))
                 {
-                    throw new ArgumentException("Expected ')'");
+                    return null; // Unexpected token or end of input.
                 }
                 state.MoveNextToken();
 
@@ -180,15 +191,16 @@ namespace InstantTraceViewer
             else if (state.CurrentTokenMatches("not"))
             {
                 state.MoveNextToken();
-                return Expression.Not(ParseTerm(state));
+                Expression expression = TryParseTerm(state);
+                return expression != null ? Expression.Not(expression) : null;
             }
             else
             {
-                return ParsePredicate(state);
+                return TryParsePredicate(state);
             }
         }
 
-        private Expression ParsePredicate(ParserState state)
+        private Expression TryParsePredicate(ParserState state)
         {
             // Loop through ALL columns rather than do a dictionary lookup so the parser state can log each expected token.
             TraceSourceSchemaColumn? matchedColumn = null;
@@ -203,44 +215,69 @@ namespace InstantTraceViewer
 
             if (matchedColumn == null)
             {
-                throw new ArgumentException($"Unknown column: {state.CurrentToken}");
+                return null; // Unexpected token or end of input.
             }
 
             state.MoveNextToken();
 
             if (matchedColumn == _schema.UnifiedLevelColumn)
             {
-                return ParseLevelPredicate(state, matchedColumn);
+                return TryParseLevelPredicate(state, matchedColumn);
             }
 
-            return ParseStringPredicate(state, matchedColumn);
+            return TryParseStringPredicate(state, matchedColumn);
         }
 
-        private Expression ParseStringPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
+        private Expression TryParseStringPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
             if (state.CurrentTokenMatches(EqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
             {
-                StringComparison comparisonType = GetStringComparisonType(state.CurrentToken);
+                StringComparison? comparisonType = TryGetStringComparisonType(state.CurrentToken);
+                if (comparisonType == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
 
-                string value = ReadStringLiteral(state);
+                string value = TryReadStringLiteral(state);
+                if (value == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
 
-                return ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType);
+                return ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType.Value);
             }
             else if (state.CurrentTokenMatches(StringContainsOperatorName) || state.CurrentTokenMatches(StringContainsCSOperatorName))
             {
-                StringComparison comparisonType = GetStringComparisonType(state.CurrentToken);
+                StringComparison? comparisonType = TryGetStringComparisonType(state.CurrentToken);
+                if (comparisonType == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
 
-                string value = ReadStringLiteral(state);
+                string value = TryReadStringLiteral(state);
+                if (value == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
 
-                return ComparisonExpressions.StringContains(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType);
+                return ComparisonExpressions.StringContains(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType.Value);
             }
             else if (state.CurrentTokenMatches(StringMatchesOperatorName) || state.CurrentTokenMatches(StringMatchesCSOperatorName))
             {
-                RegexOptions regexOptions = GetRegexOptions(state.CurrentToken);
+                RegexOptions? regexOptions = TryGetRegexOptions(state.CurrentToken);
+                if (regexOptions == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
 
                 // Token following matches/matches_cs may be an optional "regex" modifier.
@@ -248,79 +285,104 @@ namespace InstantTraceViewer
                 {
                     state.MoveNextToken();
 
-                    string value = ReadStringLiteral(state);
+                    string value = TryReadStringLiteral(state);
+                    if (value == null)
+                    {
+                        return null; // Unexpected token or end of input.
+                    }
+
                     state.MoveNextToken();
-                    return ComparisonExpressions.MatchesRegex(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions);
+                    return ComparisonExpressions.MatchesRegex(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions.Value);
                 }
                 else
                 {
-                    string value = ReadStringLiteral(state);
+                    string value = TryReadStringLiteral(state);
+                    if (value == null)
+                    {
+                        return null; // Unexpected token or end of input.
+                    }
+
                     state.MoveNextToken();
-                    return ComparisonExpressions.Matches(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions);
+                    return ComparisonExpressions.Matches(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), regexOptions.Value);
                 }
             }
 
-            throw new ArgumentException($"Unknown operator: {state.CurrentToken}");
+            return null; // Unexpected token or end of input.
         }
 
-        private Expression ParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
+        private Expression TryParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
             if (state.CurrentTokenMatches(AtLeastLevelOperatorName))
             {
                 state.MoveNextToken();
-                UnifiedLevel level = ReadLevel(state);
+                UnifiedLevel? level = TryReadLevel(state);
+                if (level == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
-                return Expression.LessThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
+                return Expression.LessThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
             }
             else if (state.CurrentTokenMatches(AtMostLevelOperatorName))
             {
                 state.MoveNextToken();
-                UnifiedLevel level = ReadLevel(state);
+                UnifiedLevel? level = TryReadLevel(state);
+                if (level == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
-                return Expression.GreaterThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level));
+                return Expression.GreaterThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
             }
             else if (state.CurrentTokenMatches(EqualsOperatorName))
             {
                 state.MoveNextToken();
-                UnifiedLevel level = ReadLevel(state);
+                UnifiedLevel? level = TryReadLevel(state);
+                if (level == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
                 state.MoveNextToken();
-                return Expression.Equal(GetTableLevel(matchedColumn), Expression.Constant(level));
+                return Expression.Equal(GetTableLevel(matchedColumn), Expression.Constant(level.Value));
             }
 
-            throw new ArgumentException($"Unknown operator: {state.CurrentToken}");
+            return null; // Unexpected token or end of input.
         }
 
-        private static StringComparison GetStringComparisonType(string operatorName)
+        private static StringComparison TryGetStringComparisonType(string operatorName)
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
                  ? StringComparison.InvariantCulture : StringComparison.InvariantCultureIgnoreCase;
 
-        private static RegexOptions GetRegexOptions(string operatorName)
+        private static RegexOptions TryGetRegexOptions(string operatorName)
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
                  ? RegexOptions.None : RegexOptions.IgnoreCase;
 
         // Validates the token is a quoted string literal, provides proper "expected" content
-        private static string ReadStringLiteral(ParserState state)
+        private static string TryReadStringLiteral(ParserState state)
         {
             if (state.Eof || state.CurrentToken.Length == 0 || state.CurrentToken[0] != '"')
             {
                 state.CurrentTokenMatches("\""); // Add quote as expected token.
-                throw new ArgumentException("Invalid string literal");
+                return null; // End of input or malformed string literal.
             }
             else if (state.CurrentToken.Length == 1)
             {
                 state.CurrentTokenMatches("\"[text]\""); // We just have a starting quote. Encourage some content with closing quote.
-                throw new ArgumentException("Invalid string literal");
+                return null; // End of input or malformed string literal.
             }
             else if (state.CurrentToken[^1] != '"')
             {
                 state.CurrentTokenMatches(state.CurrentToken + '"'); // Add closing quote as expected token.
-                throw new ArgumentException("Invalid string literal");
+                return null; // End of input or malformed string literal.
             }
 
             return UnescapeStringLiteral(state.CurrentToken);
         }
 
-        private static UnifiedLevel ReadLevel(ParserState state)
+        private static UnifiedLevel? TryReadLevel(ParserState state)
         {
             UnifiedLevel? matchedLevel = null;
 
@@ -333,12 +395,7 @@ namespace InstantTraceViewer
                 }
             }
 
-            if (matchedLevel == null)
-            {
-                throw new ArgumentException("Invalid level");
-            }
-
-            return matchedLevel.Value;
+            return matchedLevel;
         }
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)
