@@ -130,7 +130,7 @@ namespace InstantTraceViewer
                     }
 
                     sb.Append(item.Key);
-                    sb.Append(':');
+                    sb.Append(allowMultiline ? ": " : ":");
                     sb.Append(ObjectToString(item.Key, item.Value, allowMultiline, tryGetCustomizedValue, nestingLevel));
 
                     if (allowMultiline)
@@ -176,7 +176,8 @@ namespace InstantTraceViewer
                 return ObjectToString(Name, Value, allowMultiline, tryGetCustomizedValue, 0);
             }
 
-            return $"{Name}:{ObjectToString(Name, Value, allowMultiline, tryGetCustomizedValue, 0)}";
+            string separator = allowMultiline ? ": " : ":";
+            return $"{Name}{separator}{ObjectToString(Name, Value, allowMultiline, tryGetCustomizedValue, 0)}";
         }
     }
 }

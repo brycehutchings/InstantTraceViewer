@@ -1,9 +1,19 @@
-﻿using System.Runtime.InteropServices;
+﻿using ImGuiNET;
+using System.Runtime.InteropServices;
 
 namespace InstantTraceViewerUI
 {
     internal static class NativeInterop
     {
+#pragma warning disable CS0649
+        public unsafe partial struct CurrentInputTextState
+        {
+            public uint Id;
+            public int CursorPos;
+            public float ScrollX;
+        }
+#pragma warning restore CS0649
+
         [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern int WindowInitialize(out nint imguiContext);
 
@@ -18,5 +28,11 @@ namespace InstantTraceViewerUI
 
         [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern void RebuildFontAtlas();
+
+        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern ImGuiPlatformImeData GetPlatformImeData();
+
+        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern CurrentInputTextState GetCurrentInputTextState();
     }
 }

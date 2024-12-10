@@ -199,6 +199,29 @@ extern "C" void __declspec(dllexport) __stdcall RebuildFontAtlas() noexcept
     ImGui_ImplDX11_CreateDeviceObjects();
 }
 
+// Needed because ImGui.NET doesn't expose ImGui's internal data structures.
+#pragma warning(disable : 4190)
+extern "C" ImGuiPlatformImeData __declspec(dllexport) __stdcall GetPlatformImeData() noexcept
+{
+    return ImGui::GetCurrentContext()->PlatformImeData;
+}
+#pragma warning(default : 4190)
+
+// This is a subset of ImGuiInputTextState.
+// If you change this struct, you must also change the .NET struct in NativeInterop.cs too.
+struct CurrentInputTextState {
+    ImGuiID Id;
+    int CursorPos;
+    float ScrollX;
+};
+
+// Needed because ImGui.NET doesn't expose ImGui's internal data structures.
+extern "C" CurrentInputTextState __declspec(dllexport) __stdcall GetCurrentInputTextState() noexcept
+{
+    const ImGuiInputTextState& textState = ImGui::GetCurrentContext()->InputTextState;
+    return CurrentInputTextState{ .Id = textState.ID, .CursorPos = textState.GetCursorPos(), .ScrollX = textState.ScrollX };
+}
+
 //
 // Helper functions:
 //
