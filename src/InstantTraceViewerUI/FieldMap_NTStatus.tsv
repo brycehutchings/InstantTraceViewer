@@ -1,4 +1,4 @@
-error	status	ntstatus
+error	status	ntstatus	ExceptionCode
 0	STATUS_WAIT_0
 0	STATUS_SUCCESS
 1	STATUS_WAIT_1

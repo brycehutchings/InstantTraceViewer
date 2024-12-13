@@ -172,7 +172,7 @@
             }
 
             using StreamWriter ntStatusWriter = new StreamWriter("FieldMap_NTStatus.tsv");
-            ntStatusWriter.WriteLine("error\tstatus\tntstatus"); // First row are field names
+            ntStatusWriter.WriteLine("error\tstatus\tntstatus\tExceptionCode"); // First row are field names
             foreach (var (errorCode, name) in ntStatusMap.OrderBy(t => t.Item1))
             {
                 ntStatusWriter.WriteLine($"{(int)errorCode}\t{name}");
