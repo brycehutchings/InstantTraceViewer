@@ -7,6 +7,7 @@ using System.Windows.Forms;
 using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.Models;
 using ImGuiNET;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
@@ -41,6 +42,11 @@ namespace InstantTraceViewerUI
                     var wprp = Etw.Wprp.Load(args[0]);
                     var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
                     _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                }
+                else if (Path.GetExtension(args[0]) == ".csv")
+                {
+                    var csvTableSource = new CsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
+                    _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
                 }
             }
         }
@@ -305,6 +311,32 @@ namespace InstantTraceViewerUI
 
                     ImGui.EndMenu();
                 }
+            }
+
+            ImGui.SetNextItemShortcut(ImGuiKey.T | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+            if (ImGui.BeginMenu("Text"))
+            {
+                if (ImGui.MenuItem("Open .CSV ..."))
+                {
+                    // TODO: This blocks the render thread
+                    string file = OpenFile("Comma-separated values file (*.csv)|*.csv",
+                        Settings.CsvOpenLocation,
+                        (s) => Settings.CsvOpenLocation = s);
+                    if (!string.IsNullOrEmpty(file))
+                    {
+                        try
+                        {
+                            var csvTableSource = new CsvTableSource(file, firstRowIsHeader: true, readInBackground: true);
+                            _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Failed to open .CSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+
+                ImGui.EndMenu();
             }
 
             ImGui.EndMainMenuBar();

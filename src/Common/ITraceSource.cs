@@ -20,7 +20,7 @@ namespace InstantTraceViewer
         TraceTableSchema Schema { get; }
 
         /// <summary>
-        /// The number of rows in the snapshot.
+        /// The number of rows in the snapshot. Must be greater than zero.
         /// </summary>
         int RowCount { get; }
 

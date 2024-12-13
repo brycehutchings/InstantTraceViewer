@@ -71,6 +71,18 @@ namespace InstantTraceViewerUI
             }
         }
 
+        public static string? CsvOpenLocation
+        {
+            get
+            {
+                return Key.GetValue("CsvOpenLocation", null) as string;
+            }
+            set
+            {
+                Key.SetValue("CsvOpenLocation", value!);
+            }
+        }
+
         public static string? EtlOpenLocation
         {
             get
