@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using InstantTraceViewer;
@@ -17,7 +16,7 @@ namespace InstantTraceViewerUI
         public string Query { get; }
         public TraceRowRuleAction Action { get; }
 
-        public bool Enabled { get; set; }
+        public bool Enabled { get; }
 
         // The result of parsing the query.
         public TraceTableRowSelectorParseResults ParseResult { get; }
@@ -84,6 +83,12 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
+        public void SetRuleEnabled(int index, bool enabled)
+        {
+            _visibleRules[index].Enabled = enabled;
+            GenerationId++;
+        }
+
         public IReadOnlyList<IRule> Rules => _visibleRules;
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
@@ -101,6 +106,11 @@ namespace InstantTraceViewerUI
                 if (rule.Predicate == null)
                 {
                     continue; // This rule could not be parsed.
+                }
+
+                if (!rule.Enabled)
+                {
+                    continue;
                 }
 
                 if (rule.Predicate(traceTable, unfilteredRowIndex))

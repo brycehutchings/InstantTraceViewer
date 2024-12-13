@@ -1,4 +1,4 @@
-﻿using ImGuiNET;
+using ImGuiNET;
 using InstantTraceViewer;
 using System;
 using System.Diagnostics;
@@ -117,7 +117,7 @@ namespace InstantTraceViewerUI
                         bool enabled = rule.Enabled;
                         if (ImGui.Checkbox($"##Enabled", ref enabled))
                         {
-                            rule.Enabled = enabled;
+                            rules.SetRuleEnabled(i, enabled);
                         }
                         ImGui.TableNextColumn();
 
