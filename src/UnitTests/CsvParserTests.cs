@@ -126,5 +126,22 @@ namespace InstantTraceViewerTests
             Assert.AreEqual("bc,de", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[1]));
             Assert.AreEqual("f", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[2]));
         }
+
+        [TestMethod]
+        public void TestIrregularColumnCounts()
+        {
+            // Some CSV have been observed to have quotes with more data around them between commas. Try to handle this elegantly.
+            // Alternatively, we could treat quotes that aren't immediately at the start of a column value as literal quotes?
+            // Either way, this is not a "well-formed" csv file if this case is hit.
+            ITraceTableSnapshot emptyNoHeader = ReadTestString("a,b\nc\nd,e,f", false).CreateSnapshot();
+            Assert.AreEqual(2, emptyNoHeader.Schema.Columns.Count); // First row wins.
+            Assert.AreEqual(3, emptyNoHeader.RowCount);
+            Assert.AreEqual("a", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[0]));
+            Assert.AreEqual("b", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[1]));
+            Assert.AreEqual("c", emptyNoHeader.GetColumnString(1, emptyNoHeader.Schema.Columns[0]));
+            Assert.AreEqual("", emptyNoHeader.GetColumnString(1, emptyNoHeader.Schema.Columns[1]));
+            Assert.AreEqual("d", emptyNoHeader.GetColumnString(2, emptyNoHeader.Schema.Columns[0]));
+            Assert.AreEqual("e", emptyNoHeader.GetColumnString(2, emptyNoHeader.Schema.Columns[1]));
+        }
     }
 }

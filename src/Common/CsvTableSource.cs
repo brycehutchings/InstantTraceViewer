@@ -59,7 +59,7 @@ namespace InstantTraceViewer
                 else
                 {
                     _schema = new TraceTableSchema() { Columns = Enumerable.Range(0, columnValues.Count).Select(i => new TraceSourceSchemaColumn() { Name = $"Column{i}", DefaultColumnSize = DefaultColumnSize }).ToList() };
-                    AddTraceRecord(columnValues.ToArray());
+                    AddTraceRecord(columnValues);
                 }
             }
 
@@ -126,7 +126,7 @@ namespace InstantTraceViewer
             do
             {
                 reachedEof = ReadLine(valueBuilder, columnValues);
-                AddTraceRecord(columnValues.ToArray());
+                AddTraceRecord(columnValues);
                 valueBuilder.Clear();
                 columnValues.Clear();
             }
@@ -191,12 +191,18 @@ namespace InstantTraceViewer
             }
         }
 
-        void AddTraceRecord(string[] record)
+        void AddTraceRecord(List<string> record)
         {
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                _traceRecords.Add(record);
+                // Ensure we have an element for every column.
+                while (record.Count < _schema.Columns.Count)
+                {
+                    record.Add("");
+                }
+
+                _traceRecords.Add(record.ToArray());
             }
             finally
             {
