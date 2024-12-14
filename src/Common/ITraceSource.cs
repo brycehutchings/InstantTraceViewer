@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace InstantTraceViewerUI
+namespace InstantTraceViewer
 {
     /// <summary>
     /// A unified level that all sources can use for a special level column type used for colorization.
@@ -20,7 +20,7 @@ namespace InstantTraceViewerUI
         TraceTableSchema Schema { get; }
 
         /// <summary>
-        /// The number of rows in the snapshot.
+        /// The number of rows in the snapshot. Must be greater than zero.
         /// </summary>
         int RowCount { get; }
 
@@ -52,7 +52,7 @@ namespace InstantTraceViewerUI
 
     public class TraceSourceSchemaColumn
     {
-        public string Name { get; init; }
+        public required string Name { get; init; }
 
         /// <summary>
         /// Size is multipled by the current font height in pixels.
@@ -63,7 +63,7 @@ namespace InstantTraceViewerUI
 
     public class TraceTableSchema
     {
-        public IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
+        public required IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
 
         /// <summary>
         /// The column which represents the timestamp of a row. Must support queries using GetColumnDateTime.

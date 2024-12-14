@@ -393,7 +393,31 @@ namespace InstantTraceViewerUI.Etw
             }
 
             var newRecord = CreateBaseTraceRecord(data);
-            newRecord.NamedValues = [new NamedValue("ParentPid", data.ParentID), new NamedValue("CommandLine", data.CommandLine)];
+
+            var namedValues = new List<NamedValue>();
+
+            // Exit status seems most interesting so it goes first.
+            if (data.Opcode == TraceEventOpcode.Stop)
+            {
+                namedValues.Add(new NamedValue("ExitStatus", data.ExitStatus));
+            }
+
+            namedValues.Add(new NamedValue("ParentPid", data.ParentID));
+
+            if (!string.IsNullOrWhiteSpace(data.CommandLine))
+            {
+                namedValues.Add(new NamedValue("CommandLine", data.CommandLine));
+            }
+
+            if (!string.IsNullOrEmpty(data.PackageFullName))
+            {
+                namedValues.Add(new NamedValue("PackageFullName", data.PackageFullName));
+            }
+
+            namedValues.Add(new NamedValue("SessionID", data.SessionID));
+
+            newRecord.NamedValues = namedValues.ToArray();
+
             AddEvent(newRecord);
         }
     }

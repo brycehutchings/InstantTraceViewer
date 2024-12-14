@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using ImGuiNET;
+using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
@@ -109,9 +110,10 @@ namespace InstantTraceViewerUI
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
 
             if (ImGui.BeginTable("TraceTable", visibleTraceTable.Schema.Columns.Count,
-                ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
-                ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable |
-                ImGuiTableFlags.Hideable))
+                ImGuiTableFlags.ScrollX | ImGuiTableFlags.ScrollY |
+                ImGuiTableFlags.RowBg |
+                ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV | 
+                ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable | ImGuiTableFlags.Hideable))
             {
                 float dpiBase = ImGui.GetFontSize();
 
