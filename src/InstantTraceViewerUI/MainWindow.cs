@@ -184,7 +184,7 @@ namespace InstantTraceViewerUI
                 ImGui.SetNextItemShortcut(ImGuiKey.E | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Etw"))
                 {
-                    if (ImGui.MenuItem("Open .WPRP (real-time) ..."))
+                    if (ImGui.MenuItem("Open .wprp (real-time) ..."))
                     {
                         // TODO: This blocks the render thread
                         string file = OpenFile("Windows Performance Recorder Profile (*.wprp)|*.wprp",
@@ -211,7 +211,7 @@ namespace InstantTraceViewerUI
                         }
                     }
 
-                    if (ImGui.MenuItem("Open .ETL ..."))
+                    if (ImGui.MenuItem("Open .etl ..."))
                     {
                         // TODO: This blocks the render thread
                         string file = OpenFile("ETL Trace File (*.etl)|*.etl",
@@ -226,7 +226,7 @@ namespace InstantTraceViewerUI
                             }
                             catch (Exception ex)
                             {
-                                MessageBox.Show($"Failed to open .ETL file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show($"Failed to open .etl file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             }
                         }
                     }
@@ -240,7 +240,7 @@ namespace InstantTraceViewerUI
                     if (wprpMru.Count > 0)
                     {
                         ImGui.Separator();
-                        if (ImGui.BeginMenu("Recently .WPRP files"))
+                        if (ImGui.BeginMenu("Recently real-time .wprp files"))
                         {
                             foreach (var file in wprpMru)
                             {
