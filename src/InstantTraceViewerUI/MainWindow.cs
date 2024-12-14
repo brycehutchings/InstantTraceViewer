@@ -32,24 +32,25 @@ namespace InstantTraceViewerUI
         {
             if (args.Length == 1 && Path.Exists(args[0]))
             {
-                if (Path.GetExtension(args[0]) == ".etl")
+                var etlExts = new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}")).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (etlExts.Contains(Path.GetExtension(args[0])))
                 {
                     var etlSession = Etw.EtwTraceSource.CreateEtlSession(args[0]);
                     _logViewerWindows.Add(new LogViewerWindow(etlSession));
                 }
-                else if (Path.GetExtension(args[0]) == ".wprp")
+                else if (string.Equals(Path.GetExtension(args[0]), ".wprp", StringComparison.OrdinalIgnoreCase))
                 {
                     var wprp = Etw.Wprp.Load(args[0]);
                     var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
                     _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
                 }
-                else if (Path.GetExtension(args[0]) == ".csv")
+                else if (string.Equals(Path.GetExtension(args[0]), ".csv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for CSV files.
                     var csvTableSource = new CsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
                     _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
                 }
-                else if (Path.GetExtension(args[0]) == ".tsv")
+                else if (string.Equals(Path.GetExtension(args[0]), ".tsv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for TSV files.
                     var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
@@ -181,7 +182,7 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.SetNextItemShortcut(ImGuiKey.E | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
-                if (ImGui.BeginMenu("ETW"))
+                if (ImGui.BeginMenu("Etw"))
                 {
                     if (ImGui.MenuItem("Open .WPRP (real-time) ..."))
                     {
@@ -269,6 +270,118 @@ namespace InstantTraceViewerUI
                     ImGui.EndMenu();
                 }
 
+
+                void LoopHeaderOption(Action<bool, string> callback)
+                {
+                    foreach (bool withHeader in new[] { true, false })
+                    {
+                        string headerNote = withHeader ? "header" : "no header";
+                        callback(withHeader, headerNote);
+                    }
+                }
+
+                ImGui.SetNextItemShortcut(ImGuiKey.C | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                if (ImGui.BeginMenu("Csv"))
+                {
+                    LoopHeaderOption((withHeader, headerNote) =>
+                    {
+                        if (ImGui.MenuItem($"Open .csv ({headerNote})..."))
+                        {
+                            // TODO: This blocks the render thread
+                            string file = OpenFile("Comma-separated values file (*.csv)|*.csv",
+                                Settings.CsvOpenLocation,
+                                (s) => Settings.CsvOpenLocation = s);
+                            if (!string.IsNullOrEmpty(file))
+                            {
+                                try
+                                {
+                                    var csvTableSource = new CsvTableSource(file, withHeader, readInBackground: true);
+                                    _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
+                                }
+                                catch (Exception ex)
+                                {
+                                    MessageBox.Show($"Failed to open .CSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                }
+                            }
+                        }
+                    });
+
+                    ImGui.Separator();
+
+                    LoopHeaderOption((withHeader, headerNote) =>
+                    {
+                        // NOTE: When Clipboard.ContainsText(TextDataFormat.CommaSeparatedValue) is true, GetText() returns __TSV__ data but GetData(CommaSeparatedValue) will give __CSV__ data.
+                        // Excel probably puts both kinds into the keyboard buffer. Right now we don't query this though because CSV data may be copied into the clipboard from other sources which
+                        // don't set this format.
+                        if (ImGui.MenuItem($"Read csv from clipboard ({headerNote})"))
+                        {
+                            try
+                            {
+                                string clipboardText = Clipboard.GetText();
+                                var csvTableSource = new CsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
+                                _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Failed to read CSV from clipboard.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
+                        }
+                    });
+
+                    ImGui.EndMenu();
+                }
+
+                ImGui.SetNextItemShortcut(ImGuiKey.T | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                if (ImGui.BeginMenu("Tsv"))
+                {
+                    LoopHeaderOption((withHeader, headerNote) =>
+                    {
+                        if (ImGui.MenuItem($"Open .TSV ({headerNote})..."))
+                        {
+                            // TODO: This blocks the render thread
+                            string file = OpenFile("Tab-separated values file (*.tsv)|*.tsv",
+                                Settings.TsvOpenLocation,
+                                (s) => Settings.TsvOpenLocation = s);
+                            if (!string.IsNullOrEmpty(file))
+                            {
+                                try
+                                {
+                                    var tsvTableSource = new TsvTableSource(file, withHeader, readInBackground: true);
+                                    _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                                }
+                                catch (Exception ex)
+                                {
+                                    MessageBox.Show($"Failed to open .TSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                }
+                            }
+                        }
+                    });
+
+                    ImGui.Separator();
+
+                    LoopHeaderOption((withHeader, headerNote) =>
+                    {
+                        // NOTE: When Clipboard.ContainsText(TextDataFormat.CommaSeparatedValue) is true, GetText() returns __TSV__ data but GetData(CommaSeparatedValue) will give __CSV__ data.
+                        // Excel probably puts both kinds into the keyboard buffer. Right now we don't query this though because CSV data may be copied into the clipboard from other sources which
+                        // don't set this format.
+                        if (ImGui.MenuItem($"Read TSV from clipboard ({headerNote})"))
+                        {
+                            try
+                            {
+                                string clipboardText = Clipboard.GetText();
+                                var tsvTableSource = new TsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
+                                _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Failed to read TSV from clipboard.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
+                        }
+                    });
+
+                    ImGui.EndMenu();
+                }
+
                 ImGui.SetNextItemShortcut(ImGuiKey.A | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Android"))
                 {
@@ -318,120 +431,9 @@ namespace InstantTraceViewerUI
 
                     ImGui.EndMenu();
                 }
+
+                ImGui.EndMainMenuBar();
             }
-
-            void LoopHeaderOption(Action<bool, string> callback)
-            {
-                foreach (bool withHeader in new[] { true, false })
-                {
-                    string headerNote = withHeader ? "header" : "no header";
-                    callback(withHeader, headerNote);
-                }
-            }
-
-            ImGui.SetNextItemShortcut(ImGuiKey.C | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
-            if (ImGui.BeginMenu("Csv"))
-            {
-                LoopHeaderOption((withHeader, headerNote) =>
-                {
-                    if (ImGui.MenuItem($"Open .csv ({headerNote})..."))
-                    {
-                        // TODO: This blocks the render thread
-                        string file = OpenFile("Comma-separated values file (*.csv)|*.csv",
-                            Settings.CsvOpenLocation,
-                            (s) => Settings.CsvOpenLocation = s);
-                        if (!string.IsNullOrEmpty(file))
-                        {
-                            try
-                            {
-                                var csvTableSource = new CsvTableSource(file, withHeader, readInBackground: true);
-                                _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
-                            }
-                            catch (Exception ex)
-                            {
-                                MessageBox.Show($"Failed to open .CSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            }
-                        }
-                    }
-                });
-
-                ImGui.Separator();
-
-                LoopHeaderOption((withHeader, headerNote) =>
-                {
-                    // NOTE: When Clipboard.ContainsText(TextDataFormat.CommaSeparatedValue) is true, GetText() returns __TSV__ data but GetData(CommaSeparatedValue) will give __CSV__ data.
-                    // Excel probably puts both kinds into the keyboard buffer. Right now we don't query this though because CSV data may be copied into the clipboard from other sources which
-                    // don't set this format.
-                    if (ImGui.MenuItem($"Read csv from clipboard ({headerNote})"))
-                    {
-                        try
-                        {
-                            string clipboardText = Clipboard.GetText();
-                            var csvTableSource = new CsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
-                            _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show($"Failed to read CSV from clipboard.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
-                    }
-                });
-
-                ImGui.EndMenu();
-            }
-
-            ImGui.SetNextItemShortcut(ImGuiKey.T | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
-            if (ImGui.BeginMenu("Tsv"))
-            {
-                LoopHeaderOption((withHeader, headerNote) =>
-                {
-                    if (ImGui.MenuItem($"Open .TSV ({headerNote})..."))
-                    {
-                        // TODO: This blocks the render thread
-                        string file = OpenFile("Tab-separated values file (*.tsv)|*.tsv",
-                            Settings.TsvOpenLocation,
-                            (s) => Settings.TsvOpenLocation = s);
-                        if (!string.IsNullOrEmpty(file))
-                        {
-                            try
-                            {
-                                var tsvTableSource = new TsvTableSource(file, withHeader, readInBackground: true);
-                                _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
-                            }
-                            catch (Exception ex)
-                            {
-                                MessageBox.Show($"Failed to open .TSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            }
-                        }
-                    }
-                });
-
-                ImGui.Separator();
-
-                LoopHeaderOption((withHeader, headerNote) =>
-                {
-                    // NOTE: When Clipboard.ContainsText(TextDataFormat.CommaSeparatedValue) is true, GetText() returns __TSV__ data but GetData(CommaSeparatedValue) will give __CSV__ data.
-                    // Excel probably puts both kinds into the keyboard buffer. Right now we don't query this though because CSV data may be copied into the clipboard from other sources which
-                    // don't set this format.
-                    if (ImGui.MenuItem($"Read TSV from clipboard ({headerNote})"))
-                    {
-                        try
-                        {
-                            string clipboardText = Clipboard.GetText();
-                            var tsvTableSource = new TsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
-                            _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show($"Failed to read TSV from clipboard.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
-                    }
-                });
-
-                ImGui.EndMenu();
-            }
-
-            ImGui.EndMainMenuBar();
         }
 
         private string OpenFile(string filter, string initialDirectory, Action<string> saveInitialDirectory)

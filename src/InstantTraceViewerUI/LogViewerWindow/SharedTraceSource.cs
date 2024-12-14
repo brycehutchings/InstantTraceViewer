@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
 using InstantTraceViewer;
+using System.Collections.Generic;
 
 namespace InstantTraceViewerUI
 {

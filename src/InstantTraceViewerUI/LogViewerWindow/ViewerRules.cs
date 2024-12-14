@@ -1,7 +1,7 @@
-﻿using System.Collections.Generic;
+using InstantTraceViewer;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
