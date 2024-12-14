@@ -87,7 +87,6 @@ namespace InstantTraceViewerUI.Logcat
 
         public ITraceTableSnapshot CreateSnapshot()
         {
-            // ToImmutable and Add on the ImmutableList appear to not be threadsafe. Once we make an immutable list, it should be safe to continue modifying the builder.
             _traceRecordsLock.EnterReadLock();
             try
             {
