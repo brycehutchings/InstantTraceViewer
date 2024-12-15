@@ -18,6 +18,9 @@ namespace InstantTraceViewerUI
         private TraceTableRowSelectorSyntax? _parser;
         private TraceTableSchema? _parserTableSchema;
 
+        private string _addRuleInputText = "";
+        private TraceTableRowSelectorParseResults _addRuleLastParseResult;
+
         private bool _open = true;
 
         public FiltersEditorWindow(string name)
@@ -26,9 +29,6 @@ namespace InstantTraceViewerUI
             _windowId = _nextWindowId++;
         }
 
-
-        private string _editFilter = "";
-        private TraceTableRowSelectorParseResults _lastParseResult;
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules rules, TraceTableSchema tableSchema)
         {
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
@@ -43,23 +43,35 @@ namespace InstantTraceViewerUI
                 }
 
                 Vector2 inputScreenPos = ImGui.GetCursorScreenPos();
-                if (ImGui.InputText("Filter", ref _editFilter, 1024) || _lastParseResult == null)
+                if (ImGui.InputText("##AddRule", ref _addRuleInputText, 1024) || _addRuleLastParseResult == null)
                 {
-                    Trace.WriteLine($"Filter changed: {_editFilter}");
-                    _lastParseResult = _parser.Parse(_editFilter);
+                    _addRuleLastParseResult = _parser.Parse(_addRuleInputText);
                 }
 
-                var expectedTokens = _lastParseResult.ExpectedTokens.ToArray();
-                var matchingExpectedTokens = expectedTokens.Where(t => t.StartsWith(_lastParseResult.ActualToken.Text)).ToArray();
+                var expectedTokens = _addRuleLastParseResult.ExpectedTokens.ToArray();
+                var matchingExpectedTokens = expectedTokens.Where(t => t.StartsWith(_addRuleLastParseResult.ActualToken.Text)).ToArray();
                 var autocompleteOptions = matchingExpectedTokens.Any() ? matchingExpectedTokens : expectedTokens;
+
+                ImGui.BeginDisabled(_addRuleLastParseResult.Expression == null);
+                ImGui.SameLine();
+                if (ImGui.Button("Add Include"))
+                {
+                    rules.AddIncludeRule(_addRuleInputText);
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Add Exclude"))
+                {
+                    rules.AddExcludeRule(_addRuleInputText);
+                }
+                ImGui.EndDisabled();
 
                 NativeInterop.CurrentInputTextState inputState = NativeInterop.GetCurrentInputTextState();
                 // If parsing was not successful, show expected tokens and underline where the error occurred
-                if (autocompleteOptions.Any() && _lastParseResult.Expression == null)
+                if (autocompleteOptions.Any() && _addRuleLastParseResult.Expression == null)
                 {
                     float InputTextPadding = 5; // Might need to be scaled by DPI?
 
-                    Vector2 skipSize = ImGui.CalcTextSize(_editFilter.Substring(0, _lastParseResult.ExpectedTokenStartIndex));
+                    Vector2 skipSize = ImGui.CalcTextSize(_addRuleInputText.Substring(0, _addRuleLastParseResult.ExpectedTokenStartIndex));
                     float expectedXOffset = skipSize.X - inputState.ScrollX + InputTextPadding;
 
                     // Underline the bad token
@@ -69,7 +81,7 @@ namespace InstantTraceViewerUI
                         ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
                         // Measure pixel length from start of text to start of parsing error.
-                        Vector2 underlineSize = ImGui.CalcTextSize(_lastParseResult.ActualToken.Text);
+                        Vector2 underlineSize = ImGui.CalcTextSize(_addRuleLastParseResult.ActualToken.Text);
                         drawList.AddLine(
                             inputScreenPos + new Vector2(expectedXOffset, ImGui.GetTextLineHeightWithSpacing()),
                             inputScreenPos + new Vector2(expectedXOffset + underlineSize.X, ImGui.GetTextLineHeightWithSpacing()),
@@ -79,7 +91,7 @@ namespace InstantTraceViewerUI
                     // Show expected tokens pointing at right spot.
                     {
                         ImGui.NewLine();
-                        Vector2 size = ImGui.CalcTextSize(_editFilter.Substring(0, _lastParseResult.ExpectedTokenStartIndex));
+                        Vector2 size = ImGui.CalcTextSize(_addRuleInputText.Substring(0, _addRuleLastParseResult.ExpectedTokenStartIndex));
                         if (expectedXOffset < ImGui.CalcItemWidth())
                         {
                             var savedPos = ImGui.GetCursorPos();
@@ -121,7 +133,12 @@ namespace InstantTraceViewerUI
                         }
                         ImGui.TableNextColumn();
 
-                        ImGuiWidgets.UndecoratedButton("\uf044", "Edit");
+                        /* Not implemented yet
+                        if (ImGuiWidgets.UndecoratedButton("\uf044", "Edit"))
+                        {
+                            // TODO
+                        }
+                        */
                         ImGui.SameLine();
                         if (i > 0 && ImGuiWidgets.UndecoratedButton("\uf062", "Move up"))
                         {
