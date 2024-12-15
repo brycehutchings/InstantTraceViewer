@@ -1,38 +1,119 @@
-﻿using InstantTraceViewer;
-using System;
+using InstantTraceViewer;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace InstantTraceViewerUI
 {
-    internal enum TraceRowRuleAction
+    public enum TraceRowRuleAction
     {
         Include,
         Exclude
     }
 
-    internal struct TraceRowRule
+    public interface IRule
     {
-        // TODO: Needed later for editing rules.
-        // public string Rule { get; }
+        public string Query { get; }
+        public TraceRowRuleAction Action { get; }
 
-        public Func<ITraceTableSnapshot, int, bool> IsMatch { get; set; }
+        public bool Enabled { get; }
+
+        // The result of parsing the query.
+        public TraceTableRowSelectorParseResults ParseResult { get; }
+
+        // Predicate is compiled from the query if successful.
+        public TraceTableRowSelector? Predicate { get; }
     }
-
-    internal record TraceRowVisibleRule(TraceRowRule Rule, TraceRowRuleAction Action);
 
     internal class ViewerRules
     {
-        public List<TraceRowVisibleRule> VisibleRules { get; set; } = new List<TraceRowVisibleRule>();
+        class Rule : IRule
+        {
+            public required string Query { get; init; }
+            public required TraceRowRuleAction Action { get; init; }
 
-        public int GenerationId { get; set; } = 1;
+            public bool Enabled { get; set; } = true;
+
+            // The result of parsing the query.
+            public TraceTableRowSelectorParseResults ParseResult { get; set; }
+
+            // Predicate is compiled from the query if successful.
+            public TraceTableRowSelector? Predicate { get; set; }
+        }
+
+        private List<Rule> _visibleRules = new();
+
+        private int _visibleRulePredicatesRuleGenerationId = -1;
+        private int _visibleRulePredicatesTableGenerationId = -1;
+
+        // Bumping this id will trigger a complete rebuild of the filtered trace table.
+        public int GenerationId { get; private set; } = 1;
+
+        public void ClearRules()
+        {
+            _visibleRules.Clear();
+            GenerationId++;
+        }
+
+        public void AddIncludeRule(string query)
+        {
+            // Include rules go last to ensure anything already excluded stays excluded.
+            _visibleRules.Add(new Rule { Query = query, Action = TraceRowRuleAction.Include });
+            GenerationId++;
+        }
+
+        public void AddExcludeRule(string query)
+        {
+            // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
+            _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
+            GenerationId++;
+        }
+
+        public void RemoveRule(int index)
+        {
+            _visibleRules.RemoveAt(index);
+            GenerationId++;
+        }
+
+        public void MoveRule(int index, int newIndex)
+        {
+            var rule = _visibleRules[index];
+            _visibleRules.RemoveAt(index);
+            _visibleRules.Insert(newIndex, rule);
+            GenerationId++;
+        }
+
+        public void SetRuleEnabled(int index, bool enabled)
+        {
+            _visibleRules[index].Enabled = enabled;
+            GenerationId++;
+        }
+
+        public IReadOnlyList<IRule> Rules => _visibleRules;
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {
-            TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
-            foreach (var rule in VisibleRules)
+            if (_visibleRules.Count == 0)
             {
-                if (rule.Rule.IsMatch(traceTable, unfilteredRowIndex))
+                return TraceRowRuleAction.Include;
+            }
+
+            EnsureVisibleRulePredicates(traceTable);
+
+            TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
+            foreach (var rule in _visibleRules)
+            {
+                if (rule.Predicate == null)
+                {
+                    continue; // This rule could not be parsed.
+                }
+
+                if (!rule.Enabled)
+                {
+                    continue;
+                }
+
+                if (rule.Predicate(traceTable, unfilteredRowIndex))
                 {
                     return rule.Action;
                 }
@@ -51,8 +132,27 @@ namespace InstantTraceViewerUI
         {
             return new ViewerRules
             {
-                VisibleRules = VisibleRules.ToList()
+                _visibleRules = _visibleRules.ToList(),
+                GenerationId = GenerationId
             };
+        }
+
+        private void EnsureVisibleRulePredicates(ITraceTableSnapshot traceTable)
+        {
+            if (_visibleRulePredicatesRuleGenerationId != GenerationId ||
+                _visibleRulePredicatesTableGenerationId != traceTable.GenerationId)
+            {
+                Trace.WriteLine("Recompiling query predicates...");
+                var parser = new TraceTableRowSelectorSyntax(traceTable.Schema);
+                foreach (var rule in _visibleRules)
+                {
+                    rule.ParseResult = parser.Parse(rule.Query);
+                    rule.Predicate = rule.ParseResult.Expression?.Compile();
+                }
+            }
+
+            _visibleRulePredicatesRuleGenerationId = GenerationId;
+            _visibleRulePredicatesTableGenerationId = traceTable.GenerationId;
         }
     }
 }

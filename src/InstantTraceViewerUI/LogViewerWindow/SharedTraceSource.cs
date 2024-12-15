@@ -1,4 +1,4 @@
-﻿using InstantTraceViewer;
+using InstantTraceViewer;
 using System.Collections.Generic;
 
 namespace InstantTraceViewerUI

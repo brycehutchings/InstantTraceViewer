@@ -184,10 +184,10 @@ namespace InstantTraceViewerUI
                 ImGui.SetNextItemShortcut(ImGuiKey.E | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Etw"))
                 {
-                    if (ImGui.MenuItem("Open .WPRP (real-time) ..."))
+                    if (ImGui.MenuItem("Open WPRP file (real-time)..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = OpenFile("Windows Performance Recorder Profile (*.wprp)|*.wprp",
+                        string file = OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp",
                             Settings.WprpOpenLocation,
                             (s) => Settings.WprpOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
@@ -211,10 +211,10 @@ namespace InstantTraceViewerUI
                         }
                     }
 
-                    if (ImGui.MenuItem("Open .ETL ..."))
+                    if (ImGui.MenuItem("Open ETL file..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = OpenFile("ETL Trace File (*.etl)|*.etl",
+                        string file = OpenFile("ETL Trace Files (*.etl)|*.etl",
                             Settings.EtlOpenLocation,
                             (s) => Settings.EtlOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
@@ -226,12 +226,12 @@ namespace InstantTraceViewerUI
                             }
                             catch (Exception ex)
                             {
-                                MessageBox.Show($"Failed to open .ETL file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                MessageBox.Show($"Failed to open .etl file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                             }
                         }
                     }
 
-                    if (ImGui.MenuItem("Open active session ..."))
+                    if (ImGui.MenuItem("Open active session..."))
                     {
                         _showOpenActiveSession = true;
                     }
@@ -240,7 +240,7 @@ namespace InstantTraceViewerUI
                     if (wprpMru.Count > 0)
                     {
                         ImGui.Separator();
-                        if (ImGui.BeginMenu("Recently .WPRP files"))
+                        if (ImGui.BeginMenu("Recent WPRP files (real-time)"))
                         {
                             foreach (var file in wprpMru)
                             {
@@ -285,10 +285,10 @@ namespace InstantTraceViewerUI
                 {
                     LoopHeaderOption((withHeader, headerNote) =>
                     {
-                        if (ImGui.MenuItem($"Open .csv ({headerNote})..."))
+                        if (ImGui.MenuItem($"Open CSV file ({headerNote})..."))
                         {
                             // TODO: This blocks the render thread
-                            string file = OpenFile("Comma-separated values file (*.csv)|*.csv",
+                            string file = OpenFile("Comma-Separated Values Files (*.csv)|*.csv",
                                 Settings.CsvOpenLocation,
                                 (s) => Settings.CsvOpenLocation = s);
                             if (!string.IsNullOrEmpty(file))
@@ -313,7 +313,7 @@ namespace InstantTraceViewerUI
                         // NOTE: When Clipboard.ContainsText(TextDataFormat.CommaSeparatedValue) is true, GetText() returns __TSV__ data but GetData(CommaSeparatedValue) will give __CSV__ data.
                         // Excel probably puts both kinds into the keyboard buffer. Right now we don't query this though because CSV data may be copied into the clipboard from other sources which
                         // don't set this format.
-                        if (ImGui.MenuItem($"Read csv from clipboard ({headerNote})"))
+                        if (ImGui.MenuItem($"Read CSV from clipboard ({headerNote})"))
                         {
                             try
                             {
@@ -336,7 +336,7 @@ namespace InstantTraceViewerUI
                 {
                     LoopHeaderOption((withHeader, headerNote) =>
                     {
-                        if (ImGui.MenuItem($"Open .TSV ({headerNote})..."))
+                        if (ImGui.MenuItem($"Open TSV file ({headerNote})..."))
                         {
                             // TODO: This blocks the render thread
                             string file = OpenFile("Tab-separated values file (*.tsv)|*.tsv",
