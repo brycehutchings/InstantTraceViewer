@@ -94,11 +94,11 @@ namespace InstantTraceViewerTests
         [TestMethod]
         public void TestQuotesEscaped()
         {
-            ITraceTableSnapshot emptyNoHeader = ReadTestString("a,\"b,\"\"c\"\"\",d", false).CreateSnapshot();
+            ITraceTableSnapshot emptyNoHeader = ReadTestString("a,\"b,\"\",c\"\"\",d", false).CreateSnapshot();
             Assert.AreEqual(3, emptyNoHeader.Schema.Columns.Count);
             Assert.AreEqual(1, emptyNoHeader.RowCount);
             Assert.AreEqual("a", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[0]));
-            Assert.AreEqual("b,\"c\"", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[1]));
+            Assert.AreEqual("b,\",c\"", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[1]));
             Assert.AreEqual("d", emptyNoHeader.GetColumnString(0, emptyNoHeader.Schema.Columns[2]));
         }
 

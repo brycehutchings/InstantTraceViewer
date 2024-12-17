@@ -41,14 +41,13 @@ namespace InstantTraceViewer
                         ch = textReader.Read();
                         if (ch == '\"' || ch == -1)
                         {
-                            if (textReader.Peek() == '\"')
+                            if (textReader.Peek() != '\"')
                             {
-                                // This is an escaped quote.
-                                valueBuilder.Append('\"');
-                                continue;
+                                break;
                             }
 
-                            break;
+                            // This is an escaped quote.
+                            ch = textReader.Read();
                         }
 
                         valueBuilder.Append((char)ch);
