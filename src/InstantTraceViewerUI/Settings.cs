@@ -1,4 +1,5 @@
-﻿using Microsoft.Win32;
+﻿using InstantTraceViewerUI.Etw;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -154,16 +155,11 @@ namespace InstantTraceViewerUI
             openKey.SetValue("Icon", $"\"{exePath}\"");
             commandKey.SetValue("", $"\"{exePath}\" \"%1\"");
 
-            using var openWithKey = Registry.CurrentUser.CreateSubKey(@"Software\Classes\.etl\OpenWithProgids");
-            openWithKey.SetValue("", "InstantTraceViewerUI.etl");
-            openWithKey.SetValue("InstantTraceViewerUI.etl", "");
-
-            // Autologgers save the etl extensions with a number suffix. Associate a handful of them
-            for (int i = 1; i <= 15; i++)
+            foreach (string ext in EtwTraceSource.EtlFileExtensions)
             {
-                using var extKey = Registry.CurrentUser.CreateSubKey($@"Software\Classes\.{i:D3}\OpenWithProgids");
-                extKey.SetValue("", "InstantTraceViewerUI.etl");
-                extKey.SetValue("InstantTraceViewerUI.etl", "");
+                using var openWithKey = Registry.CurrentUser.CreateSubKey(@"Software\Classes\.etl\OpenWithProgids");
+                openWithKey.SetValue("", "InstantTraceViewerUI.etl");
+                openWithKey.SetValue("InstantTraceViewerUI.etl", "");
             }
         }
     }

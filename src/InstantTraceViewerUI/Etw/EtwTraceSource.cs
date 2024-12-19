@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using InstantTraceViewer;
 
@@ -87,6 +88,9 @@ namespace InstantTraceViewerUI.Etw
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
+
+        // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
+        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
         private void AddEvent(EtwRecord record)
         {

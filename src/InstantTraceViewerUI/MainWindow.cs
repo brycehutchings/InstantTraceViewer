@@ -8,6 +8,7 @@ using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.Models;
 using ImGuiNET;
 using InstantTraceViewer;
+using InstantTraceViewerUI.Etw;
 
 namespace InstantTraceViewerUI
 {
@@ -32,8 +33,7 @@ namespace InstantTraceViewerUI
         {
             if (args.Length == 1 && Path.Exists(args[0]))
             {
-                var etlExts = new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}")).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                if (etlExts.Contains(Path.GetExtension(args[0])))
+                if (EtwTraceSource.EtlFileExtensions.Contains(Path.GetExtension(args[0]), StringComparer.OrdinalIgnoreCase))
                 {
                     var etlSession = Etw.EtwTraceSource.CreateEtlSession(args[0]);
                     _logViewerWindows.Add(new LogViewerWindow(etlSession));
@@ -213,8 +213,10 @@ namespace InstantTraceViewerUI
 
                     if (ImGui.MenuItem("Open ETL file..."))
                     {
+                        string joinedExts = string.Join(';', EtwTraceSource.EtlFileExtensions.Select(ext => $"*{ext}"));
+
                         // TODO: This blocks the render thread
-                        string file = OpenFile("ETL Trace Files (*.etl)|*.etl",
+                        string file = OpenFile($"ETL Trace Files ({joinedExts})|{joinedExts}",
                             Settings.EtlOpenLocation,
                             (s) => Settings.EtlOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
