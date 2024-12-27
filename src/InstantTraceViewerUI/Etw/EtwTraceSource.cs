@@ -25,12 +25,12 @@ namespace InstantTraceViewerUI.Etw
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
-        public static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", DefaultColumnSize = 6.25f };
+        public static readonly TraceSourceSchemaColumn ColumnProvider = new TraceSourceSchemaColumn { Name = "Provider", DefaultColumnSize = 11.00f };
         public static readonly TraceSourceSchemaColumn ColumnOpCode = new TraceSourceSchemaColumn { Name = "OpCode", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnKeywords = new TraceSourceSchemaColumn { Name = "Keywords", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnName = new TraceSourceSchemaColumn { Name = "Name", DefaultColumnSize = 8.75f };
         public static readonly TraceSourceSchemaColumn ColumnLevel = new TraceSourceSchemaColumn { Name = "Level", DefaultColumnSize = 3.75f };
-        public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 5.75f };
+        public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 9.00f };
         public static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
 
         private static readonly TraceTableSchema _schema = new TraceTableSchema

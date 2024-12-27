@@ -390,30 +390,14 @@ namespace InstantTraceViewerUI
                 }
             }
 
-            List<string> newRule;
-            if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
-            {
-                newRule = [
-                    TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
-                    TraceTableRowSelectorSyntax.EqualsOperatorName,
-                    visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString()];
-            }
-            else
-            {
-                newRule = [
-                    TraceTableRowSelectorSyntax.CreateColumnVariableName(column),
-                    TraceTableRowSelectorSyntax.EqualsOperatorName,
-                    TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnString(i, column, allowMultiline: false))];
-            }
-            AddIncludeRule(newRule);
-            AddExcludeRule(newRule);
-
             if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
             {
                 var levelStr = visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString();
 
-                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastLevelOperatorName, levelStr]);
-                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostLevelOperatorName, levelStr]);
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastOperatorName, levelStr]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostOperatorName, levelStr]);
 
                 if (visibleTraceTable.Schema.ProviderColumn != null)
                 {
@@ -425,11 +409,25 @@ namespace InstantTraceViewerUI
                         TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(provStr)];
 
 
-                    newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastLevelOperatorName, levelStr];
+                    string[] newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastOperatorName, levelStr];
                     AddIncludeRule(newRule.Concat(andProvEquals).ToList());
-                    newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostLevelOperatorName, levelStr];
+                    newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostOperatorName, levelStr];
                     AddExcludeRule(newRule.Concat(andProvEquals).ToList());
                 }
+            }
+            else if (column == visibleTraceTable.Schema.TimestampColumn)
+            {
+                var timeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnDateTime(i, column).ToString("o"));
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastOperatorName, timeStr]);
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostOperatorName, timeStr]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtLeastOperatorName, timeStr]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.AtMostOperatorName, timeStr]);
+            }
+            else
+            {
+                string text = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnString(i, column, allowMultiline: false));
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, text]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, text]);
             }
         }
 

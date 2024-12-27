@@ -143,6 +143,8 @@ namespace InstantTraceViewerUI
                 // Symbol font is reduced by 2 pixels, otherwise it has full height which looks awkward.
                 AddFontFromBytes(CalcScaledFontSize(Settings.FontSize - 2), symbolFont, true /* merge */, [
                     // Use https://fontawesome.com/v6/search?o=r&m=free to search for icons.
+                    0xF00C, // "check"
+                    0xF00D, // "xmark"
                     0xF044, // "pen-to-square"
                     0xF080, // "chart-bar"
                     0xF0B0, // "filter"

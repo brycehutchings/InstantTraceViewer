@@ -77,8 +77,8 @@ namespace InstantTraceViewer
         public const string StringMatchesCSOperatorName = "matches_cs";
         public const string StringMatchesRegexModifierName = "regex";
 
-        public const string AtLeastLevelOperatorName = "atleast";
-        public const string AtMostLevelOperatorName = "atmost";
+        public const string AtLeastOperatorName = "atleast";
+        public const string AtMostOperatorName = "atmost";
 
         private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
         private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
@@ -224,6 +224,11 @@ namespace InstantTraceViewer
             {
                 return TryParseLevelPredicate(state, matchedColumn);
             }
+            else if (matchedColumn == _schema.TimestampColumn)
+            {
+                return TryParseTimestampPredicate(state, matchedColumn);
+            }
+
 
             return TryParseStringPredicate(state, matchedColumn);
         }
@@ -310,9 +315,69 @@ namespace InstantTraceViewer
             return null; // Unexpected token or end of input.
         }
 
+        private Expression TryParseTimestampPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
+        {
+            if (state.CurrentTokenMatches(AtLeastOperatorName))
+            {
+                state.MoveNextToken();
+                string timestampStr = TryReadStringLiteral(state);
+                if (timestampStr == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
+                if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
+                {
+                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
+                    return null; // Invalid timestamp format.
+                }
+
+                state.MoveNextToken();
+                return Expression.GreaterThanOrEqual(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
+            }
+            else if (state.CurrentTokenMatches(AtMostOperatorName))
+            {
+                state.MoveNextToken();
+                string timestampStr = TryReadStringLiteral(state);
+                if (timestampStr == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
+                if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
+                {
+                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
+                    return null; // Invalid timestamp format.
+                }
+
+                state.MoveNextToken();
+                return Expression.LessThanOrEqual(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
+            }
+            else if (state.CurrentTokenMatches(EqualsOperatorName))
+            {
+                state.MoveNextToken();
+                string timestampStr = TryReadStringLiteral(state);
+                if (timestampStr == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
+                if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
+                {
+                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
+                    return null; // Invalid timestamp format.
+                }
+
+                state.MoveNextToken();
+                return Expression.Equal(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
+            }
+
+            return null; // Unexpected token or end of input.
+        }
+
         private Expression TryParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            if (state.CurrentTokenMatches(AtLeastLevelOperatorName))
+            if (state.CurrentTokenMatches(AtLeastOperatorName))
             {
                 state.MoveNextToken();
                 UnifiedLevel? level = TryReadLevel(state);
@@ -324,7 +389,7 @@ namespace InstantTraceViewer
                 state.MoveNextToken();
                 return Expression.LessThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
             }
-            else if (state.CurrentTokenMatches(AtMostLevelOperatorName))
+            else if (state.CurrentTokenMatches(AtMostOperatorName))
             {
                 state.MoveNextToken();
                 UnifiedLevel? level = TryReadLevel(state);
@@ -410,6 +475,13 @@ namespace InstantTraceViewer
             => Expression.Call(
                 Param1TraceTableSnapshot,
                 typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnUnifiedLevel))!,
+                Param2RowIndex,
+                Expression.Constant(column));
+
+        private static Expression GetTableTimestamp(TraceSourceSchemaColumn column)
+            => Expression.Call(
+                Param1TraceTableSnapshot,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnDateTime))!,
                 Param2RowIndex,
                 Expression.Constant(column));
 
