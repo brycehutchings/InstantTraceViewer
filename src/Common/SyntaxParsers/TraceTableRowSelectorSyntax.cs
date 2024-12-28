@@ -70,6 +70,8 @@ namespace InstantTraceViewer
         }
 
         public const string EqualsOperatorName = "equals";
+        public const string StringInOperatorName = "in";
+        public const string StringInCSOperatorName = "in_cs";
         public const string StringEqualsCSOperatorName = "equals_cs";
         public const string StringContainsOperatorName = "contains";
         public const string StringContainsCSOperatorName = "contains_cs";
@@ -255,6 +257,31 @@ namespace InstantTraceViewer
 
                 return ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType.Value);
             }
+            else if (state.CurrentTokenMatches(StringInOperatorName) || state.CurrentTokenMatches(StringInCSOperatorName))
+            {
+                IEqualityComparer<string> equalityComparer = TryGetStringEqualityComparer(state.CurrentToken);
+                if (equalityComparer == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
+                state.MoveNextToken();
+
+                IReadOnlyList<string> values = TryReadStringLiteralList(state);
+                if (values == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+
+                state.MoveNextToken();
+
+                var valueSet = values.ToHashSet(equalityComparer);
+
+                return Expression.Call(
+                    Expression.Constant(valueSet),
+                    typeof(HashSet<string>).GetMethod(nameof(HashSet<string>.Contains))!,
+                    GetTableString(matchedColumn));
+            }
             else if (state.CurrentTokenMatches(StringContainsOperatorName) || state.CurrentTokenMatches(StringContainsCSOperatorName))
             {
                 StringComparison? comparisonType = TryGetStringComparisonType(state.CurrentToken);
@@ -421,6 +448,10 @@ namespace InstantTraceViewer
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
                  ? StringComparison.InvariantCulture : StringComparison.InvariantCultureIgnoreCase;
 
+        private static IEqualityComparer<string> TryGetStringEqualityComparer(string operatorName)
+            => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
+                 ? StringComparer.InvariantCulture : StringComparer.InvariantCultureIgnoreCase;
+
         private static RegexOptions TryGetRegexOptions(string operatorName)
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
                  ? RegexOptions.None : RegexOptions.IgnoreCase;
@@ -445,6 +476,38 @@ namespace InstantTraceViewer
             }
 
             return UnescapeStringLiteral(state.CurrentToken);
+        }
+
+        private static IReadOnlyList<string> TryReadStringLiteralList(ParserState state)
+        {
+            if (state.Eof || state.CurrentToken.Length == 0 || state.CurrentToken[0] != '[')
+            {
+                state.CurrentTokenMatches("["); // Add [ as expected token.
+                return null; // End of input or malformed string literal.
+            }
+
+            List<string> values = new();
+            while (true)
+            {
+                state.MoveNextToken(); // Move past '[' or ','
+                string value = TryReadStringLiteral(state);
+                if (value == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+                values.Add(value);
+
+                state.MoveNextToken();
+                if (state.CurrentTokenMatches("]"))
+                {
+                    break;
+                }
+                else if (!state.CurrentTokenMatches(","))
+                {
+                    return null; // Unexpected token or end of input.
+                }
+            }
+            return values;
         }
 
         private static UnifiedLevel? TryReadLevel(ParserState state)

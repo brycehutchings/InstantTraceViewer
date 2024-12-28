@@ -10,7 +10,7 @@ namespace InstantTraceViewer
 
         public static IEnumerable<Token> Tokenize(string text)
         {
-            bool IsDelimiter(char c) => c == '"' || c == '(' || c == ')' || char.IsWhiteSpace(c);
+            bool IsDelimiter(char c) => c == '"' || c == '(' || c == ')' || c == '[' || c == ']' || c == ',' || char.IsWhiteSpace(c);
 
             int i = 0;
             while (i < text.Length)
@@ -37,7 +37,8 @@ namespace InstantTraceViewer
                     string token = i < text.Length ? text[startIndex..i] : text[startIndex..];
                     yield return new Token(token, startIndex);
                 }
-                else if (text[i] == '(' || text[i] == ')')
+                // These punctuation characters are treated as individual tokens regardless of what's adjacent. Quote is handled above and is special.
+                else if (IsDelimiter(text[i]))
                 {
                     yield return new Token(text[i++].ToString(), startIndex);
                 }
