@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace InstantTraceViewer
+﻿namespace InstantTraceViewer
 {
     public record struct Token(string Text, int StartIndex);
 
@@ -10,7 +8,14 @@ namespace InstantTraceViewer
 
         public static IEnumerable<Token> Tokenize(string text)
         {
-            bool IsDelimiter(char c) => c == '"' || c == '(' || c == ')' || c == '[' || c == ']' || c == ',' || char.IsWhiteSpace(c);
+            // These characters are treated as individual tokens regardless of what's adjacent.
+            bool IsSingleCharacterToken(char c) => c == '"' || c == '(' || c == ')' || c == '[' || c == ']' || c == ',';
+
+            // These punctuation characters may be grouped together to form a single token.
+            bool IsPunctuation(char c) => c == '=' || c == '"' || c == ',' || c == '<' || c == '>' || c == '!';
+
+            // These characters are treated as delimiters when reading non-punctuation tokens.
+            bool IsWordDelimiter(char c) => IsSingleCharacterToken(c) || IsPunctuation(c) || char.IsWhiteSpace(c);
 
             int i = 0;
             while (i < text.Length)
@@ -37,15 +42,21 @@ namespace InstantTraceViewer
                     string token = i < text.Length ? text[startIndex..i] : text[startIndex..];
                     yield return new Token(token, startIndex);
                 }
-                // These punctuation characters are treated as individual tokens regardless of what's adjacent. Quote is handled above and is special.
-                else if (IsDelimiter(text[i]))
+                else if (IsSingleCharacterToken(text[i]))
                 {
+                    // There are some special multi-character tokens.
                     yield return new Token(text[i++].ToString(), startIndex);
+                }
+                else if (IsPunctuation(text[i]))
+                {
+                    // Read a token as long as it is a punctuation character (e.g. "<=")
+                    for (; i < text.Length && IsPunctuation(text[i]); i++) ;
+                    yield return new Token(text[startIndex..i], startIndex);
                 }
                 else
                 {
                     // Read a token until a delimiter.
-                    for (; i < text.Length && !IsDelimiter(text[i]); i++) ;
+                    for (; i < text.Length && !IsWordDelimiter(text[i]); i++) ;
                     yield return new Token(text[startIndex..i], startIndex);
                 }
             }

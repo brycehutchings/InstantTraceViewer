@@ -69,18 +69,21 @@ namespace InstantTraceViewer
             }
         }
 
-        public const string EqualsOperatorName = "equals";
+        public const string StringEqualsCSOperatorName = "equals_cs";
         public const string StringInOperatorName = "in";
         public const string StringInCSOperatorName = "in_cs";
-        public const string StringEqualsCSOperatorName = "equals_cs";
         public const string StringContainsOperatorName = "contains";
         public const string StringContainsCSOperatorName = "contains_cs";
         public const string StringMatchesOperatorName = "matches";
         public const string StringMatchesCSOperatorName = "matches_cs";
         public const string StringMatchesRegexModifierName = "regex";
 
-        public const string AtLeastOperatorName = "atleast";
-        public const string AtMostOperatorName = "atmost";
+        public const string LessThanOperatorName = "<";
+        public const string LessThanOrEqualOperatorName = "<=";
+        public const string EqualsOperatorName = "==";
+        public const string NotEqualsOperatorName = "!=";
+        public const string GreaterThanOperatorName = ">";
+        public const string GreaterThanOrEqualOperatorName = ">=";
 
         private static readonly ParameterExpression Param1TraceTableSnapshot = Expression.Parameter(typeof(ITraceTableSnapshot), "TraceTableSnapshot");
         private static readonly ParameterExpression Param2RowIndex = Expression.Parameter(typeof(int), "RowIndex");
@@ -145,20 +148,24 @@ namespace InstantTraceViewer
                     state.MoveNextToken();
                     // "AND" has higher precedence than "OR" so we only parse a single term rather than a full leftExpression.
                     Expression rightExpression = TryParseTerm(state);
-                    if (rightExpression != null)
+                    if (rightExpression == null)
                     {
-                        leftExpression = Expression.AndAlso(leftExpression, rightExpression);
+                        return null; // Unexpected token or end of input.
                     }
+
+                    leftExpression = Expression.AndAlso(leftExpression, rightExpression);
                 }
                 else if (state.CurrentTokenMatches("or"))
                 {
                     state.MoveNextToken();
                     // "OR" has lower precedence than "AND" and so we parse everything to the right as if it was a grouped leftExpression.
                     Expression rightExpression = TryParseExpression(state, closeParenthesisExpected);
-                    if (rightExpression != null)
+                    if (rightExpression == null)
                     {
-                        leftExpression = Expression.OrElse(leftExpression, rightExpression);
+                        return null; // Unexpected token or end of input.
                     }
+
+                    leftExpression = Expression.OrElse(leftExpression, rightExpression);
                 }
                 else
                 {
@@ -232,13 +239,17 @@ namespace InstantTraceViewer
             }
 
 
-            return TryParseStringPredicate(state, matchedColumn);
+             return TryParseStringPredicate(state, matchedColumn);
         }
 
         private Expression TryParseStringPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            if (state.CurrentTokenMatches(EqualsOperatorName) || state.CurrentTokenMatches(StringEqualsCSOperatorName))
+            // "equals_cs" has no symbol-based operator equivalent to avoid adding less commonly seen operators like =~, etc.
+            if (state.CurrentTokenMatches(NotEqualsOperatorName) || state.CurrentTokenMatches(EqualsOperatorName) ||
+                state.CurrentTokenMatches(StringEqualsCSOperatorName))
             {
+                bool isNegated = state.CurrentTokenMatches(NotEqualsOperatorName);
+
                 StringComparison? comparisonType = TryGetStringComparisonType(state.CurrentToken);
                 if (comparisonType == null)
                 {
@@ -255,7 +266,8 @@ namespace InstantTraceViewer
 
                 state.MoveNextToken();
 
-                return ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType.Value);
+                Expression result = ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType.Value);
+                return isNegated ? Expression.Not(result) : result;
             }
             else if (state.CurrentTokenMatches(StringInOperatorName) || state.CurrentTokenMatches(StringInCSOperatorName))
             {
@@ -344,7 +356,8 @@ namespace InstantTraceViewer
 
         private Expression TryParseTimestampPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            if (state.CurrentTokenMatches(AtLeastOperatorName))
+            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state);
+            if (binaryExpression != null)
             {
                 state.MoveNextToken();
                 string timestampStr = TryReadStringLiteral(state);
@@ -360,43 +373,7 @@ namespace InstantTraceViewer
                 }
 
                 state.MoveNextToken();
-                return Expression.GreaterThanOrEqual(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
-            }
-            else if (state.CurrentTokenMatches(AtMostOperatorName))
-            {
-                state.MoveNextToken();
-                string timestampStr = TryReadStringLiteral(state);
-                if (timestampStr == null)
-                {
-                    return null; // Unexpected token or end of input.
-                }
-
-                if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
-                {
-                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
-                    return null; // Invalid timestamp format.
-                }
-
-                state.MoveNextToken();
-                return Expression.LessThanOrEqual(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
-            }
-            else if (state.CurrentTokenMatches(EqualsOperatorName))
-            {
-                state.MoveNextToken();
-                string timestampStr = TryReadStringLiteral(state);
-                if (timestampStr == null)
-                {
-                    return null; // Unexpected token or end of input.
-                }
-
-                if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
-                {
-                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
-                    return null; // Invalid timestamp format.
-                }
-
-                state.MoveNextToken();
-                return Expression.Equal(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
+                return binaryExpression(GetTableTimestamp(matchedColumn), Expression.Constant(timestamp));
             }
 
             return null; // Unexpected token or end of input.
@@ -404,7 +381,8 @@ namespace InstantTraceViewer
 
         private Expression TryParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            if (state.CurrentTokenMatches(AtLeastOperatorName))
+            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state);
+            if (binaryExpression != null)
             {
                 state.MoveNextToken();
                 UnifiedLevel? level = TryReadLevel(state);
@@ -412,33 +390,8 @@ namespace InstantTraceViewer
                 {
                     return null; // Unexpected token or end of input.
                 }
-
                 state.MoveNextToken();
-                return Expression.LessThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
-            }
-            else if (state.CurrentTokenMatches(AtMostOperatorName))
-            {
-                state.MoveNextToken();
-                UnifiedLevel? level = TryReadLevel(state);
-                if (level == null)
-                {
-                    return null; // Unexpected token or end of input.
-                }
-
-                state.MoveNextToken();
-                return Expression.GreaterThanOrEqual(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
-            }
-            else if (state.CurrentTokenMatches(EqualsOperatorName))
-            {
-                state.MoveNextToken();
-                UnifiedLevel? level = TryReadLevel(state);
-                if (level == null)
-                {
-                    return null; // Unexpected token or end of input.
-                }
-
-                state.MoveNextToken();
-                return Expression.Equal(GetTableLevel(matchedColumn), Expression.Constant(level.Value));
+                return binaryExpression(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
             }
 
             return null; // Unexpected token or end of input.
@@ -524,6 +477,28 @@ namespace InstantTraceViewer
             }
 
             return matchedLevel;
+        }
+
+        private static Func<Expression, Expression, BinaryExpression> TryGetBinaryExpression(ParserState state)
+        {
+            Func<Expression, Expression, BinaryExpression> matchingOperatorExpression = null;
+
+            void CheckCurrentToken(string operatorName, Func<Expression, Expression, BinaryExpression> operatorExpression)
+            {
+                if (state.CurrentTokenMatches(operatorName))
+                {
+                    matchingOperatorExpression = operatorExpression;
+                }
+            }
+
+            CheckCurrentToken(LessThanOperatorName, Expression.LessThan);
+            CheckCurrentToken(LessThanOrEqualOperatorName, Expression.LessThanOrEqual);
+            CheckCurrentToken(EqualsOperatorName, Expression.Equal);
+            CheckCurrentToken(NotEqualsOperatorName, Expression.NotEqual);
+            CheckCurrentToken(GreaterThanOperatorName, Expression.GreaterThan);
+            CheckCurrentToken(GreaterThanOrEqualOperatorName, Expression.GreaterThanOrEqual);
+
+            return matchingOperatorExpression;
         }
 
         private static Expression GetTableString(TraceSourceSchemaColumn column)
