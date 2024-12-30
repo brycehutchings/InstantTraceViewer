@@ -43,6 +43,48 @@ namespace InstantTraceViewerTests
         }
 
         [TestMethod]
+        public void TestTokenizer()
+        {
+            var testCases = new List<(string Text, string[] Tokens)>
+            {
+                ("", [ SyntaxTokenizer.EofText ]),
+                (" ", [ SyntaxTokenizer.EofText ]),
+                ("\n", [ SyntaxTokenizer.EofText ]),
+                ("\t", [ SyntaxTokenizer.EofText ]),
+
+                ("a", [ "a", SyntaxTokenizer.EofText ]),
+                ("a b", [ "a", "b", SyntaxTokenizer.EofText ]),
+                ("a\tb", [ "a", "b", SyntaxTokenizer.EofText ]),
+
+                ("((a))", [ "(", "(", "a", ")", ")", SyntaxTokenizer.EofText ]),
+                ("[[a]]", [ "[", "[", "a", "]", "]", SyntaxTokenizer.EofText ]),
+                ("([a])", [ "(", "[", "a", "]", ")", SyntaxTokenizer.EofText ]),
+                ("[(a)]", [ "[", "(", "a", ")", "]", SyntaxTokenizer.EofText ]),
+
+
+                ("a<1", [ "a", "<", "1", SyntaxTokenizer.EofText ]),
+                ("a<=1", [ "a", "<=", "1", SyntaxTokenizer.EofText ]),
+                ("a==1", [ "a", "==", "1", SyntaxTokenizer.EofText ]),
+                ("a<1", [ "a", "<", "1", SyntaxTokenizer.EofText ]),
+
+                ("a <1", [ "a", "<", "1", SyntaxTokenizer.EofText ]),
+                ("a<= 1", [ "a", "<=", "1", SyntaxTokenizer.EofText ]),
+                ("a == 1", [ "a", "==", "1", SyntaxTokenizer.EofText ]),
+                ("a  <  1", [ "a", "<", "1", SyntaxTokenizer.EofText ]),
+
+                ("a in [\"a\",b,]", [ "a", "in", "[", "\"a\"", ",", "b", ",", "]", SyntaxTokenizer.EofText ]),
+            };
+
+            foreach (var testCase in testCases)
+            {
+                var actualTokens = SyntaxTokenizer.Tokenize(testCase.Text).ToArray();
+                var actualTokenStrs = actualTokens.Select(t => t.Text).ToArray();
+
+                CollectionAssert.AreEqual(testCase.Tokens, actualTokenStrs);
+            }
+        }
+
+        [TestMethod]
         public void TestParseValidSyntax()
         {
             MockTraceTableSnapshot mockTraceTableSnapshot = new();
@@ -51,9 +93,9 @@ namespace InstantTraceViewerTests
 
             List<(string, bool)> validConditionTests = new()
             {
-                // equals/equals_cs
-                ("   @Column1  equals  \"Column1_0\"  ", true),
-                ("@Column1 equals \"column1_0\"", true),
+                // ==/equals_cs
+                ("   @Column1  ==  \"Column1_0\"  ", true),
+                ("@Column1 == \"column1_0\"", true),
                 ("@Column1 equals_cs \"Column1_0\"", true),
                 ("@Column1 equals_cs \"column1_0\"", false),
 
@@ -78,46 +120,46 @@ namespace InstantTraceViewerTests
                 ("@Column1 matches_cs regex \"col.+1_0\"", false),
 
                 // Single subexpression either order
-                ("@Column1 equals \"Column1_0\"", true),
+                ("@Column1 == \"Column1_0\"", true),
 
-                ("(@Column1 equals \"Column1_0\")", true),
-                ("@Column1 equals \"foo\"", false),
+                ("(@Column1 == \"Column1_0\")", true),
+                ("@Column1 == \"foo\"", false),
 
                 // 'not' operator
-                ("not @Column1 equals \"Column1_0\"", false),
-                ("not not @Column1 equals \"Column1_0\"", true),
-                ("not not not @Column1 equals \"Column1_0\"", false),
-                ("not @Column1 equals \"foo\"", true),
-                ("not (@Column1 equals \"Column1_0\")", false),
-                ("not (@Column1 equals \"foo\")", true),
+                ("not @Column1 == \"Column1_0\"", false),
+                ("not not @Column1 == \"Column1_0\"", true),
+                ("not not not @Column1 == \"Column1_0\"", false),
+                ("not @Column1 == \"foo\"", true),
+                ("not (@Column1 == \"Column1_0\")", false),
+                ("not (@Column1 == \"foo\")", true),
 
-                ("not  @Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\"", true),
-                ("not (@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
-                ("not(@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\")", false),
+                ("not  @Column1 == \"Column1_0\" or @Column2 == \"Column2_0\"", true),
+                ("not (@Column1 == \"Column1_0\" or @Column2 == \"Column2_0\")", false),
+                ("not(@Column1 == \"Column1_0\" or @Column2 == \"Column2_0\")", false),
 
                 // Case-insensitive column name
-                ("@column1 equals \"Column1_0\"", true),
+                ("@column1 == \"Column1_0\"", true),
 
                 // Two subexpressions connected with 'and'
-                ("@Column1 equals \"Column1_0\" and @Column2 equals \"Column2_0\"", true),
-                ("@Column1 equals \"Column1_0\" AND @Column2 equals \"foo\"", false),
-                ("@Column1 equals \"foo\"       and @Column2 equals \"Column2_0\"", false),
-                ("@Column1 equals \"foo bar\"   and @Column2 equals \"Column2_0\"", false),
+                ("@Column1 == \"Column1_0\" and @Column2 == \"Column2_0\"", true),
+                ("@Column1 == \"Column1_0\" AND @Column2 == \"foo\"", false),
+                ("@Column1 == \"foo\"       and @Column2 == \"Column2_0\"", false),
+                ("@Column1 == \"foo bar\"   and @Column2 == \"Column2_0\"", false),
 
                 // Two subexpressions connected with 'or'
-                ("@Column1 equals \"Column1_0\" or @Column2 equals \"foo\"", true),
-                ("@Column1 equals \"foo\"       OR @Column2 equals \"Column2_0\"", true),
-                ("@Column1 equals \"foo\"       or @Column2 equals \"foo\"", false),
+                ("@Column1 == \"Column1_0\" or @Column2 == \"foo\"", true),
+                ("@Column1 == \"foo\"       OR @Column2 == \"Column2_0\"", true),
+                ("@Column1 == \"foo\"       or @Column2 == \"foo\"", false),
 
                 // And/or applied left to right
-                ("@Column1 equals \"Column1_0\" and @Column2 equals \"Column2_0\" or @Column2 equals \"foo\"", true), // true && true || false == true
-                ("@Column1 equals \"Column1_0\" and @Column2 equals \"foo\" or @Column2 equals \"Column2_0\"", true), // true && false || true == true
-                ("@Column1 equals \"foo\" and @Column2 equals \"Column2_0\" or @Column2 equals \"foo\"", false), // false && true || false == false
-                ("@Column1 equals \"foo\" and @Column2 equals \"bar\" or @Column2 equals \"Column2_0\"", true), // false && false || true == true
+                ("@Column1 == \"Column1_0\" and @Column2 == \"Column2_0\" or @Column2 == \"foo\"", true), // true && true || false == true
+                ("@Column1 == \"Column1_0\" and @Column2 == \"foo\" or @Column2 == \"Column2_0\"", true), // true && false || true == true
+                ("@Column1 == \"foo\" and @Column2 == \"Column2_0\" or @Column2 == \"foo\"", false), // false && true || false == false
+                ("@Column1 == \"foo\" and @Column2 == \"bar\" or @Column2 == \"Column2_0\"", true), // false && false || true == true
 
                 // Or takes precedence over And
                 // Effectively this test is doing "true or true and false" which should be parsed as "(true) or (true and false)" and not "(true or true) and (false)"
-                ("@Column1 equals \"Column1_0\" or @Column2 equals \"Column2_0\" and @Column2 equals \"foo\"", true),
+                ("@Column1 == \"Column1_0\" or @Column2 == \"Column2_0\" and @Column2 == \"foo\"", true),
 
                 // TODO: escaping in string literals
             };
@@ -143,30 +185,30 @@ namespace InstantTraceViewerTests
             TraceTableRowSelectorSyntax conditionParser = new(mockTraceTableSnapshot.Schema);
 
             List<string> invalidSyntaxTests = [
-                "(@Column1 equals \"Column1_0\"",
-                "@Column1 equals \"Column1_0\" and@Column2 equals \"Column2_t\"",
+                "(@Column1 == \"Column1_0\"",
+                "@Column1 == \"Column1_0\" and@Column2 == \"Column2_t\"",
                 "@",
                 "notstringorcolumn",
                 "@Column1equals\"nospaces\"",
-                "@Column1 equals noquote",
-                "@Column1 not equals \"foo\"",
-                "noquote equals @Column1",
-                "@NoSuchColumn equals \"Column1_0\"",
-                "equals",
+                "@Column1 == noquote",
+                "@Column1 not == \"foo\"",
+                "noquote == @Column1",
+                "@NoSuchColumn == \"Column1_0\"",
+                "==",
                 "not",
                 "()",
-                "() and (@Column1 equals \"Column1_0\")",
+                "() and (@Column1 == \"Column1_0\")",
                 "not()",
-                "(@Column1 equals \"Column1_0\"",
-                "@Column1 equals \"Column1_0\")",
-                "\"Column1_0\" equals @Column1",
-                "(\"Column1_0\" equals @Column1)",
-                "\"foo\" equals @Column1",
-                "\"a\" equals \"A\"",
-                "not \"foo\" equals @Column1",
-                "not (\"foo\" equals @Column1)",
-                "@Column1 equals @Column2",
-                "not@Column1 equals \"Column1_0\"", // must be space or ( after not.
+                "(@Column1 == \"Column1_0\"",
+                "@Column1 == \"Column1_0\")",
+                "\"Column1_0\" == @Column1",
+                "(\"Column1_0\" == @Column1)",
+                "\"foo\" == @Column1",
+                "\"a\" == \"A\"",
+                "not \"foo\" == @Column1",
+                "not (\"foo\" == @Column1)",
+                "@Column1 == @Column2",
+                "not@Column1 == \"Column1_0\"", // must be space or ( after not.
             ];
 
             foreach (var text in invalidSyntaxTests)

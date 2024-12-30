@@ -83,11 +83,11 @@ namespace InstantTraceViewer
             }
             else if (value is DateTime dateTimeValue)
             {
-                return dateTimeValue.ToString("HH:mm:ss.ffffff", FormatProvider);
+                return dateTimeValue.ToString("yyyy-MM-dd HH:mm:ss.ffffff", FormatProvider);
             }
             else if (value is DateTimeOffset dateTimeOffsetValue)
             {
-                return dateTimeOffsetValue.ToString("HH:mm:ss.ffffff", FormatProvider);
+                return dateTimeOffsetValue.ToString("yyyy-MM-dd HH:mm:ss.ffffff", FormatProvider);
             }
             else if (value is byte[] byteArrayValue)
             {

@@ -69,6 +69,13 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
+        public void UpdateRule(int index, string query)
+        {
+            Rule oldRule = _visibleRules[index];
+            _visibleRules[index] = new Rule { Query = query, Action = oldRule.Action, Enabled = oldRule.Enabled };
+            GenerationId++;
+        }
+
         public void RemoveRule(int index)
         {
             _visibleRules.RemoveAt(index);
