@@ -114,8 +114,10 @@ namespace InstantTraceViewerUI.Logcat
         {
             try
             {
-                // TODO: Which logs to look at?
-                await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, new[] { LogId.Main, LogId.Crash, LogId.Kernel, LogId.System, LogId.Security, LogId.Radio }))
+                // TODO: Are these logs the right ones to include?
+                // FIXME: LogId.Kernel can include log entries which break the 'LogService' background processor in AdvancedSharpAdbClient. This causes it to stop reading messages.
+                //        So until this issue is understood and fixed, kernel messages are not included.
+                await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, new[] { LogId.Main, LogId.Crash, /*LogId.Kernel,*/ LogId.System, LogId.Security, LogId.Radio }))
                 {
                     if (logEntry is AndroidLogEntry androidLogEntry)
                     {
