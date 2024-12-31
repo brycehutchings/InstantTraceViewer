@@ -27,6 +27,7 @@ namespace InstantTraceViewerUI.Logcat
             UnifiedLevelColumn = ColumnPriority,
             ProcessIdColumn = ColumnProcess,
             ThreadIdColumn = ColumnThread,
+            NameColumn = ColumnTag,
         };
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();

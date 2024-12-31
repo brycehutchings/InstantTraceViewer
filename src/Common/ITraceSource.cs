@@ -8,11 +8,11 @@ namespace InstantTraceViewer
     /// </summary>
     public enum UnifiedLevel
     {
-        Fatal,
-        Error,
-        Warning,
-        Info,
         Verbose,
+        Info,
+        Warning,
+        Error,
+        Fatal,
     }
 
     public interface ITraceTableSnapshot
@@ -89,6 +89,11 @@ namespace InstantTraceViewer
         /// The column which represents the provider/data source of the row.
         /// </summary>
         public TraceSourceSchemaColumn? ProviderColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the name of the event for this row.
+        /// </summary>
+        public TraceSourceSchemaColumn? NameColumn { get; init; }
     }
 
     public static class TraceTableSnapshotExtensions

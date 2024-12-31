@@ -28,7 +28,7 @@ namespace InstantTraceViewerUI.Etw
 
                 if (!_activeSessions.Any() && !(TraceEventSession.IsElevated() ?? false))
                 {
-                    ImGui.Text("No active sessions found. Run this application as administrator to see active sessions.");
+                    ImGui.TextUnformatted("No active sessions found. Run this application as administrator to see active sessions.");
                 }
 
                 if (ImGui.BeginTable("ActiveSessions", 7 /* columns */,

@@ -74,7 +74,7 @@ namespace InstantTraceViewerUI
                 ImGuiWindowFlags flags = ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings;
                 if (ImGui.Begin("Window", flags))
                 {
-                    ImGui.Text("Hello World");
+                    ImGui.TextUnformatted("Hello World");
                 }
 #endif
                     mainWindow.Draw();

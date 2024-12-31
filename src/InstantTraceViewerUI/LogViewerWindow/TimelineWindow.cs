@@ -130,7 +130,7 @@ namespace InstantTraceViewerUI
                 {
                     ImGui.SetCursorPos(cursorPos + new Vector2(startX, -5));
                 }
-                ImGui.Text(startTimeOffsetStr);
+                ImGui.TextUnformatted(startTimeOffsetStr);
             }
         }
 

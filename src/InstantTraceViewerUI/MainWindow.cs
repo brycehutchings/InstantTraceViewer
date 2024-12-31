@@ -402,11 +402,11 @@ namespace InstantTraceViewerUI
                     if (_adbDevicesException != null)
                     {
                         // TODO: See if adb.exe is in the PATH and offer to start the server.
-                        ImGui.Text("ADB server not running");
+                        ImGui.TextUnformatted("ADB server not running");
                     }
                     else if (_adbDevices.Count == 0)
                     {
-                        ImGui.Text("No devices found");
+                        ImGui.TextUnformatted("No devices found");
                     }
 
                     foreach (var device in _adbDevices)

@@ -35,4 +35,12 @@ namespace InstantTraceViewerUI
         [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern CurrentInputTextState GetCurrentInputTextState();
     }
+
+    // Annoyingly ImGui.NET does not provide these.
+    internal static class ImGuiInternal
+    {
+        // CIMGUI_API void igTableSetColumnSortDirection(int column_n,ImGuiSortDirection sort_direction,bool append_to_sort_specs)
+        [DllImport("cimgui.dll", EntryPoint = "igTableSetColumnSortDirection", CallingConvention = CallingConvention.StdCall)]
+        public static extern void TableSetColumnSortDirection(int column_n, ImGuiSortDirection sort_direction, bool append_to_sort_specs);
+    }
 }

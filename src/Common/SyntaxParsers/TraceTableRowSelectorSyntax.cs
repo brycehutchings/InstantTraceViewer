@@ -69,6 +69,9 @@ namespace InstantTraceViewer
             }
         }
 
+        public const string AndOperatorName = "and";
+        public const string OrOperatorName = "or";
+
         public const string StringEqualsCSOperatorName = "equals_cs";
         public const string StringInOperatorName = "in";
         public const string StringInCSOperatorName = "in_cs";
@@ -143,7 +146,7 @@ namespace InstantTraceViewer
                     // the "term" handler that encountered the '('.
                     break;
                 }
-                else if (state.CurrentTokenMatches("and"))
+                else if (state.CurrentTokenMatches(AndOperatorName))
                 {
                     state.MoveNextToken();
                     // "AND" has higher precedence than "OR" so we only parse a single term rather than a full leftExpression.
@@ -155,7 +158,7 @@ namespace InstantTraceViewer
 
                     leftExpression = Expression.AndAlso(leftExpression, rightExpression);
                 }
-                else if (state.CurrentTokenMatches("or"))
+                else if (state.CurrentTokenMatches(OrOperatorName))
                 {
                     state.MoveNextToken();
                     // "OR" has lower precedence than "AND" and so we parse everything to the right as if it was a grouped leftExpression.
