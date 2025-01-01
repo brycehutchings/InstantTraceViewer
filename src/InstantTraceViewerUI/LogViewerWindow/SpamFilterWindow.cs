@@ -10,10 +10,8 @@ namespace InstantTraceViewerUI
     internal class SpamFilterWindow
     {
         private const string WindowName = "Spam Filter";
-        private static int _nextWindowId = 1;
 
         private readonly string _name;
-        private readonly int _windowId;
 
         class ProviderTraceCount
         {
@@ -35,7 +33,6 @@ namespace InstantTraceViewerUI
         public SpamFilterWindow(string name, ITraceTableSnapshot traceTable)
         {
             _name = name;
-            _windowId = _nextWindowId++;
             _schema = traceTable.Schema;
             _providerTraceCounts =
                 Enumerable.Range(0, traceTable.RowCount)
@@ -63,6 +60,7 @@ namespace InstantTraceViewerUI
         public static bool SupportsSchema(TraceTableSchema schema)
         {
             // Provider and Level are optional. Only name is required.
+            // TODO: Provide a way for the user to pick the column to aggregate counts by and default to Name column if present.
             return schema.NameColumn != null;
         }
 
@@ -71,84 +69,33 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(400, 150), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter_{_windowId}", ref _open))
+            if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter", ref _open))
             {
                 int totalTraces = _providerTraceCounts.Sum(c => c.Count);
                 var selectedCount = _providerTraceCounts.Count(c => c.Selected);
                 var selectedTraceCount = _providerTraceCounts.Where(c => c.Selected).Sum(c => c.Count);
 
-                ImGui.BeginDisabled(selectedCount == 0);
-                if (ImGui.Button($"Exclude selected events"))
-                {
-                    // Create a rule for every provider/level pair so that it is easier for the user to manage the generated rules. It also ensures traces that use the same name across providers/levels are distinguished.
-                    foreach (var selectedTraceTypes in _providerTraceCounts.Where(c => c.Selected).GroupBy(s => (s.ProviderName, s.Level)).OrderBy(s => s.Key))
-                    {
-                        string query = "";
-
-                        if (selectedTraceTypes.Key.ProviderName != null)
-                        {
-                            query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ProviderColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(selectedTraceTypes.Key.ProviderName)}";
-                        }
-
-                        if (selectedTraceTypes.Key.Level != null)
-                        {
-                            if (query.Length > 0)
-                            {
-                                query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
-                            }
-                            query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.UnifiedLevelColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {selectedTraceTypes.Key.Level}";
-                        }
-
-                        if (query.Length > 0)
-                        {
-                            query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
-                        }
-
-                        query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.NameColumn)} {TraceTableRowSelectorSyntax.StringInOperatorName} [{string.Join(", ", selectedTraceTypes.Select(s => TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(s.Name)))}]";
-
-                        viewerRules.AddExcludeRule(query);
-                    }
-
-                    // This table will show stale data now that new rules have been added. Best to close it.
-                    _open = false;
-                }
-
-                ImGui.EndDisabled();
-
-                ImGui.SameLine();
-
-                if (totalTraces == 0)
-                {
-                    // Avoids divide-by-zero in the else case.
-                    ImGui.TextUnformatted("No events to filter.");
-                }
-                else
-                {
-                    ImGui.TextUnformatted($"{selectedCount} event types selected ({selectedTraceCount * 100.0f / totalTraces:F1}% of all events)");
-                }
-
                 ImGui.TextUnformatted("Tip: Use CTRL, SHIFT and mouse dragging to select the events that you want excluded.");
 
+                // Size table to fit the window but with room for two more rows: Selection summary text and the exclude button.
+                float summaryTextHeight = ImGui.GetTextLineHeightWithSpacing();
+                float buttonHeight = ImGui.GetFrameHeightWithSpacing();
+                Vector2 tableSize = new Vector2(-1, -(summaryTextHeight + buttonHeight));
                 if (ImGui.BeginTable("TraceCounts", 4 /* columns */,
-                        ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.NoSavedSettings |
-                        ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti))
+                        ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.Hideable |
+                        ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti, tableSize))
                 {
                     ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                    // WARNING: If columns are changed, the ImGuiSort() helper function must be updated to match the new column indices.
-                    ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthStretch, 1);
+
+                    // If schema doesn't have optional columns, don't show them.
+                    ImGuiTableColumnFlags DefaultHideIfColumnNull(TraceSourceSchemaColumn column) => column == null ? ImGuiTableColumnFlags.DefaultHide : 0;
+
+                    // WARNING: If columns are changed, the ImGuiSort() helper function and TableSetColumnSortDirection must be updated to match the new column indices.
+                    ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthStretch | DefaultHideIfColumnNull(_schema.ProviderColumn), 1);
                     ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1);
-                    ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, 140.0f);
-                    ImGui.TableSetupColumn("Count", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.PreferSortDescending, 140.0f);
+                    ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed | DefaultHideIfColumnNull(_schema.UnifiedLevelColumn), 140.0f);
+                    ImGui.TableSetupColumn("Count", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.DefaultSort, 140.0f);
                     ImGui.TableHeadersRow();
-
-                    // ImGui normally will save the sort state of the table so the user keeps what they last set, but almost assuredly the user will want to sort by count descending
-                    // so saved settings are turned off on the table and a one-time sort is applied.
-                    if (_tableNeedsOneTimeSetup)
-                    {
-                        ImGuiInternal.TableSetColumnSortDirection(3 /* Count column */ , ImGuiSortDirection.Descending, false);
-                        _tableNeedsOneTimeSetup = false;
-                    }
-
 
                     IReadOnlyList<ProviderTraceCount> sortedProviderTraceCounts;
                     {
@@ -190,8 +137,6 @@ namespace InstantTraceViewerUI
 
                         ImGui.TableNextRow();
 
-                        // ImGui.SetNextItemSelectionUserData(providerTraceCount);
-
                         ImGui.TableNextColumn();
                         ImGui.SetNextItemSelectionUserData(rowIndex++);
                         ImGui.Selectable("##TableRow", providerTraceCount.Selected, ImGuiSelectableFlags.SpanAllColumns);
@@ -212,11 +157,63 @@ namespace InstantTraceViewerUI
 
                     ImGui.EndTable();
                 }
+
+                if (totalTraces == 0)
+                {
+                    // Avoids divide-by-zero in the else case.
+                    ImGui.TextUnformatted("No events to filter.");
+                }
+                else
+                {
+                    ImGui.TextUnformatted($"{selectedCount} event types selected ({selectedTraceCount * 100.0f / totalTraces:F1}% of all events)");
+                }
+
+                ImGui.BeginDisabled(selectedCount == 0);
+                if (ImGui.Button($"Exclude selected events"))
+                {
+                    CreateExcludeRules(viewerRules);
+
+                    // This table will show stale data now that new rules have been added. Best to close it.
+                    _open = false;
+                }
+                ImGui.EndDisabled();
             }
 
             ImGui.End();
 
             return _open;
+        }
+
+        private unsafe void CreateExcludeRules(ViewerRules viewerRules)
+        {
+            // Create a rule for every provider/level pair so that it is easier for the user to manage the generated rules. It also ensures traces that use the same name across providers/levels are distinguished.
+            foreach (var selectedTraceTypes in _providerTraceCounts.Where(c => c.Selected).GroupBy(s => (s.ProviderName, s.Level)).OrderBy(s => s.Key))
+            {
+                string query = "";
+
+                if (selectedTraceTypes.Key.ProviderName != null)
+                {
+                    query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ProviderColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(selectedTraceTypes.Key.ProviderName)}";
+                }
+
+                if (selectedTraceTypes.Key.Level != null)
+                {
+                    if (query.Length > 0)
+                    {
+                        query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
+                    }
+                    query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.UnifiedLevelColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {selectedTraceTypes.Key.Level}";
+                }
+
+                if (query.Length > 0)
+                {
+                    query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
+                }
+
+                query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.NameColumn)} {TraceTableRowSelectorSyntax.StringInOperatorName} [{string.Join(", ", selectedTraceTypes.Select(s => TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(s.Name)))}]";
+
+                viewerRules.AddExcludeRule(query);
+            }
         }
 
         private static IEnumerable<ProviderTraceCount> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<ProviderTraceCount> list)

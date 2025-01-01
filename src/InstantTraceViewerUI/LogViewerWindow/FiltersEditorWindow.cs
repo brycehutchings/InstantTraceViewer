@@ -8,10 +8,8 @@ namespace InstantTraceViewerUI
     internal class FiltersEditorWindow
     {
         private const string WindowName = "Filters Editor";
-        private static int _nextWindowId = 1;
 
         private readonly string _name;
-        private readonly int _windowId;
 
         private TraceTableRowSelectorSyntax? _parser;
         private TraceTableSchema? _parserTableSchema;
@@ -28,7 +26,6 @@ namespace InstantTraceViewerUI
         public FiltersEditorWindow(string name)
         {
             _name = name;
-            _windowId = _nextWindowId++;
         }
 
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules rules, TraceTableSchema tableSchema)
@@ -36,7 +33,7 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(400, 150), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{WindowName} - {_name}###FiltersEditor_{_windowId}", ref _open))
+            if (ImGui.Begin($"{WindowName} - {_name}###FiltersEditor", ref _open))
             {
                 if (_parserTableSchema != tableSchema)
                 {
