@@ -15,6 +15,7 @@ namespace InstantTraceViewerUI.Logcat
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnBufferId = new TraceSourceSchemaColumn { Name = "BufferId", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", DefaultColumnSize = 8.75f };
         public static readonly TraceSourceSchemaColumn ColumnPriority = new TraceSourceSchemaColumn { Name = "Priority", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 9.00f };
@@ -22,11 +23,12 @@ namespace InstantTraceViewerUI.Logcat
 
         private static readonly TraceTableSchema _schema = new TraceTableSchema
         {
-            Columns = [ColumnProcess, ColumnThread, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
+            Columns = [ColumnProcess, ColumnThread, ColumnBufferId, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime,
             UnifiedLevelColumn = ColumnPriority,
             ProcessIdColumn = ColumnProcess,
             ThreadIdColumn = ColumnThread,
+            ProviderColumn = ColumnBufferId,
             NameColumn = ColumnTag,
         };
 
@@ -114,10 +116,9 @@ namespace InstantTraceViewerUI.Logcat
         {
             try
             {
-                // TODO: Are these logs the right ones to include?
                 // FIXME: LogId.Kernel can include log entries which break the 'LogService' background processor in AdvancedSharpAdbClient. This causes it to stop reading messages.
                 //        So until this issue is understood and fixed, kernel messages are not included.
-                await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, new[] { LogId.Main, LogId.Crash, /*LogId.Kernel,*/ LogId.System, LogId.Security, LogId.Radio }))
+                await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, [LogId.Main, LogId.Crash, /*LogId.Kernel,*/ LogId.System, LogId.Security, LogId.Radio]))
                 {
                     if (logEntry is AndroidLogEntry androidLogEntry)
                     {
@@ -132,6 +133,7 @@ namespace InstantTraceViewerUI.Logcat
                             Priority = androidLogEntry.Priority,
                             Message = androidLogEntry.Message,
                             Tag = androidLogEntry.Tag,
+                            LogId = androidLogEntry.Id,
                         };
 
                         _traceRecordsLock.EnterWriteLock();

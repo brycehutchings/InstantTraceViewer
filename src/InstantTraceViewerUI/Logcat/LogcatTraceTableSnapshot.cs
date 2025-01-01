@@ -40,6 +40,10 @@ namespace InstantTraceViewerUI.Logcat
             {
                 return traceRecord.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             }
+            else if (column == LogcatTraceSource.ColumnBufferId)
+            {
+                return traceRecord.LogId.ToString();
+            }
             else if (column == LogcatTraceSource.ColumnTag)
             {
                 return traceRecord.Tag;
