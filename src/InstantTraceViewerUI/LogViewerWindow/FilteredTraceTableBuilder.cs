@@ -11,6 +11,7 @@ namespace InstantTraceViewerUI
     {
         // Holds the row indices of the trace records that are included by the user's rules.
         private ListBuilder<int> _visibleRowsBuilder = new();
+        private int _generationId = 0;
 
         private int _lastViewerRulesGenerationId = -1;
         protected ITraceTableSnapshot? _lastUnfilteredTraceRecordSnapshot = null;
@@ -27,6 +28,7 @@ namespace InstantTraceViewerUI
                 _visibleRowsBuilder = new ListBuilder<int>();
                 _lastUnfilteredTraceRecordSnapshot = null;
                 _errorCount = 0;
+                _generationId++;
             }
 
             for (int i = (_lastUnfilteredTraceRecordSnapshot?.RowCount ?? 0); i < newSnapshot.RowCount; i++)
@@ -59,7 +61,7 @@ namespace InstantTraceViewerUI
 
         public FilteredTraceTableSnapshot Snapshot()
         {
-            return new FilteredTraceTableSnapshot(_lastUnfilteredTraceRecordSnapshot, _visibleRowsBuilder.CreateSnapshot(), _errorCount);
+            return new FilteredTraceTableSnapshot(_lastUnfilteredTraceRecordSnapshot, _visibleRowsBuilder.CreateSnapshot(), _generationId, _errorCount);
         }
     }
 
@@ -68,13 +70,14 @@ namespace InstantTraceViewerUI
     /// </summary>
     class FilteredTraceTableSnapshot : ITraceTableSnapshot
     {
-        private IReadOnlyList<int> _visibleRowIndiciesSnapshot;
+        private readonly IReadOnlyList<int> _visibleRowIndiciesSnapshot;
 
-        public FilteredTraceTableSnapshot(ITraceTableSnapshot fullTraceTableSnapshot, IReadOnlyList<int> visibleRowIndiciesSnapshot, int errorCount)
+        public FilteredTraceTableSnapshot(ITraceTableSnapshot fullTraceTableSnapshot, IReadOnlyList<int> visibleRowIndiciesSnapshot, int generationId, int errorCount)
         {
+            _visibleRowIndiciesSnapshot = visibleRowIndiciesSnapshot;
             FullTable = fullTraceTableSnapshot;
             ErrorCount = errorCount;
-            _visibleRowIndiciesSnapshot = visibleRowIndiciesSnapshot;
+            GenerationId = generationId;
         }
 
         public int ErrorCount { get; private init; }
@@ -96,13 +99,10 @@ namespace InstantTraceViewerUI
         public UnifiedLevel GetColumnUnifiedLevel(int filteredRowIndex, TraceSourceSchemaColumn column)
             => FullTable.GetColumnUnifiedLevel(GetFullTableRowIndex(filteredRowIndex), column);
 
-        public TraceTableSchema Schema
-            => FullTable.Schema;
+        public TraceTableSchema Schema => FullTable.Schema;
 
-        public int RowCount
-            => _visibleRowIndiciesSnapshot.Count;
+        public int RowCount => _visibleRowIndiciesSnapshot.Count;
 
-        public int GenerationId
-            => FullTable.GenerationId;
+        public int GenerationId { get; private set; }
     }
 }

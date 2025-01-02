@@ -99,12 +99,29 @@ namespace InstantTraceViewerUI
                     IRule rule = rules.Rules[i];
 
                     ImGui.TableNextRow();
+
                     ImGui.TableNextColumn();
+                    ImGui.BeginDisabled(rule.ParseResult?.Expression == null);
                     bool enabled = rule.Enabled;
                     if (ImGui.Checkbox($"##Enabled", ref enabled))
                     {
                         rules.SetRuleEnabled(i, enabled);
                     }
+                    ImGui.EndDisabled();
+
+                    // The rule will be disabled if it has a parsing error so show an icon here to explain why.
+                    if (rule.ParseResult != null && rule.ParseResult.Expression == null)
+                    {
+                        ImGui.SameLine();
+                        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.ErrorColor));
+                        ImGui.TextUnformatted("\uF06A");
+                        ImGui.PopStyleColor();
+                        if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal))
+                        {
+                            ImGui.SetTooltip("Parsing error");
+                        }
+                    }
+
                     ImGui.TableNextColumn();
 
                     if (_editingRule == rule)

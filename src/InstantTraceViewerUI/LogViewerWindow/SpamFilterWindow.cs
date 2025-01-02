@@ -24,37 +24,15 @@ namespace InstantTraceViewerUI
         }
 
         private List<ProviderTraceCount> _providerTraceCounts;
+        private int _providerTraceCountsGenerationId = -1;
+
         private TraceTableSchema _schema;
 
-        private bool _tableNeedsOneTimeSetup = true;
+        private bool _open = true;
 
-        private bool _open;
-
-        public SpamFilterWindow(string name, ITraceTableSnapshot traceTable)
+        public SpamFilterWindow(string name)
         {
             _name = name;
-            _schema = traceTable.Schema;
-            _providerTraceCounts =
-                Enumerable.Range(0, traceTable.RowCount)
-                    .AsParallel()
-                    .GroupBy(t =>
-                    {
-                        var name = traceTable.GetColumnString(t, traceTable.Schema.NameColumn);
-                        var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn) : null;
-                        var level = traceTable.Schema.UnifiedLevelColumn != null ? traceTable.GetColumnUnifiedLevel(t, traceTable.Schema.UnifiedLevelColumn) : (UnifiedLevel?)null;
-                        return (providerName, name, level);
-                    })
-                    .Select(g => new ProviderTraceCount
-                    {
-                        ProviderName = g.Key.Item1,
-                        Name = g.Key.Item2,
-                        Level = g.Key.Item3,
-                        Count = g.Count()
-                    })
-                    // Ensure initial default sort is descending so spammy stuff is at the top.
-                    .OrderByDescending(t => t.Count)
-                    .ToList();
-            _open = true;
         }
 
         public static bool SupportsSchema(TraceTableSchema schema)
@@ -64,8 +42,19 @@ namespace InstantTraceViewerUI
             return schema.NameColumn != null;
         }
 
-        public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules viewerRules)
+        public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules viewerRules, ITraceTableSnapshot traceTable)
         {
+            if (!SupportsSchema(traceTable.Schema))
+            {
+                // Caller should have not created/used this object if the schema is not supported.
+                throw new InvalidOperationException("SpamFilterWindow does not support the provided schema.");
+            }
+
+            if (_providerTraceCounts == null || _providerTraceCountsGenerationId != traceTable.GenerationId)
+            {
+                ComputeCounts(traceTable);
+            }
+
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(400, 150), new Vector2(float.MaxValue, float.MaxValue));
 
@@ -75,15 +64,28 @@ namespace InstantTraceViewerUI
                 var selectedCount = _providerTraceCounts.Count(c => c.Selected);
                 var selectedTraceCount = _providerTraceCounts.Where(c => c.Selected).Sum(c => c.Count);
 
+                ImGui.BeginDisabled(selectedCount == 0);
+                if (ImGui.Button($"Exclude selected events"))
+                {
+                    CreateExcludeRules(viewerRules);
+                }
+                ImGui.EndDisabled();
+                ImGui.SameLine();
+                if (totalTraces == 0)
+                {
+                    // Avoids divide-by-zero in the else case.
+                    ImGui.TextUnformatted("No events to filter.");
+                }
+                else
+                {
+                    ImGui.TextUnformatted($"{selectedCount} event types selected ({selectedTraceCount * 100.0f / totalTraces:F1}% of all events)");
+                }
+
                 ImGui.TextUnformatted("Tip: Use CTRL, SHIFT and mouse dragging to select the events that you want excluded.");
 
-                // Size table to fit the window but with room for two more rows: Selection summary text and the exclude button.
-                float summaryTextHeight = ImGui.GetTextLineHeightWithSpacing();
-                float buttonHeight = ImGui.GetFrameHeightWithSpacing();
-                Vector2 tableSize = new Vector2(-1, -(summaryTextHeight + buttonHeight));
                 if (ImGui.BeginTable("TraceCounts", 4 /* columns */,
                         ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.Hideable |
-                        ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti, tableSize))
+                        ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti))
                 {
                     ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
 
@@ -122,7 +124,11 @@ namespace InstantTraceViewerUI
                                 req.RangeLastItem = sortedProviderTraceCounts.Count - 1;
                                 req.RangeDirection = 1;
                             }
-                            for (long i = req.RangeFirstItem; i <= req.RangeLastItem; i += req.RangeDirection)
+
+                            // RangeLastItem can be less than RangeFirstItem with RangeDirection = -1. We don't care about order so ignore direction.
+                            long startIndex = Math.Min(req.RangeFirstItem, req.RangeLastItem);
+                            long endIndex = Math.Max(req.RangeFirstItem, req.RangeLastItem);
+                            for (long i = startIndex; i <= endIndex; i++)
                             {
                                 sortedProviderTraceCounts[(int)i].Selected = req.Selected;
                             }
@@ -157,26 +163,6 @@ namespace InstantTraceViewerUI
 
                     ImGui.EndTable();
                 }
-
-                if (totalTraces == 0)
-                {
-                    // Avoids divide-by-zero in the else case.
-                    ImGui.TextUnformatted("No events to filter.");
-                }
-                else
-                {
-                    ImGui.TextUnformatted($"{selectedCount} event types selected ({selectedTraceCount * 100.0f / totalTraces:F1}% of all events)");
-                }
-
-                ImGui.BeginDisabled(selectedCount == 0);
-                if (ImGui.Button($"Exclude selected events"))
-                {
-                    CreateExcludeRules(viewerRules);
-
-                    // This table will show stale data now that new rules have been added. Best to close it.
-                    _open = false;
-                }
-                ImGui.EndDisabled();
             }
 
             ImGui.End();
@@ -229,6 +215,32 @@ namespace InstantTraceViewerUI
                 3 => ImGuiSortInternal(spec.SortDirection, list, p => p.Count),
                 _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
             };
+        }
+
+        private void ComputeCounts(ITraceTableSnapshot traceTable)
+        {
+            _schema = traceTable.Schema;
+            _providerTraceCounts =
+                Enumerable.Range(0, traceTable.RowCount)
+                    .AsParallel()
+                    .GroupBy(t =>
+                    {
+                        var name = traceTable.GetColumnString(t, traceTable.Schema.NameColumn);
+                        var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn) : null;
+                        var level = traceTable.Schema.UnifiedLevelColumn != null ? traceTable.GetColumnUnifiedLevel(t, traceTable.Schema.UnifiedLevelColumn) : (UnifiedLevel?)null;
+                        return (providerName, name, level);
+                    })
+                    .Select(g => new ProviderTraceCount
+                    {
+                        ProviderName = g.Key.Item1,
+                        Name = g.Key.Item2,
+                        Level = g.Key.Item3,
+                        Count = g.Count()
+                    })
+                    // Ensure initial default sort is descending so spammy stuff is at the top.
+                    .OrderByDescending(t => t.Count)
+                    .ToList();
+            _providerTraceCountsGenerationId = traceTable.GenerationId;
         }
     }
 }

@@ -94,7 +94,7 @@ namespace InstantTraceViewerUI
 
             if (_spamFilterWindow != null)
             {
-                if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules))
+                if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
                 {
                     _spamFilterWindow = null;
                 }
@@ -528,7 +528,7 @@ namespace InstantTraceViewerUI
                 ImGui.BeginDisabled(!SpamFilterWindow.SupportsSchema(visibleTraceTable.Schema));
                 if (ImGui.MenuItem("Spam filter..."))
                 {
-                    _spamFilterWindow = new(_traceSource.TraceSource.DisplayName, visibleTraceTable);
+                    _spamFilterWindow = new(_traceSource.TraceSource.DisplayName);
                 }
                 ImGui.EndDisabled();
 
