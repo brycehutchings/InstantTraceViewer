@@ -69,6 +69,12 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
+        public void AppendRule(bool enabled, TraceRowRuleAction action, string query)
+        {
+            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action });
+            GenerationId++;
+        }
+
         public void UpdateRule(int index, string query)
         {
             Rule oldRule = _visibleRules[index];
@@ -155,6 +161,7 @@ namespace InstantTraceViewerUI
                 {
                     rule.ParseResult = parser.Parse(rule.Query);
                     rule.Predicate = rule.ParseResult.Expression?.Compile();
+                    rule.Enabled &= (rule.Predicate != null); // Disable if the rule could not be parsed.
                 }
             }
 

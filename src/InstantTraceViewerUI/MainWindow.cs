@@ -186,7 +186,7 @@ namespace InstantTraceViewerUI
                     if (ImGui.MenuItem("Open WPRP file (real-time)..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp",
+                        string file = FileDialog.OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp",
                             Settings.WprpOpenLocation,
                             (s) => Settings.WprpOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
@@ -215,7 +215,7 @@ namespace InstantTraceViewerUI
                         string joinedExts = string.Join(';', Etw.EtwTraceSource.EtlFileExtensions.Select(ext => $"*{ext}"));
 
                         // TODO: This blocks the render thread
-                        string file = OpenFile($"ETL Trace Files ({joinedExts})|{joinedExts}",
+                        string file = FileDialog.OpenFile($"ETL Trace Files ({joinedExts})|{joinedExts}",
                             Settings.EtlOpenLocation,
                             (s) => Settings.EtlOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
@@ -289,7 +289,7 @@ namespace InstantTraceViewerUI
                         if (ImGui.MenuItem($"Open CSV file ({headerNote})..."))
                         {
                             // TODO: This blocks the render thread
-                            string file = OpenFile("Comma-Separated Values Files (*.csv)|*.csv",
+                            string file = FileDialog.OpenFile("Comma-Separated Values Files (*.csv)|*.csv",
                                 Settings.CsvOpenLocation,
                                 (s) => Settings.CsvOpenLocation = s);
                             if (!string.IsNullOrEmpty(file))
@@ -340,7 +340,7 @@ namespace InstantTraceViewerUI
                         if (ImGui.MenuItem($"Open TSV file ({headerNote})..."))
                         {
                             // TODO: This blocks the render thread
-                            string file = OpenFile("Tab-separated values file (*.tsv)|*.tsv",
+                            string file = FileDialog.OpenFile("Tab-separated values file (*.tsv)|*.tsv",
                                 Settings.TsvOpenLocation,
                                 (s) => Settings.TsvOpenLocation = s);
                             if (!string.IsNullOrEmpty(file))
@@ -435,21 +435,6 @@ namespace InstantTraceViewerUI
 
                 ImGui.EndMainMenuBar();
             }
-        }
-
-        private string OpenFile(string filter, string initialDirectory, Action<string> saveInitialDirectory)
-        {
-            var dialog = new OpenFileDialog();
-            dialog.InitialDirectory = initialDirectory;
-            dialog.Filter = filter;
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                saveInitialDirectory(Path.GetDirectoryName(dialog.FileName));
-
-                return dialog.FileName;
-            }
-
-            return null;
         }
 
         protected virtual void Dispose(bool disposing)

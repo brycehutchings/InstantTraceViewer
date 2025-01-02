@@ -1,7 +1,10 @@
 using ImGuiNET;
 using InstantTraceViewer;
+using System;
+using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Windows.Forms;
 
 namespace InstantTraceViewerUI
 {
@@ -41,19 +44,7 @@ namespace InstantTraceViewerUI
                     _parser = new TraceTableRowSelectorSyntax(tableSchema);
                 }
 
-                if (ImGui.BeginTabBar("###FiltersEditorTabs", ImGuiTabBarFlags.None))
-                {
-                    if (ImGui.BeginTabItem("Current Rules"))
-                    {
-                        DrawCurrentRules(rules);
-                        ImGui.EndTabItem();
-                    }
-                    if (ImGui.BeginTabItem("Saved Rules"))
-                    {
-                        ImGui.EndTabItem();
-                    }
-                    ImGui.EndTabBar();
-                }
+                DrawCurrentRules(rules);
             }
 
             ImGui.End();
@@ -68,7 +59,7 @@ namespace InstantTraceViewerUI
             {
                 _addRuleLastParseResult = _parser.Parse(_addRuleInputText);
             }
-            NativeInterop.CurrentInputTextState inputState = NativeInterop.GetCurrentInputTextState();
+            uint addRuleId = ImGui.GetItemID();
 
             ImGui.BeginDisabled(_addRuleLastParseResult.Expression == null);
             ImGui.SameLine();
@@ -83,11 +74,14 @@ namespace InstantTraceViewerUI
             }
             ImGui.EndDisabled();
 
-            RenderParsingError(_addRuleInputText, _addRuleLastParseResult, inputState, inputScreenPos);
+            RenderParsingError(addRuleId, _addRuleInputText, _addRuleLastParseResult, inputScreenPos);
 
+            // Size table to fit the window but with room for one rows of buttons at the bottom.
+            float buttonHeight = ImGui.GetFrameHeightWithSpacing();
+            Vector2 tableSize = new Vector2(-1, -buttonHeight);
             if (ImGui.BeginTable("Rules", 4,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
-                ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable))
+                ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable, tableSize))
             {
                 float dpiBase = ImGui.GetFontSize();
 
@@ -120,6 +114,8 @@ namespace InstantTraceViewerUI
                         if (ImGuiWidgets.UndecoratedButton("\uf00d", "Cancel"))
                         {
                             _editingRule = null;
+                            _editRuleInputText = "";
+                            _editRuleLastParseResult = null;
                         }
                         ImGui.SameLine();
 
@@ -137,6 +133,7 @@ namespace InstantTraceViewerUI
                         {
                             _editingRule = rule;
                             _editRuleInputText = rule.Query;
+                            _editRuleLastParseResult = null;
                         }
 
                         ImGui.SameLine();
@@ -167,7 +164,7 @@ namespace InstantTraceViewerUI
                         {
                             _editRuleLastParseResult = _parser.Parse(_editRuleInputText);
                         }
-                        inputState = NativeInterop.GetCurrentInputTextState();
+                        uint editRuleId = ImGui.GetItemID();
 
                         if (_editRuleLastParseResult?.Expression != null)
                         {
@@ -179,7 +176,7 @@ namespace InstantTraceViewerUI
                             }
                         }
 
-                        RenderParsingError(_editRuleInputText, _editRuleLastParseResult, inputState, inputScreenPos);
+                        RenderParsingError(editRuleId, _editRuleInputText, _editRuleLastParseResult, inputScreenPos);
                     }
                     else
                     {
@@ -190,22 +187,90 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.EndTable();
+
+                if (ImGui.Button("Import"))
+                {
+                    string file = FileDialog.OpenFile("Instant Trace Viewer Filters (*.itvf)|*.itvf",
+                        Settings.InstantTraceViewerFiltersLocation,
+                        s => Settings.InstantTraceViewerFiltersLocation = s);
+                    if (file != null)
+                    {
+                        try
+                        {
+                            using TsvTableSource tsv = new TsvTableSource(file, firstRowIsHeader: true, readInBackground: false);
+                            ITraceTableSnapshot tsvSnapshot = tsv.CreateSnapshot();
+                            TraceSourceSchemaColumn enabledColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Enabled");
+                            TraceSourceSchemaColumn actionColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Action");
+                            TraceSourceSchemaColumn queryColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Query");
+                            for (int i = 0; i < tsvSnapshot.RowCount; i++)
+                            {
+                                string enabledStr = tsvSnapshot.GetColumnString(i, enabledColumn);
+                                string actionStr = tsvSnapshot.GetColumnString(i, actionColumn);
+                                string query = tsvSnapshot.GetColumnString(i, queryColumn);
+                                if (string.IsNullOrWhiteSpace(enabledStr) && string.IsNullOrWhiteSpace(actionStr) && string.IsNullOrWhiteSpace(query))
+                                {
+                                    continue; // Ignore empty lines.
+                                }
+
+                                rules.AppendRule(bool.Parse(enabledStr), Enum.Parse<TraceRowRuleAction>(actionStr), query);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"Failed to open .ITVF file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+
+                ImGui.SameLine();
+
+                if (ImGui.Button("Export"))
+                {
+                    try
+                    {
+                        string file = FileDialog.SaveFile("Instant Trace Viewer Filters (*.itvf)|*.itvf",
+                            Settings.InstantTraceViewerFiltersLocation,
+                            s => Settings.InstantTraceViewerFiltersLocation = s);
+                        if (file != null)
+                        {
+                            using StreamWriter sw = new StreamWriter(file);
+                            sw.WriteLine("Enabled\tAction\tQuery");
+                            foreach (IRule filter in rules.Rules)
+                            {
+                                sw.WriteLine($"{filter.Enabled}\t{filter.Action}\t{filter.Query}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Failed to save .ITVF file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+
+                ImGui.SameLine();
+                ImGui.TextUnformatted("Tip: .itvf files are stored as tab-separated text files");
             }
         }
 
-        private static void RenderParsingError(string inputText, TraceTableRowSelectorParseResults parseResults, NativeInterop.CurrentInputTextState inputState, Vector2 inputScreenPos)
+        private static void RenderParsingError(uint inputTextId, string inputText, TraceTableRowSelectorParseResults parseResults, Vector2 inputScreenPos)
         {
+            NativeInterop.CurrentInputTextState inputState = NativeInterop.GetCurrentInputTextState();
+
+            // Don't use the input state to align the error message unless it is in focus so that we have the correct ScrollX.
+            bool inputStateUsable = inputState.Id == inputTextId;
+
             var expectedTokens = parseResults.ExpectedTokens.ToArray();
             var matchingExpectedTokens = expectedTokens.Where(t => t.StartsWith(parseResults.ActualToken.Text)).ToArray();
             var autocompleteOptions = matchingExpectedTokens.Any() ? matchingExpectedTokens : expectedTokens;
 
-            // If parsing was not successful, show expected tokens and underline where the error occurred
+            // If parsing was not successful and InputText has the focus, show expected tokens and underline where the error occurred
             if (autocompleteOptions.Any() && parseResults.Expression == null)
             {
                 float InputTextPadding = 5; // Might need to be scaled by DPI?
 
                 Vector2 skipSize = ImGui.CalcTextSize(inputText.Substring(0, parseResults.ExpectedTokenStartIndex));
-                float expectedXOffset = skipSize.X - inputState.ScrollX + InputTextPadding;
+
+                float expectedXOffset = skipSize.X - (inputStateUsable ? inputState.ScrollX : 0) + InputTextPadding;
 
                 // Underline the bad token
                 ImGui.SameLine();
@@ -236,6 +301,8 @@ namespace InstantTraceViewerUI
                     }
                 }
             }
+
+
             ImGui.NewLine(); // Move the cursor down a line since this space is needed for the "expected" tokens.
         }
     }
