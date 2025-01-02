@@ -61,6 +61,12 @@ namespace InstantTraceViewer
                 }
                 else if (ch == '\n' || ch == '\r' || ch == -1 /* eof */)
                 {
+                    if (ch == -1 && valueBuilder.Length == 0 && columnValues.Count == 0)
+                    {
+                        // The last line is an empty line that we should ignore.
+                        return false;
+                    }
+
                     // We have reached the end of the value by hitting the end of line marker or end of file.
                     columnValues.Add(valueBuilder.ToString());
                     valueBuilder.Clear();
@@ -74,7 +80,7 @@ namespace InstantTraceViewer
                         }
                     }
 
-                    return ch == -1;
+                    return true;
                 }
                 else
                 {
