@@ -38,7 +38,8 @@ namespace InstantTraceViewerUI
         private int? _hoveredThreadId;
 
         private TimelineWindow _timelineInline = null;
-        private FiltersEditorWindow _filtersEditorWindow;
+        private FiltersEditorWindow _filtersEditorWindow = null;
+        private SpamFilterWindow _spamFilterWindow = null;
 
         private int? _cellContentPopupFullTableRowIndex = null;
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
@@ -88,6 +89,14 @@ namespace InstantTraceViewerUI
                 if (!_filtersEditorWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable.Schema))
                 {
                     _filtersEditorWindow = null;
+                }
+            }
+
+            if (_spamFilterWindow != null)
+            {
+                if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
+                {
+                    _spamFilterWindow = null;
                 }
             }
 
@@ -516,6 +525,15 @@ namespace InstantTraceViewerUI
             }
             if (ImGui.BeginPopup("Filtering"))
             {
+                ImGui.BeginDisabled(!SpamFilterWindow.SupportsSchema(visibleTraceTable.Schema));
+                if (ImGui.MenuItem("Spam filter..."))
+                {
+                    _spamFilterWindow = new(_traceSource.TraceSource.DisplayName);
+                }
+                ImGui.EndDisabled();
+
+                ImGui.Separator();
+
                 if (ImGui.MenuItem("Edit filters..."))
                 {
                     _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName);
@@ -575,11 +593,11 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            ImGui.Text($"{visibleTraceTable.RowCount:N0} rows");
+            ImGui.TextUnformatted($"{visibleTraceTable.RowCount:N0} rows");
             if (visibleTraceTable.RowCount != visibleTraceTable.FullTable.RowCount)
             {
                 ImGui.SameLine();
-                ImGui.Text($"({visibleTraceTable.FullTable.RowCount - visibleTraceTable.RowCount:N0} excluded)");
+                ImGui.TextUnformatted($"({visibleTraceTable.FullTable.RowCount - visibleTraceTable.RowCount:N0} excluded)");
             }
 
             if (visibleTraceTable.ErrorCount > 0)

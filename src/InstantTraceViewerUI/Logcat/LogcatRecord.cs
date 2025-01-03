@@ -11,6 +11,8 @@ namespace InstantTraceViewerUI.Logcat
 
         public Priority Priority;
 
+        public LogId LogId;
+
         public string Tag;
 
         public string Message;

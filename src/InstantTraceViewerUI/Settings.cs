@@ -108,6 +108,34 @@ namespace InstantTraceViewerUI
             }
         }
 
+        public static string? InstantTraceViewerFiltersLocation
+        {
+            get
+            {
+                var location = Key.GetValue("ItvfLocation", null) as string;
+                if (string.IsNullOrEmpty(location))
+                {
+                    location = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Instant Trace Viewer Filters");
+                    try
+                    {
+                        if (!Path.Exists(location))
+                        {
+                            Directory.CreateDirectory(location);
+                            return location;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+                return location;
+            }
+            set
+            {
+                Key.SetValue("ItvfLocation", value!);
+            }
+        }
+
         public static void AddRecentlyOpenedWprp(string file)
         {
             AddMru("RecentlyOpenedWprp", file);

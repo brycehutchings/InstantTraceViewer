@@ -12,7 +12,7 @@
             bool IsSingleCharacterToken(char c) => c == '"' || c == '(' || c == ')' || c == '[' || c == ']' || c == ',';
 
             // These punctuation characters may be grouped together to form a single token.
-            bool IsPunctuation(char c) => c == '=' || c == '"' || c == ',' || c == '<' || c == '>' || c == '!';
+            bool IsPunctuation(char c) => c == '=' || c == '"' || c == ',' || c == '<' || c == '>' || c == '!' || c == '~';
 
             // These characters are treated as delimiters when reading non-punctuation tokens.
             bool IsWordDelimiter(char c) => IsSingleCharacterToken(c) || IsPunctuation(c) || char.IsWhiteSpace(c);

@@ -41,6 +41,7 @@ namespace InstantTraceViewerUI.Etw
             ProcessIdColumn = ColumnProcess,
             ThreadIdColumn = ColumnThread,
             ProviderColumn = ColumnProvider,
+            NameColumn = ColumnName,
         };
 
         private static HashSet<int> SessionNums = new();

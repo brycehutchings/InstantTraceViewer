@@ -26,11 +26,10 @@ namespace InstantTraceViewer
             // Read the first line to get the column names/count.
             List<string> columnValues = new();
             StringBuilder valueBuilder = new();
-            bool reachedEof = ReadLine(_textReader, valueBuilder, columnValues);
-
-            // The viewer UI does not support 0 columns.
+            ReadLine(_textReader, valueBuilder, columnValues);
             if (columnValues.Count == 0)
             {
+                // The viewer UI does not support 0 columns.
                 _schema = new TraceTableSchema() { Columns = [new TraceSourceSchemaColumn() { Name = "Empty", DefaultColumnSize = DefaultColumnSize }] };
             }
             else
@@ -46,7 +45,7 @@ namespace InstantTraceViewer
                 }
             }
 
-            if (!reachedEof)
+            if (_textReader.Peek() != -1) // If there is more content to read...
             {
                 if (readInBackground)
                 {
@@ -105,15 +104,16 @@ namespace InstantTraceViewer
         {
             List<string> columnValues = new();
             StringBuilder valueBuilder = new();
-            bool reachedEof;
             do
             {
-                reachedEof = ReadLine(_textReader, valueBuilder, columnValues);
-                AddTraceRecord(columnValues);
+                if (ReadLine(_textReader, valueBuilder, columnValues))
+                {
+                    AddTraceRecord(columnValues);
+                }
                 valueBuilder.Clear();
                 columnValues.Clear();
             }
-            while (!_disposed && !reachedEof);
+            while (!_disposed && _textReader.Peek() != -1);
         }
 
         protected abstract bool ReadLine(TextReader textReader, StringBuilder valueBuilder, List<string> columnValues);

@@ -19,7 +19,7 @@ namespace InstantTraceViewerTests
 
             ITraceTableSnapshot emptyNoHeader = ReadTestString("", false).CreateSnapshot();
             Assert.AreEqual(1, emptyNoHeader.Schema.Columns.Count); // 0 columns is not valid for the viewer's sake.
-            Assert.AreEqual(1, emptyNoHeader.RowCount);
+            Assert.AreEqual(0, emptyNoHeader.RowCount);
         }
 
         [TestMethod]

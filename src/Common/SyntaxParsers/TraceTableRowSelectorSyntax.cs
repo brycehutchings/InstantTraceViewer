@@ -69,7 +69,9 @@ namespace InstantTraceViewer
             }
         }
 
-        public const string StringEqualsCSOperatorName = "equals_cs";
+        public const string AndOperatorName = "and";
+        public const string OrOperatorName = "or";
+
         public const string StringInOperatorName = "in";
         public const string StringInCSOperatorName = "in_cs";
         public const string StringContainsOperatorName = "contains";
@@ -81,7 +83,9 @@ namespace InstantTraceViewer
         public const string LessThanOperatorName = "<";
         public const string LessThanOrEqualOperatorName = "<=";
         public const string EqualsOperatorName = "==";
+        public const string EqualsCIOperatorName = "=~";
         public const string NotEqualsOperatorName = "!=";
+        public const string NotEqualsCIOperatorName = "!~";
         public const string GreaterThanOperatorName = ">";
         public const string GreaterThanOrEqualOperatorName = ">=";
 
@@ -143,7 +147,7 @@ namespace InstantTraceViewer
                     // the "term" handler that encountered the '('.
                     break;
                 }
-                else if (state.CurrentTokenMatches("and"))
+                else if (state.CurrentTokenMatches(AndOperatorName))
                 {
                     state.MoveNextToken();
                     // "AND" has higher precedence than "OR" so we only parse a single term rather than a full leftExpression.
@@ -155,7 +159,7 @@ namespace InstantTraceViewer
 
                     leftExpression = Expression.AndAlso(leftExpression, rightExpression);
                 }
-                else if (state.CurrentTokenMatches("or"))
+                else if (state.CurrentTokenMatches(OrOperatorName))
                 {
                     state.MoveNextToken();
                     // "OR" has lower precedence than "AND" and so we parse everything to the right as if it was a grouped leftExpression.
@@ -244,13 +248,12 @@ namespace InstantTraceViewer
 
         private Expression TryParseStringPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            // "equals_cs" has no symbol-based operator equivalent to avoid adding less commonly seen operators like =~, etc.
-            if (state.CurrentTokenMatches(NotEqualsOperatorName) || state.CurrentTokenMatches(EqualsOperatorName) ||
-                state.CurrentTokenMatches(StringEqualsCSOperatorName))
+            if (state.CurrentTokenMatches(EqualsOperatorName) || state.CurrentTokenMatches(EqualsCIOperatorName) ||
+                state.CurrentTokenMatches(NotEqualsOperatorName) || state.CurrentTokenMatches(NotEqualsCIOperatorName))
             {
-                bool isNegated = state.CurrentTokenMatches(NotEqualsOperatorName);
+                bool isNegated = state.CurrentToken.StartsWith("!");
 
-                StringComparison? comparisonType = TryGetStringComparisonType(state.CurrentToken);
+                StringComparison? comparisonType = TryGetStringEqualityComparisonType(state.CurrentToken);
                 if (comparisonType == null)
                 {
                     return null; // Unexpected token or end of input.
@@ -396,6 +399,12 @@ namespace InstantTraceViewer
 
             return null; // Unexpected token or end of input.
         }
+
+        // == and != are case sensitive to match major language behaviors (Python, C, etc).
+        // =~ and !~ are case insensitive which is borrowed from the Kusto query language.
+        private static StringComparison TryGetStringEqualityComparisonType(string operatorName)
+            => operatorName.EndsWith("~", StringComparison.InvariantCultureIgnoreCase)
+                 ? StringComparison.InvariantCultureIgnoreCase : StringComparison.InvariantCulture;
 
         private static StringComparison TryGetStringComparisonType(string operatorName)
             => operatorName.EndsWith("_cs", StringComparison.InvariantCultureIgnoreCase)
