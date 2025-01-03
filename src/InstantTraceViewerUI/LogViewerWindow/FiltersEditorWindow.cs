@@ -1,6 +1,7 @@
 using ImGuiNET;
 using InstantTraceViewer;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -207,10 +208,10 @@ namespace InstantTraceViewerUI
 
                 if (ImGui.Button("Import"))
                 {
-                    string file = FileDialog.OpenFile("Instant Trace Viewer Filters (*.itvf)|*.itvf",
+                    IReadOnlyList<string> files = FileDialog.OpenMultipleFiles("Instant Trace Viewer Filters (*.itvf)|*.itvf",
                         Settings.InstantTraceViewerFiltersLocation,
                         s => Settings.InstantTraceViewerFiltersLocation = s);
-                    if (file != null)
+                    foreach (string file in files)
                     {
                         try
                         {
@@ -265,7 +266,7 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.SameLine();
-                ImGui.TextUnformatted("Tip: .itvf files are stored as tab-separated text files");
+                ImGui.TextUnformatted("Tip 1: You can select multiple .itvf files when importing. Tip 2: .itvf files are stored as tab-separated text files");
             }
         }
 
