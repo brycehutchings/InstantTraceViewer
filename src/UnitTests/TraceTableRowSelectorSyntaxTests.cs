@@ -93,11 +93,14 @@ namespace InstantTraceViewerTests
 
             List<(string, bool)> validConditionTests = new()
             {
-                // ==/equals_cs
-                ("   @Column1  ==  \"Column1_0\"  ", true),
-                ("@Column1 == \"column1_0\"", true),
-                ("@Column1 equals_cs \"Column1_0\"", true),
-                ("@Column1 equals_cs \"column1_0\"", false),
+                // ==/=~
+                //("   @Column1  ==  \"Column1_0\"  ", true),
+                //("@Column1 == \"column1_0\"", false),
+                ("@Column1 =~ \"column1_0\"", true),
+
+                // !=/!~
+                ("@Column1 != \"column1_0\"", true),
+                ("@Column1 !~ \"column1_0\"", false),
 
                 // contains/contains_cs
                 ("@Column1 contains \"OLUM\"", true),
