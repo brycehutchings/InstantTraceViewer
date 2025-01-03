@@ -146,6 +146,7 @@ namespace InstantTraceViewerUI
                     0xF00C, // "check"
                     0xF00D, // "xmark"
                     0xF044, // "pen-to-square"
+                    0xF059, // "circle-question"
                     0xF06A, // "circle-exclamation"
                     0xF080, // "chart-bar"
                     0xF0B0, // "filter"
