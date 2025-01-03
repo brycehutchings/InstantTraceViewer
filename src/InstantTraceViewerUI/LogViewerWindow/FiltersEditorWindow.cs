@@ -74,6 +74,55 @@ namespace InstantTraceViewerUI
                 rules.AddExcludeRule(_addRuleInputText);
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            ImGui.TextUnformatted("\uF059");
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal))
+            {
+                ImGui.SetTooltip(@"Include and exclude filter rules allow noisy trace logs to be refined to show only the information you find relevant.
+Filters are not permanent and can be reverted or changed. Changes are reflected immediately.
+If there are any include rules, unmatched rows will be excluded, otherwise unmatched rows are included.
+The rule editor intellisense will guide you to ensure your rule is valid.
+You can right-click on trace log table cells to quickly add rules.
+The Spam Filter will help write the rules for excluding noisy rows.
+
+Syntax:
+The filter syntax is similar to a small subset of Python or ""where"" clauses of the Kusto Query Language.
+
+Parenthesis can be used to evaluation control order. ""and"", ""or"", and ""not"" are supported to combine expressions.
+
+Column names are referenced by their @name.
+
+The following operators are supported for all column types:
+  ==                - Equality (case sensitive for string type columns)
+  =~                - Equality (case insensitive for string type columns)
+  !=                - Inequality (case sensitive for string type columns)
+  !~                - Inequality (case insensitive for string type columns)
+
+String column types only:
+  in                - Inclusion in a set (case insensitive).
+  in_cs             - Inclusion in a set (case sensitive).
+  contains          - Substring match (case insensitive).
+  contains_cs       - Substring match (case sensitive).
+  matches           - Wildcard match (case insensitive).
+  matches_cs        - Wildcard match (case sensitive).
+  matches regex     - Regular expression match (case insensitive).
+  matches regex_cs  - Regular expression match (case sensitive).
+
+Timestamp and level column types only:
+  <, <=, >, >=      - Comparison operators.
+
+Sets (for use with ""in"" and ""in_cs"") are comma separated lists of string literals inside square brackets.
+For example: @Column in [""foo"", ""bar"", ""baz""]
+
+All column types besides Level type columns are compared with string literals.
+Level columns have well defined constants (in order of less to more): Verbose, Info, Warning, Error, Fatal.
+Timestamps are compared against string literals that are expected to be in the format ""yyyy-MM-dd HH:mm:ss.fff"".
+
+Examples:
+(@Provider == ""Foo.Bar"" and @Level >= Info) or @Message contains ""Baz""
+@Name in_cs [""foo"", ""bar"", ""baz""]
+@Timestamp > ""2023-01-01 00:00:00.000""");
+            }
 
             RenderParsingError(addRuleId, _addRuleInputText, _addRuleLastParseResult, inputScreenPos);
 
