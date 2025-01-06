@@ -17,7 +17,7 @@ namespace InstantTraceViewerUI
         {
             public string ProviderName;
             public string Name;
-            public UnifiedLevel? Level;
+            public UnifiedLevel? MaxLevel;
             public int Count;
 
             public bool Selected;
@@ -139,7 +139,7 @@ namespace InstantTraceViewerUI
                     int rowIndex = 0;
                     foreach (var providerTraceCount in sortedProviderTraceCounts)
                     {
-                        ImGui.PushID((providerTraceCount.ProviderName?.GetHashCode() ?? 0) ^ providerTraceCount.Name.GetHashCode() ^ (providerTraceCount.Level?.GetHashCode() ?? 0));
+                        ImGui.PushID((providerTraceCount.ProviderName?.GetHashCode() ?? 0) ^ providerTraceCount.Name.GetHashCode());
 
                         ImGui.TableNextRow();
 
@@ -151,7 +151,7 @@ namespace InstantTraceViewerUI
                         ImGui.TableNextColumn();
                         ImGui.TextUnformatted(providerTraceCount.Name);
                         ImGui.TableNextColumn();
-                        ImGui.TextUnformatted(providerTraceCount.Level.ToString());
+                        ImGui.TextUnformatted(providerTraceCount.MaxLevel?.ToString() ?? "");
                         ImGui.TableNextColumn();
                         ImGui.TextUnformatted($"{providerTraceCount.Count:N0} ({providerTraceCount.Count * 100.0 / totalTraces:F1}%)");
 
@@ -172,23 +172,14 @@ namespace InstantTraceViewerUI
 
         private unsafe void CreateExcludeRules(ViewerRules viewerRules)
         {
-            // Create a rule for every provider/level pair so that it is easier for the user to manage the generated rules. It also ensures traces that use the same name across providers/levels are distinguished.
-            foreach (var selectedTraceTypes in _providerTraceCounts.Where(c => c.Selected).GroupBy(s => (s.ProviderName, s.Level)).OrderBy(s => s.Key))
+            // Create a rule for every provider so that it is easier for the user to manage the generated rules. It also ensures traces that use the same name across providers are distinguished.
+            foreach (var selectedTraceTypes in _providerTraceCounts.Where(c => c.Selected).GroupBy(s => (ProviderName: s.ProviderName, Dummy: 0)).OrderBy(s => s.Key))
             {
                 string query = "";
 
                 if (selectedTraceTypes.Key.ProviderName != null)
                 {
                     query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ProviderColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(selectedTraceTypes.Key.ProviderName)}";
-                }
-
-                if (selectedTraceTypes.Key.Level != null)
-                {
-                    if (query.Length > 0)
-                    {
-                        query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
-                    }
-                    query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.UnifiedLevelColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {selectedTraceTypes.Key.Level}";
                 }
 
                 if (query.Length > 0)
@@ -211,7 +202,7 @@ namespace InstantTraceViewerUI
             {
                 0 => ImGuiSortInternal(spec.SortDirection, list, p => p.ProviderName),
                 1 => ImGuiSortInternal(spec.SortDirection, list, p => p.Name),
-                2 => ImGuiSortInternal(spec.SortDirection, list, p => p.Level),
+                2 => ImGuiSortInternal(spec.SortDirection, list, p => p.MaxLevel),
                 3 => ImGuiSortInternal(spec.SortDirection, list, p => p.Count),
                 _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
             };
@@ -227,14 +218,13 @@ namespace InstantTraceViewerUI
                     {
                         var name = traceTable.GetColumnString(t, traceTable.Schema.NameColumn);
                         var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn) : null;
-                        var level = traceTable.Schema.UnifiedLevelColumn != null ? traceTable.GetColumnUnifiedLevel(t, traceTable.Schema.UnifiedLevelColumn) : (UnifiedLevel?)null;
-                        return (providerName, name, level);
+                        return (providerName, name);
                     })
                     .Select(g => new ProviderTraceCount
                     {
                         ProviderName = g.Key.Item1,
                         Name = g.Key.Item2,
-                        Level = g.Key.Item3,
+                        MaxLevel = traceTable.Schema.TimestampColumn == null ? null : g.Max(rowIndex => traceTable.GetUnifiedLevel(rowIndex)),
                         Count = g.Count()
                     })
                     // Ensure initial default sort is descending so spammy stuff is at the top.
