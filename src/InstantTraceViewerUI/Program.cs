@@ -147,13 +147,16 @@ namespace InstantTraceViewerUI
                     0xF00D, // "xmark"
                     0xF044, // "pen-to-square"
                     0xF059, // "circle-question"
+                    0xF060, // "arrow-left"
+                    0xF061, // "arrow-right"
                     0xF06A, // "circle-exclamation"
                     0xF080, // "chart-bar"
                     0xF0B0, // "filter"
                     0xF0C5, // "copy"
                     0xF062, // "arrow-up"
                     0xF063, // "arrow-down"
-                    0xF24D, // "clone"
+                    0xF0FE, // "square-plus"
+                    0xF12D, // "eraser"
                     0xF2ED, // "trash-can"
                 ]);
             }

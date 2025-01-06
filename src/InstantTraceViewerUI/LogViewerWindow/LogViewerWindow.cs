@@ -506,7 +506,7 @@ namespace InstantTraceViewerUI
             if (_traceSource.TraceSource.CanClear)
             {
                 ImGui.SameLine();
-                if (ImGui.Button("Clear"))
+                if (ImGui.Button("\uF12D Clear"))
                 {
                     _traceSource.TraceSource.Clear();
                     _lastSelectedVisibleRowIndex = null;
@@ -567,7 +567,7 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("\uf24d Clone"))
+            if (ImGui.Button("\uF0FE Clone"))
             {
                 uiCommands.AddLogViewerWindow(Clone());
             }
@@ -587,7 +587,7 @@ namespace InstantTraceViewerUI
             }
             ImGui.PopItemWidth();
             ImGui.SameLine();
-            if (ImGui.ArrowButton("Find", _findFoward ? ImGuiDir.Right : ImGuiDir.Left))
+            if (ImGui.Button(_findFoward ? "\uF061" : "\uF060"))
             {
                 findRequested = true;
             }
