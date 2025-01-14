@@ -1,5 +1,6 @@
 ﻿using ImGuiNET;
 using InstantTraceViewer;
+using Microsoft.Diagnostics.Tracing.Parsers.Clr;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,62 +13,270 @@ namespace InstantTraceViewerUI
         private const string WindowName = "Spam Filter";
 
         private readonly string _name;
+        private readonly Guid _windowId;
 
-        class ProviderTraceCount
+        private abstract class CountByBaseAdapter
         {
-            public string ProviderName;
-            public string Name;
-            public UnifiedLevel? MaxLevel;
-            public int Count;
+            public abstract string Name { get; }
+            public abstract int ColumnCount { get; }
 
-            public bool Selected;
+            public abstract void SetupColumns(TraceTableSchema schema);
+            public abstract IReadOnlyList<CountByBase> CountBy(ITraceTableSnapshot traceTable);
+            public abstract bool IsSchemaSupported(TraceTableSchema schema);
+            public abstract IEnumerable<CountByBase> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<CountByBase> list);
+            public abstract void CreateExcludeRules(TraceTableSchema schema, ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames);
+
+            protected IEnumerable<CountByBase> ImGuiSortInternal<TKey>(ImGuiSortDirection sortDirection, IEnumerable<CountByBase> list, Func<CountByBase, TKey> keySelector)
+                 => sortDirection == ImGuiSortDirection.Ascending ? list.OrderBy(keySelector) : list.OrderByDescending(keySelector);
         }
 
-        private List<ProviderTraceCount> _providerTraceCounts;
+        private abstract class CountByBase
+        {
+            public int Count { get; init; }
+            public bool Selected { get; set; }
+
+            public abstract override bool Equals(object obj);
+            public abstract override int GetHashCode();
+
+            public abstract void AddColumnValues();
+        }
+
+        // Count by event name and optionally provider too if available.
+        private class CountByEventNameAdapter : CountByBaseAdapter
+        {
+            private class CountByEventName : CountByBase
+            {
+                public string ProviderName { get; init; }
+                public string Name { get; init; }
+                public UnifiedLevel? MaxLevel { get; init; }
+
+                public override void AddColumnValues()
+                {
+                    ImGui.TextUnformatted(ProviderName);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(Name);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(MaxLevel?.ToString() ?? "");
+                }
+
+                public override bool Equals(object obj) => obj is CountByEventName key && ProviderName == key.ProviderName && Name == key.Name;
+                public override int GetHashCode() => HashCode.Combine(ProviderName, Name);
+            }
+
+            public override string Name => "Event name";
+
+            public override int ColumnCount => 3;
+
+            public override void SetupColumns(TraceTableSchema schema)
+            {
+                ImGuiTableColumnFlags DefaultHideIfColumnNull(TraceSourceSchemaColumn column) => column == null ? ImGuiTableColumnFlags.DefaultHide : 0;
+                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthStretch | DefaultHideIfColumnNull(schema.ProviderColumn), 1);
+                ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1);
+                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed | DefaultHideIfColumnNull(schema.UnifiedLevelColumn), 140.0f);
+            }
+
+            public override IReadOnlyList<CountByBase> CountBy(ITraceTableSnapshot traceTable)
+            {
+                return
+                    Enumerable.Range(0, traceTable.RowCount)
+                        .GroupBy(t =>
+                        {
+                            var name = traceTable.GetColumnString(t, traceTable.Schema.NameColumn);
+                            var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn) : null;
+                            return (providerName, name);
+                        })
+                        .Select(g => new CountByEventName
+                        {
+                            ProviderName = g.Key.Item1,
+                            Name = g.Key.Item2,
+                            MaxLevel = traceTable.Schema.TimestampColumn == null ? null : g.Max(rowIndex => traceTable.GetUnifiedLevel(rowIndex)),
+                            Count = g.Count()
+                        })
+                        // Ensure initial default sort is descending so spammy stuff is at the top.
+                        .OrderByDescending(t => t.Count)
+                        .ToList();
+            }
+
+            public override bool IsSchemaSupported(TraceTableSchema schema) => schema.NameColumn != null;
+
+            public override IEnumerable<CountByBase> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<CountByBase> list)
+                => spec.ColumnIndex switch
+                {
+                    0 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).ProviderName),
+                    1 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).Name),
+                    2 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).MaxLevel),
+                    3 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).Count),
+                    _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
+                };
+
+            public override void CreateExcludeRules(TraceTableSchema schema, ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames)
+            {
+                // Create a rule for every provider so that it is easier for the user to manage the generated rules. It also ensures traces that use the same name across providers are distinguished.
+                foreach (var selectedTraceTypes in countByEventNames.Cast<CountByEventName>().Where(c => c.Selected).GroupBy(s => (ProviderName: s.ProviderName, Dummy: 0)).OrderBy(s => s.Key))
+                {
+                    string query = "";
+
+                    if (selectedTraceTypes.Key.ProviderName != null)
+                    {
+                        query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(schema.ProviderColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(selectedTraceTypes.Key.ProviderName)}";
+                    }
+
+                    if (query.Length > 0)
+                    {
+                        query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
+                    }
+
+                    query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(schema.NameColumn)} {TraceTableRowSelectorSyntax.StringInOperatorName} [{string.Join(", ", selectedTraceTypes.Select(s => TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(s.Name)))}]";
+
+                    viewerRules.AddExcludeRule(query);
+                }
+            }
+        }
+
+        private class CountByProviderAdapter : CountByBaseAdapter
+        {
+            private class CountByProvider : CountByBase
+            {
+                public string ProviderName { get; init; }
+                public UnifiedLevel? Level { get; init; }
+                public override void AddColumnValues()
+                {
+                    ImGui.TextUnformatted(ProviderName);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(Level?.ToString() ?? "");
+                }
+                public override bool Equals(object obj) => obj is CountByProvider key && ProviderName == key.ProviderName && Level == key.Level;
+                public override int GetHashCode() => HashCode.Combine(ProviderName, Level);
+            }
+
+            public override string Name => "Provider";
+
+            public override int ColumnCount => 2;
+
+            public override void SetupColumns(TraceTableSchema schema)
+            {
+                ImGuiTableColumnFlags DefaultHideIfColumnNull(TraceSourceSchemaColumn column) => column == null ? ImGuiTableColumnFlags.DefaultHide : 0;
+                ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthStretch, 1);
+                ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed | DefaultHideIfColumnNull(schema.UnifiedLevelColumn), 140.0f);
+            }
+
+            public override IReadOnlyList<CountByBase> CountBy(ITraceTableSnapshot traceTable)
+            {
+                return
+                    Enumerable.Range(0, traceTable.RowCount)
+                        .GroupBy(t =>
+                        {
+                            var providerName = traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn);
+                            var level = traceTable.Schema.UnifiedLevelColumn != null ? traceTable.GetUnifiedLevel(t) : (UnifiedLevel?)null;
+                            return (providerName, level);
+                        })
+                        .Select(g => new CountByProvider
+                        {
+                            ProviderName = g.Key.Item1,
+                            Level = g.Key.Item2,
+                            Count = g.Count()
+                        })
+                        // Ensure initial default sort is descending so spammy stuff is at the top.
+                        .OrderByDescending(t => t.Count)
+                        .ToList();
+            }
+
+            public override bool IsSchemaSupported(TraceTableSchema schema) => schema.ProviderColumn != null;
+
+            public override IEnumerable<CountByBase> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<CountByBase> list)
+                => spec.ColumnIndex switch
+                {
+                    0 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByProvider)p).ProviderName),
+                    1 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByProvider)p).Level),
+                    2 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByProvider)p).Count),
+                    _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
+                };
+
+            public override void CreateExcludeRules(TraceTableSchema schema, ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames)
+            {
+                // Create a rule for every provider so that it is easier for the user to manage the generated rules.
+                foreach (var providerCount in countByEventNames.Cast<CountByProvider>().Where(c => c.Selected).GroupBy(s => (ProviderName: s.ProviderName, Dummy: 0)).OrderBy(s => s.Key))
+                {
+                    string query = $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(schema.ProviderColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(providerCount.Key.ProviderName)}";
+
+                    var levelStrings = providerCount.Where(pc => pc.Level.HasValue).Select(pc => pc.Level.Value.ToString()).ToList();
+                    if (levelStrings.Count == 1)
+                    {
+                        query += $" {TraceTableRowSelectorSyntax.AndOperatorName} {TraceTableRowSelectorSyntax.CreateColumnVariableName(schema.UnifiedLevelColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {levelStrings.Single()}";
+                    }
+                    else if (levelStrings.Count > 1)
+                    {
+                        query += $" {TraceTableRowSelectorSyntax.AndOperatorName} {TraceTableRowSelectorSyntax.CreateColumnVariableName(schema.UnifiedLevelColumn)} in [{string.Join(", ", levelStrings)}]";
+                    }
+
+                    viewerRules.AddExcludeRule(query);
+                }
+            }
+        }
+
+        private readonly IReadOnlyList<CountByBaseAdapter> _adapters;
+        private CountByBaseAdapter _currentAdapter;
+        private IReadOnlyCollection<CountByBase> _eventCounts = null;
+
         private int _providerTraceCountsGenerationId = -1;
 
         private TraceTableSchema _schema;
 
         private bool _open = true;
 
-        public SpamFilterWindow(string name)
+        public SpamFilterWindow(string name, Guid windowId)
         {
             _name = name;
-        }
+            _windowId = windowId;
 
-        public static bool SupportsSchema(TraceTableSchema schema)
-        {
-            // Provider and Level are optional. Only name is required.
-            // TODO: Provide a way for the user to pick the column to aggregate counts by and default to Name column if present.
-            return schema.NameColumn != null;
+            _adapters = [new CountByProviderAdapter(), new CountByEventNameAdapter()];
+            _currentAdapter = _adapters.First();
         }
 
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules viewerRules, ITraceTableSnapshot traceTable)
         {
-            if (!SupportsSchema(traceTable.Schema))
-            {
-                // Caller should have not created/used this object if the schema is not supported.
-                throw new InvalidOperationException("SpamFilterWindow does not support the provided schema.");
-            }
-
-            if (_providerTraceCounts == null || _providerTraceCountsGenerationId != traceTable.GenerationId)
-            {
-                ComputeCounts(traceTable);
-            }
-
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(400, 150), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter", ref _open))
+            if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter_{_windowId}", ref _open))
             {
-                int totalTraces = _providerTraceCounts.Sum(c => c.Count);
-                var selectedCount = _providerTraceCounts.Count(c => c.Selected);
-                var selectedTraceCount = _providerTraceCounts.Where(c => c.Selected).Sum(c => c.Count);
+                // Create dropdown to select aggregation type.
+                if (ImGui.BeginCombo("##CountByType", _currentAdapter.Name))
+                {
+                    foreach (var adapter in _adapters)
+                    {
+                        if (ImGui.Selectable(adapter.Name, _currentAdapter == adapter))
+                        {
+                            _currentAdapter = adapter;
+                            _eventCounts = null;
+                        }
+                    }
+                    ImGui.EndCombo();
+                }
+                ImGui.SameLine();
+                ImGui.TextUnformatted("Group by");
+
+                if (!_currentAdapter.IsSchemaSupported(traceTable.Schema))
+                {
+                    ImGui.TextUnformatted($"Cannot group by {_currentAdapter.Name} because the schema does not have the required columns.");
+                    return _open;
+                }
+
+                if (_eventCounts == null || _providerTraceCountsGenerationId != traceTable.GenerationId)
+                {
+                    _schema = traceTable.Schema;
+                    _eventCounts = _currentAdapter.CountBy(traceTable);
+                    _providerTraceCountsGenerationId = traceTable.GenerationId;
+                }
+
+                int totalTraces = _eventCounts.Sum(c => c.Count);
+                var selectedCount = _eventCounts.Count(c => c.Selected);
+                var selectedTraceCount = _eventCounts.Where(c => c.Selected).Sum(c => c.Count);
 
                 ImGui.BeginDisabled(selectedCount == 0);
                 if (ImGui.Button($"Exclude selected events"))
                 {
-                    CreateExcludeRules(viewerRules);
+                    _currentAdapter.CreateExcludeRules(_schema, viewerRules, _eventCounts);
                 }
                 ImGui.EndDisabled();
                 ImGui.SameLine();
@@ -78,38 +287,31 @@ namespace InstantTraceViewerUI
                 }
                 else
                 {
-                    ImGui.TextUnformatted($"{selectedCount} event types selected ({selectedTraceCount * 100.0f / totalTraces:F1}% of all events)");
+                    ImGui.TextUnformatted($"{selectedCount} event types selected ({selectedTraceCount * 100.0f / totalTraces:F2}% of all events)");
                 }
 
                 ImGui.TextUnformatted("Tip: Use CTRL, SHIFT and mouse dragging to select the events that you want excluded.");
 
-                if (ImGui.BeginTable("TraceCounts", 4 /* columns */,
+                if (ImGui.BeginTable("TraceCounts", 1 + _currentAdapter.ColumnCount /* columns */,
                         ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.Hideable |
                         ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti))
                 {
                     ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-
-                    // If schema doesn't have optional columns, don't show them.
-                    ImGuiTableColumnFlags DefaultHideIfColumnNull(TraceSourceSchemaColumn column) => column == null ? ImGuiTableColumnFlags.DefaultHide : 0;
-
-                    // WARNING: If columns are changed, the ImGuiSort() helper function and TableSetColumnSortDirection must be updated to match the new column indices.
-                    ImGui.TableSetupColumn("Provider", ImGuiTableColumnFlags.WidthStretch | DefaultHideIfColumnNull(_schema.ProviderColumn), 1);
-                    ImGui.TableSetupColumn("Name", ImGuiTableColumnFlags.WidthStretch, 1);
-                    ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed | DefaultHideIfColumnNull(_schema.UnifiedLevelColumn), 140.0f);
+                    _currentAdapter.SetupColumns(_schema);
                     ImGui.TableSetupColumn("Count", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.DefaultSort, 140.0f);
                     ImGui.TableHeadersRow();
 
-                    IReadOnlyList<ProviderTraceCount> sortedProviderTraceCounts;
+                    IReadOnlyList<CountByBase> sortedCounts;
                     {
-                        IEnumerable<ProviderTraceCount> sortedProviderTraceCountsEnumerable = _providerTraceCounts;
+                        IEnumerable<CountByBase> sortedCountsEnumerable = _eventCounts;
                         ImGuiTableSortSpecsPtr sortSpecs = ImGui.TableGetSortSpecs();
                         for (int i = 0; i < sortSpecs.SpecsCount; i++)
                         {
                             var spec = new ImGuiTableColumnSortSpecsPtr(sortSpecs.NativePtr->Specs + i);
-                            sortedProviderTraceCountsEnumerable = ImGuiSort(spec, sortedProviderTraceCountsEnumerable);
+                            sortedCountsEnumerable = _currentAdapter.ImGuiSort(spec, sortedCountsEnumerable);
                         }
 
-                        sortedProviderTraceCounts = sortedProviderTraceCountsEnumerable.ToList();
+                        sortedCounts = sortedCountsEnumerable.ToList();
                     }
 
                     var multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
@@ -121,7 +323,7 @@ namespace InstantTraceViewerUI
                             if (req.Type == ImGuiSelectionRequestType.SetAll)
                             {
                                 req.RangeFirstItem = 0;
-                                req.RangeLastItem = sortedProviderTraceCounts.Count - 1;
+                                req.RangeLastItem = sortedCounts.Count - 1;
                                 req.RangeDirection = 1;
                             }
 
@@ -130,30 +332,26 @@ namespace InstantTraceViewerUI
                             long endIndex = Math.Max(req.RangeFirstItem, req.RangeLastItem);
                             for (long i = startIndex; i <= endIndex; i++)
                             {
-                                sortedProviderTraceCounts[(int)i].Selected = req.Selected;
+                                sortedCounts[(int)i].Selected = req.Selected;
                             }
                         }
                     };
                     applyMultiselectRequests();
 
                     int rowIndex = 0;
-                    foreach (var providerTraceCount in sortedProviderTraceCounts)
+                    foreach (var traceCount in sortedCounts)
                     {
-                        ImGui.PushID((providerTraceCount.ProviderName?.GetHashCode() ?? 0) ^ providerTraceCount.Name.GetHashCode());
+                        ImGui.PushID(traceCount.GetHashCode());
 
                         ImGui.TableNextRow();
 
                         ImGui.TableNextColumn();
                         ImGui.SetNextItemSelectionUserData(rowIndex++);
-                        ImGui.Selectable("##TableRow", providerTraceCount.Selected, ImGuiSelectableFlags.SpanAllColumns);
+                        ImGui.Selectable("##TableRow", traceCount.Selected, ImGuiSelectableFlags.SpanAllColumns);
                         ImGui.SameLine();
-                        ImGui.TextUnformatted(providerTraceCount.ProviderName);
+                        traceCount.AddColumnValues();
                         ImGui.TableNextColumn();
-                        ImGui.TextUnformatted(providerTraceCount.Name);
-                        ImGui.TableNextColumn();
-                        ImGui.TextUnformatted(providerTraceCount.MaxLevel?.ToString() ?? "");
-                        ImGui.TableNextColumn();
-                        ImGui.TextUnformatted($"{providerTraceCount.Count:N0} ({providerTraceCount.Count * 100.0 / totalTraces:F1}%)");
+                        ImGui.TextUnformatted($"{traceCount.Count:N0} ({traceCount.Count * 100.0 / totalTraces:F2}%)");
 
                         ImGui.PopID();
                     }
@@ -168,69 +366,6 @@ namespace InstantTraceViewerUI
             ImGui.End();
 
             return _open;
-        }
-
-        private unsafe void CreateExcludeRules(ViewerRules viewerRules)
-        {
-            // Create a rule for every provider so that it is easier for the user to manage the generated rules. It also ensures traces that use the same name across providers are distinguished.
-            foreach (var selectedTraceTypes in _providerTraceCounts.Where(c => c.Selected).GroupBy(s => (ProviderName: s.ProviderName, Dummy: 0)).OrderBy(s => s.Key))
-            {
-                string query = "";
-
-                if (selectedTraceTypes.Key.ProviderName != null)
-                {
-                    query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ProviderColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(selectedTraceTypes.Key.ProviderName)}";
-                }
-
-                if (query.Length > 0)
-                {
-                    query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
-                }
-
-                query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.NameColumn)} {TraceTableRowSelectorSyntax.StringInOperatorName} [{string.Join(", ", selectedTraceTypes.Select(s => TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(s.Name)))}]";
-
-                viewerRules.AddExcludeRule(query);
-            }
-        }
-
-        private static IEnumerable<ProviderTraceCount> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<ProviderTraceCount> list)
-        {
-            IEnumerable<ProviderTraceCount> ImGuiSortInternal<TKey>(ImGuiSortDirection sortDirection, IEnumerable<ProviderTraceCount> list, Func<ProviderTraceCount, TKey> keySelector)
-                => sortDirection == ImGuiSortDirection.Ascending ? list.OrderBy(keySelector) : list.OrderByDescending(keySelector);
-
-            return spec.ColumnIndex switch
-            {
-                0 => ImGuiSortInternal(spec.SortDirection, list, p => p.ProviderName),
-                1 => ImGuiSortInternal(spec.SortDirection, list, p => p.Name),
-                2 => ImGuiSortInternal(spec.SortDirection, list, p => p.MaxLevel),
-                3 => ImGuiSortInternal(spec.SortDirection, list, p => p.Count),
-                _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
-            };
-        }
-
-        private void ComputeCounts(ITraceTableSnapshot traceTable)
-        {
-            _schema = traceTable.Schema;
-            _providerTraceCounts =
-                Enumerable.Range(0, traceTable.RowCount)
-                    .AsParallel()
-                    .GroupBy(t =>
-                    {
-                        var name = traceTable.GetColumnString(t, traceTable.Schema.NameColumn);
-                        var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn) : null;
-                        return (providerName, name);
-                    })
-                    .Select(g => new ProviderTraceCount
-                    {
-                        ProviderName = g.Key.Item1,
-                        Name = g.Key.Item2,
-                        MaxLevel = traceTable.Schema.TimestampColumn == null ? null : g.Max(rowIndex => traceTable.GetUnifiedLevel(rowIndex)),
-                        Count = g.Count()
-                    })
-                    // Ensure initial default sort is descending so spammy stuff is at the top.
-                    .OrderByDescending(t => t.Count)
-                    .ToList();
-            _providerTraceCountsGenerationId = traceTable.GenerationId;
         }
     }
 }

@@ -11,11 +11,9 @@ namespace InstantTraceViewerUI
 {
     unsafe internal class LogViewerWindow : IDisposable
     {
-        private static int _nextWindowId = 1;
-
         private readonly ImGuiListClipperPtr _tableClipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
         private readonly SharedTraceSource _traceSource;
-        private readonly int _windowId;
+        private readonly Guid _windowId = Guid.NewGuid();
 
         private ViewerRules _viewerRules = new();
         private FilteredTraceTableBuilder _filteredTraceTableBuilder = new();
@@ -52,8 +50,6 @@ namespace InstantTraceViewerUI
         {
             _traceSource = traceSource;
             _traceSource.AddRef(this);
-
-            _windowId = _nextWindowId++;
         }
 
         public LogViewerWindow(ITraceSource traceSource)
@@ -94,10 +90,10 @@ namespace InstantTraceViewerUI
 
             if (_spamFilterWindow != null)
             {
-                if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
-                {
-                    _spamFilterWindow = null;
-                }
+               if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
+               {
+                   _spamFilterWindow = null;
+               }
             }
 
             if (!opened)
@@ -525,18 +521,16 @@ namespace InstantTraceViewerUI
             }
             if (ImGui.BeginPopup("Filtering"))
             {
-                ImGui.BeginDisabled(!SpamFilterWindow.SupportsSchema(visibleTraceTable.Schema));
                 if (ImGui.MenuItem("Spam filter..."))
                 {
-                    _spamFilterWindow = new(_traceSource.TraceSource.DisplayName);
+                    _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowId);
                 }
-                ImGui.EndDisabled();
 
                 ImGui.Separator();
 
                 if (ImGui.MenuItem("Edit filters..."))
                 {
-                    _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName);
+                    _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowId);
                 }
 
                 ImGui.BeginDisabled(_viewerRules.Rules.Count == 0);
@@ -560,7 +554,7 @@ namespace InstantTraceViewerUI
                 ImGui.BeginDisabled(visibleTraceTable.Schema.TimestampColumn == null);
                 if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
                 {
-                    _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName) : null;
+                    _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName, _windowId) : null;
                 }
                 ImGui.EndDisabled();
                 ImGui.EndPopup();
