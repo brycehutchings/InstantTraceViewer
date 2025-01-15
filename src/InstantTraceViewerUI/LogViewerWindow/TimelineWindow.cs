@@ -12,11 +12,10 @@ namespace InstantTraceViewerUI
         private const int PixelsPerSection = 2; // 1 pixel thick lines are too hard to see.
         private const int UnderlineHeight = 5;
 
-        private static int _nextWindowId = 1;
         private const string PopupName = "Timeline";
 
         private readonly string _name;
-        private readonly int _windowId;
+        private readonly Guid _windowId;
 
         private bool _open = true;
 
@@ -32,10 +31,10 @@ namespace InstantTraceViewerUI
         private ComputedTimeline _computedTimeline;
         private Task<ComputedTimeline> _nextComputedTimelineTask;
 
-        public TimelineWindow(string name)
+        public TimelineWindow(string name, Guid windowId)
         {
             _name = name;
-            _windowId = _nextWindowId++;
+            _windowId = windowId;
         }
 
         public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
