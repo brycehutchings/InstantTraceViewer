@@ -396,7 +396,22 @@ namespace InstantTraceViewer
                 state.MoveNextToken();
                 return binaryExpression(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
             }
+            else if (state.CurrentTokenMatches(StringInOperatorName))
+            {
+                state.MoveNextToken();
 
+                IReadOnlyList<UnifiedLevel> values = TryReadLevelList(state);
+                if (values == null)
+                {
+                    return null; // Unexpected token or end of input.
+                }
+                state.MoveNextToken();
+
+                return Expression.Call(
+                    Expression.Constant(values.ToHashSet()),
+                    typeof(HashSet<UnifiedLevel>).GetMethod(nameof(HashSet<UnifiedLevel>.Contains))!,
+                    GetTableLevel(matchedColumn));
+            }
             return null; // Unexpected token or end of input.
         }
 
@@ -440,24 +455,27 @@ namespace InstantTraceViewer
             return UnescapeStringLiteral(state.CurrentToken);
         }
 
-        private static IReadOnlyList<string> TryReadStringLiteralList(ParserState state)
+        private static IReadOnlyList<string> TryReadStringLiteralList(ParserState state) => TryReadList<string>(state, TryReadStringLiteral);
+
+        private static IReadOnlyList<UnifiedLevel> TryReadLevelList(ParserState state) => TryReadList<UnifiedLevel>(state, state => TryReadLevel(state));
+
+        private static IReadOnlyList<T> TryReadList<T>(ParserState state, Func<ParserState, object> readItem)
         {
-            if (state.Eof || state.CurrentToken.Length == 0 || state.CurrentToken[0] != '[')
+            if (state.Eof || state.CurrentToken.Length == 0 || !state.CurrentTokenMatches("["))
             {
-                state.CurrentTokenMatches("["); // Add [ as expected token.
-                return null; // End of input or malformed string literal.
+                return null; // End of input or not start of list.
             }
 
-            List<string> values = new();
+            List<T> values = new();
             while (true)
             {
                 state.MoveNextToken(); // Move past '[' or ','
-                string value = TryReadStringLiteral(state);
+                object value = readItem(state);
                 if (value == null)
                 {
                     return null; // Unexpected token or end of input.
                 }
-                values.Add(value);
+                values.Add((T)value);
 
                 state.MoveNextToken();
                 if (state.CurrentTokenMatches("]"))
