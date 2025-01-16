@@ -461,7 +461,7 @@ namespace InstantTraceViewer
 
         private static IReadOnlyList<T> TryReadList<T>(ParserState state, Func<ParserState, object> readItem)
         {
-            if (state.Eof || state.CurrentToken.Length == 0 || !state.CurrentTokenMatches("["))
+            if (!state.CurrentTokenMatches("["))
             {
                 return null; // End of input or not start of list.
             }
