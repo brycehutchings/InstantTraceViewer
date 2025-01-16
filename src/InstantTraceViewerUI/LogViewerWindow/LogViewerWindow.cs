@@ -11,9 +11,12 @@ namespace InstantTraceViewerUI
 {
     unsafe internal class LogViewerWindow : IDisposable
     {
+        private static readonly MinUniqueId MinUniqueIdPool = new();
+
         private readonly ImGuiListClipperPtr _tableClipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
         private readonly SharedTraceSource _traceSource;
-        private readonly Guid _windowId = Guid.NewGuid();
+        private readonly int _windowId;
+        private readonly string _windowIdString;
 
         private ViewerRules _viewerRules = new();
         private FilteredTraceTableBuilder _filteredTraceTableBuilder = new();
@@ -48,6 +51,11 @@ namespace InstantTraceViewerUI
 
         public LogViewerWindow(SharedTraceSource traceSource)
         {
+            _windowId = MinUniqueIdPool.TakeId();
+            // In addition to using the window id for uniqueness, we also use the trace source type (e.g. ETW, Logcat, Csv) so
+            // that persisted column settings from one source don't affect another.
+            _windowIdString = $"LogViewerWindow_{traceSource.TraceSource.GetType().Name}_{_windowId}";
+
             _traceSource = traceSource;
             _traceSource.AddRef(this);
         }
@@ -73,7 +81,9 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
 
             bool opened = true;
-            if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###LogViewerWindow_{_windowId}", ref opened))
+
+            // The trace source type is used for the window name imgui id/hash so that changes to size and reorder of columns is remembered.
+            if (ImGui.Begin($"{_traceSource.TraceSource.DisplayName}###{_windowIdString}", ref opened))
             {
                 DrawWindowContents(uiCommands, visibleTraceTable, filteredViewRebuilt);
             }
@@ -90,10 +100,10 @@ namespace InstantTraceViewerUI
 
             if (_spamFilterWindow != null)
             {
-               if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
-               {
-                   _spamFilterWindow = null;
-               }
+                if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
+                {
+                    _spamFilterWindow = null;
+                }
             }
 
             if (!opened)
@@ -126,7 +136,7 @@ namespace InstantTraceViewerUI
             if (ImGui.BeginTable("TraceTable", visibleTraceTable.Schema.Columns.Count,
                 ImGuiTableFlags.ScrollX | ImGuiTableFlags.ScrollY |
                 ImGuiTableFlags.RowBg |
-                ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV | 
+                ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV |
                 ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable | ImGuiTableFlags.Hideable))
             {
                 float dpiBase = ImGui.GetFontSize();
@@ -523,14 +533,14 @@ namespace InstantTraceViewerUI
             {
                 if (ImGui.MenuItem("Spam filter..."))
                 {
-                    _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowId);
+                    _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
                 }
 
                 ImGui.Separator();
 
                 if (ImGui.MenuItem("Edit filters..."))
                 {
-                    _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowId);
+                    _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
                 }
 
                 ImGui.BeginDisabled(_viewerRules.Rules.Count == 0);
@@ -554,7 +564,7 @@ namespace InstantTraceViewerUI
                 ImGui.BeginDisabled(visibleTraceTable.Schema.TimestampColumn == null);
                 if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
                 {
-                    _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName, _windowId) : null;
+                    _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName, _windowIdString) : null;
                 }
                 ImGui.EndDisabled();
                 ImGui.EndPopup();
@@ -692,6 +702,8 @@ namespace InstantTraceViewerUI
         {
             if (!_isDisposed)
             {
+                MinUniqueIdPool.ReturnId(_windowId);
+
                 if (disposing)
                 {
                     _tableClipper.Destroy();
