@@ -12,7 +12,7 @@ namespace InstantTraceViewerUI
         private const string WindowName = "Spam Filter";
 
         private readonly string _name;
-        private readonly Guid _windowId;
+        private readonly string _parentWindowId;
 
 
         private IReadOnlyList<CountByBaseAdapter> _adapters;
@@ -24,10 +24,10 @@ namespace InstantTraceViewerUI
 
         private bool _open = true;
 
-        public SpamFilterWindow(string name, Guid windowId)
+        public SpamFilterWindow(string name, string parentWindowId)
         {
             _name = name;
-            _windowId = windowId;
+            _parentWindowId = parentWindowId;
         }
 
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules viewerRules, ITraceTableSnapshot traceTable)
@@ -43,7 +43,7 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(400, 150), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter_{_windowId}", ref _open))
+            if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter_{_parentWindowId}", ref _open))
             {
                 ImGui.SetNextItemWidth(15 * ImGui.GetFontSize());
                 if (ImGui.BeginCombo("Count by group", _currentAdapter.Name))

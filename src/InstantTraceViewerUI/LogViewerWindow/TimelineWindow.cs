@@ -15,7 +15,7 @@ namespace InstantTraceViewerUI
         private const string PopupName = "Timeline";
 
         private readonly string _name;
-        private readonly Guid _windowId;
+        private readonly string _parentWindowId;
 
         private bool _open = true;
 
@@ -31,10 +31,10 @@ namespace InstantTraceViewerUI
         private ComputedTimeline _computedTimeline;
         private Task<ComputedTimeline> _nextComputedTimelineTask;
 
-        public TimelineWindow(string name, Guid windowId)
+        public TimelineWindow(string name, string parentWindowId)
         {
             _name = name;
-            _windowId = windowId;
+            _parentWindowId = parentWindowId;
         }
 
         public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
@@ -42,7 +42,7 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{PopupName} - {_name}###Timeline_{_windowId}", ref _open))
+            if (ImGui.Begin($"{PopupName} - {_name}###Timeline_{_parentWindowId}", ref _open))
             {
                 DrawTimelineGraph(traceTable, startWindow, endWindow);
             }

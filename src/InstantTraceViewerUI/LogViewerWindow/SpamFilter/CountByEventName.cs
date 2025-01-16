@@ -19,9 +19,9 @@ namespace InstantTraceViewerUI
 
             public override void AddColumnValues()
             {
-                ImGui.TextUnformatted(ProviderName);
-                ImGui.TableNextColumn();
                 ImGui.TextUnformatted(Name);
+                ImGui.TableNextColumn();
+                ImGui.TextUnformatted(ProviderName);
                 ImGui.TableNextColumn();
                 ImGui.TextUnformatted(MaxLevel?.ToString() ?? "");
             }
@@ -37,15 +37,15 @@ namespace InstantTraceViewerUI
             _schema = schema;
         }
 
-        public override string Name => $"{ProviderColumnName}, {NameColumnName}";
+        public override string Name => $"{NameColumnName}, {ProviderColumnName}";
 
         public override int ColumnCount => 3;
 
         public override void SetupColumns()
         {
             ImGuiTableColumnFlags DefaultHideIfColumnNull(TraceSourceSchemaColumn column) => column == null ? ImGuiTableColumnFlags.DefaultHide : 0;
-            ImGui.TableSetupColumn(ProviderColumnName, ImGuiTableColumnFlags.WidthStretch | DefaultHideIfColumnNull(_schema.ProviderColumn), 1);
             ImGui.TableSetupColumn(NameColumnName, ImGuiTableColumnFlags.WidthStretch, 1);
+            ImGui.TableSetupColumn(ProviderColumnName, ImGuiTableColumnFlags.WidthStretch | DefaultHideIfColumnNull(_schema.ProviderColumn), 1);
             ImGui.TableSetupColumn(LevelColumnName, ImGuiTableColumnFlags.WidthFixed | DefaultHideIfColumnNull(_schema.UnifiedLevelColumn), 8 * ImGui.GetFontSize());
         }
 
@@ -76,8 +76,8 @@ namespace InstantTraceViewerUI
         public override IEnumerable<CountByBase> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<CountByBase> list)
             => spec.ColumnIndex switch
             {
-                0 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).ProviderName),
-                1 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).Name),
+                0 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).Name),
+                1 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).ProviderName),
                 2 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).MaxLevel),
                 3 => ImGuiSortInternal(spec.SortDirection, list, p => ((CountByEventName)p).Count),
                 _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
