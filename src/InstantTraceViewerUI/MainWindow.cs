@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
-using System.Windows.Forms;
 using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.Models;
 using ImGuiNET;
@@ -14,6 +14,8 @@ namespace InstantTraceViewerUI
     internal interface IUiCommands
     {
         void AddLogViewerWindow(LogViewerWindow logViewerWindow);
+
+        void ShowMessageBox(string message, string title, bool isError);
     }
 
     internal class MainWindow : IDisposable, IUiCommands
@@ -21,6 +23,10 @@ namespace InstantTraceViewerUI
         private readonly AdbClient _adbClient = new AdbClient();
         private IReadOnlyList<DeviceData> _adbDevices = null;
         private Exception _adbDevicesException = null;
+
+        record class MessageBoxData(string Message, string Title, bool IsError);
+        private bool _messageBoxDoPopup = false;
+        private MessageBoxData? _messageBox = null;
 
         private Etw.OpenActiveSession _openActiveSession = new();
         private List<LogViewerWindow> _logViewerWindows = new();
@@ -66,6 +72,12 @@ namespace InstantTraceViewerUI
             _pendingNewLogViewWindows.Add(logViewerWindow);
         }
 
+        public void ShowMessageBox(string message, string title, bool isError)
+        {
+            _messageBox = new MessageBoxData(message, title, isError);
+            _messageBoxDoPopup = true;
+        }
+
         public void Draw()
         {
             uint dockId = ImGui.DockSpaceOverViewport();
@@ -88,8 +100,32 @@ namespace InstantTraceViewerUI
                 _openActiveSession.DrawWindow(this, ref _showOpenActiveSession);
             }
 
+            DrawMessageBox();
+
             // Clean up any closed windows. A window is determined to be closed during the DrawWindow call so this comes afterwards.
             CleanUpClosedLogViewerWindows();
+        }
+
+        private void DrawMessageBox()
+        {
+            if (_messageBoxDoPopup)
+            {
+                Debug.Assert(_messageBox != null);
+                ImGui.OpenPopup("###GlobalModalMessage");
+                _messageBoxDoPopup = false;
+            }
+
+            if (_messageBox != null && ImGui.BeginPopupModal($"{_messageBox.Title}###GlobalModalMessage", ImGuiWindowFlags.AlwaysAutoResize))
+            {
+                ImGui.TextUnformatted(_messageBox.Message);
+                ImGui.NewLine();
+                if (ImGui.Button("OK"))
+                {
+                    ImGui.CloseCurrentPopup();
+                    _messageBox = null;
+                }
+                ImGui.EndPopup();
+            }
         }
 
         private void CleanUpClosedLogViewerWindows()
@@ -205,7 +241,7 @@ namespace InstantTraceViewerUI
                             }
                             catch (Exception ex)
                             {
-                                MessageBox.Show($"Failed to open .WPRP file or start ETW session.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                ShowMessageBox($"Failed to open .WPRP file or start ETW session.\n\n{ex.Message}", "Error", isError: true);
                             }
                         }
                     }
@@ -227,7 +263,7 @@ namespace InstantTraceViewerUI
                             }
                             catch (Exception ex)
                             {
-                                MessageBox.Show($"Failed to open .etl file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                ShowMessageBox($"Failed to open .etl file.\n\n{ex.Message}", "Error", isError: true);
                             }
                         }
                     }
@@ -259,7 +295,7 @@ namespace InstantTraceViewerUI
                                     }
                                     catch (Exception ex)
                                     {
-                                        MessageBox.Show($"Failed to open .WPRP file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                        ShowMessageBox($"Failed to open .WPRP file.\n\n{ex.Message}", "Error", isError: true);
                                     }
                                 }
                             }
@@ -301,7 +337,7 @@ namespace InstantTraceViewerUI
                                 }
                                 catch (Exception ex)
                                 {
-                                    MessageBox.Show($"Failed to open .CSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    ShowMessageBox($"Failed to open .CSV file.\n\n{ex.Message}", "Error", isError: true);
                                 }
                             }
                         }
@@ -318,13 +354,13 @@ namespace InstantTraceViewerUI
                         {
                             try
                             {
-                                string clipboardText = Clipboard.GetText();
+                                string clipboardText = ImGui.GetClipboardText();
                                 var csvTableSource = new CsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
                                 _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
                             }
                             catch (Exception ex)
                             {
-                                MessageBox.Show($"Failed to read CSV from clipboard.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                ShowMessageBox($"Failed to read CSV from clipboard.\n\n{ex.Message}", "Error", isError: true);
                             }
                         }
                     });
@@ -352,7 +388,7 @@ namespace InstantTraceViewerUI
                                 }
                                 catch (Exception ex)
                                 {
-                                    MessageBox.Show($"Failed to open .TSV file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    ShowMessageBox($"Failed to open .TSV file.\n\n{ex.Message}", "Error", isError: true);
                                 }
                             }
                         }
@@ -369,13 +405,13 @@ namespace InstantTraceViewerUI
                         {
                             try
                             {
-                                string clipboardText = Clipboard.GetText();
+                                string clipboardText = ImGui.GetClipboardText();
                                 var tsvTableSource = new TsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
                                 _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
                             }
                             catch (Exception ex)
                             {
-                                MessageBox.Show($"Failed to read TSV from clipboard.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                ShowMessageBox($"Failed to read TSV from clipboard.\n\n{ex.Message}", "Error", isError: true);
                             }
                         }
                     });

@@ -11,20 +11,16 @@
     <StartupObject>InstantTraceViewerUI.Program</StartupObject>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <Nullable>annotations</Nullable>
-    <UseWindowsForms>True</UseWindowsForms>
     <ApplicationIcon>Assets\Logo.ico</ApplicationIcon>
+
+    <!-- AOT compilation may improve startup times -->
     <PublishReadyToRun>true</PublishReadyToRun>
 
-    <!-- Cannot trim as long as WinForms is used for MessageBox.Show -->
-    <PublishTrimmed>false</PublishTrimmed>
+    <PublishTrimmed>true</PublishTrimmed>
 
-    <!-- _SuppressWinFormsTrimError will get rid of the publish error but then it fails at runtime. The error is legit. -->
-    <_SuppressWinFormsTrimError>false</_SuppressWinFormsTrimError>
+    <SelfContained>true</SelfContained>
 
-    <!-- And SelfContained is 250MB without trimming instead of "only" 100MB -->
-    <SelfContained>false</SelfContained>
-
-    <!-- The app has very slow initial startup time when publishing as a single file (~40MB) -->
+    <!-- Single file has slower startup on first run (Defender scan?)-->
     <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup>
@@ -53,8 +49,8 @@
 
   <ItemGroup>
     <PackageReference Include="AdvancedSharpAdbClient" Version="3.3.13" />
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.18" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 

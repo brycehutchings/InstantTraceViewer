@@ -22,6 +22,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		readme.md = readme.md
 	EndProjectSection
 EndProject
+Project("{C7167F0D-BC9F-4E6E-AFE1-012C56B48DB5}") = "InstantTraceViewerMsixPackaging", "src\InstantTraceViewerMsixPackaging\InstantTraceViewerMsixPackaging.wapproj", "{96FA9612-3813-425A-8DAF-807D9C942F72}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -78,6 +80,18 @@ Global
 		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|ARM64.Build.0 = Release|Any CPU
 		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|x64.ActiveCfg = Release|Any CPU
 		{5314F8D7-2A5D-40BF-A2ED-60E90A52DF74}.Release|x64.Build.0 = Release|Any CPU
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Debug|ARM64.Build.0 = Debug|ARM64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Debug|ARM64.Deploy.0 = Debug|ARM64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Debug|x64.ActiveCfg = Debug|x64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Debug|x64.Build.0 = Debug|x64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Debug|x64.Deploy.0 = Debug|x64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Release|ARM64.ActiveCfg = Release|ARM64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Release|ARM64.Build.0 = Release|ARM64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Release|ARM64.Deploy.0 = Release|ARM64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Release|x64.ActiveCfg = Release|x64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Release|x64.Build.0 = Release|x64
+		{96FA9612-3813-425A-8DAF-807D9C942F72}.Release|x64.Deploy.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

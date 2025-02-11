@@ -19,7 +19,7 @@ namespace InstantTraceViewerUI
 
             foreach (string filename in new[] { "FieldMap_HResults.tsv", "FieldMap_NTStatus.tsv", "FieldMap_Win32Errors.tsv" })
             {
-                string[] lines = File.ReadAllLines(filename);
+                string[] lines = File.ReadAllLines(Path.Combine(AppContext.BaseDirectory, filename));
 
                 // First line of these files are field names that they may apply to.
                 string[] fieldNames = lines[0].Split('\t');

@@ -11,8 +11,6 @@ namespace InstantTraceViewerUI
         [STAThread] // For WinForms file browser usage :-\
         public static int Main(string[] args)
         {
-            Directory.SetCurrentDirectory(AppContext.BaseDirectory);
-
             if (NativeInterop.WindowInitialize(out nint imguiContext) != 0)
             {
                 return 1;

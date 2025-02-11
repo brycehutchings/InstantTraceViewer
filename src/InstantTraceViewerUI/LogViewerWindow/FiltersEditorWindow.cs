@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Windows.Forms;
 
 namespace InstantTraceViewerUI
 {
@@ -47,7 +46,7 @@ namespace InstantTraceViewerUI
                     _parser = new TraceTableRowSelectorSyntax(tableSchema);
                 }
 
-                DrawCurrentRules(rules);
+                DrawCurrentRules(uiCommands, rules);
             }
 
             ImGui.End();
@@ -55,7 +54,7 @@ namespace InstantTraceViewerUI
             return _open;
         }
 
-        private unsafe void DrawCurrentRules(ViewerRules rules)
+        private unsafe void DrawCurrentRules(IUiCommands uiCommands, ViewerRules rules)
         {
             Vector2 inputScreenPos = ImGui.GetCursorScreenPos();
             if (ImGui.InputText("##AddRule", ref _addRuleInputText, 1024) || _addRuleLastParseResult == null)
@@ -286,7 +285,7 @@ Examples:
                         }
                         catch (Exception ex)
                         {
-                            MessageBox.Show($"Failed to open .ITVF file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            uiCommands.ShowMessageBox("Failed to open .ITVF file.\n\n" + ex.Message, "Error", isError: true);
                         }
                     }
                 }
@@ -312,7 +311,7 @@ Examples:
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Failed to save .ITVF file.\n\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        uiCommands.ShowMessageBox("Failed to save .ITVF file.\n\n" + ex.Message, "Error", isError: true);
                     }
                 }
 
