@@ -11,7 +11,7 @@
   <Identity
     Name="7121BryceHutchings.InstantTraceViewer"
     Publisher="CN=bryceh"
-    Version="1.0.7.0" />
+    Version="1.0.0.0" />
 
   <Properties>
     <DisplayName>Instant Trace Viewer</DisplayName>
