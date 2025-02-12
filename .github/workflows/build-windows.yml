@@ -43,15 +43,11 @@ jobs:
     - name: Upload Instant Trace Viewer MSIX
       uses: actions/upload-artifact@v4
       with:
-        name: InstantTraceViewerMsix-${{ matrix.platform }}
+        name: InstantTraceViewerMSIX-${{ matrix.platform }}
         path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/Upload/InstantTraceViewerMsixPackaging_*
         if-no-files-found: error
 
-    # The earlier step to publish only builds the MSIX package and its dependencies. This builds everything (like unit tests).
-    - name: Build Everything
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
-
     # FIXME: ParseWinError excluded because C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\winerror.h is not found on the build agent.
     - name: Run Unit Tests
-      run: dotnet test src/UnitTests/UnitTests.csproj --configuration Release --filter "FullyQualifiedName!~ParseWinError"
+      run: dotnet test src/UnitTests/UnitTests.csproj -c Debug --filter "FullyQualifiedName!~ParseWinError"
+      if: matrix.platform == 'x64'
