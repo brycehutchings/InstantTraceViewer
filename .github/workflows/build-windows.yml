@@ -43,7 +43,7 @@ jobs:
     - name: Upload Instant Trace Viewer MSIX
       uses: actions/upload-artifact@v4
       with:
-        name: InstantTraceViewerBundle
+        name: InstantTraceViewerMsix-${{ matrix.platform }}
         path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/Upload/InstantTraceViewerMsixPackaging_*
         if-no-files-found: error
 
