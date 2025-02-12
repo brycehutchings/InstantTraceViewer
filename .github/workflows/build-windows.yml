@@ -29,6 +29,25 @@ jobs:
     - name: Restore NuGet packages
       run: dotnet restore InstantTraceViewer.sln
 
+    - name: Publish MSIX
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 .\src\InstantTraceViewerMsixPackaging\InstantTraceViewerMsixPackaging.wapproj
+
+    - name: Upload Instant Trace Viewer Unpackaged
+      uses: actions/upload-artifact@v4
+      with:
+        name: InstantTraceViewer-${{ matrix.platform }}
+        path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/InstantTraceViewerUI
+        if-no-files-found: error
+
+    - name: Upload Instant Trace Viewer MSIX
+      uses: actions/upload-artifact@v4
+      with:
+        name: InstantTraceViewerBundle
+        path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/Upload/InstantTraceViewerMsixPackaging_1.0.0.0_x64
+        if-no-files-found: error
+
+    # The earlier step to publish only builds the MSIX package and its dependencies. This builds everything (like unit tests).
     - name: Build Everything
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild -m -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
@@ -36,42 +55,3 @@ jobs:
     # FIXME: ParseWinError excluded because C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\winerror.h is not found on the build agent.
     - name: Run Unit Tests
       run: dotnet test src/UnitTests/UnitTests.csproj --configuration Release --filter "FullyQualifiedName!~ParseWinError"
-  package:
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.0.2
-
-    - name: Restore NuGet packages
-      run: dotnet restore InstantTraceViewer.sln
-
-    # 'Platform' doesn't seem to matter because 'AppxBundlePlatforms' determines what is actually built and packaged. But it does affect the output directory.
-    - name: Publish MSIX
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=x64 -p:NoWarn=1591 .\src\InstantTraceViewerMsixPackaging\InstantTraceViewerMsixPackaging.wapproj
-
-    - name: Upload Instant Trace Viewer x64 Unpackaged
-      uses: actions/upload-artifact@v4
-      with:
-        name: InstantTraceViewer-x64
-        path: src/InstantTraceViewerUI/bin/x64/Release/net8.0-windows10.0.22621.0/win-x64/win-x64/msixpublish
-        if-no-files-found: error
-
-    - name: Upload Instant Trace Viewer arm64 Unpackaged
-      uses: actions/upload-artifact@v4
-      with:
-        name: InstantTraceViewer-arm64
-        path: src/InstantTraceViewerUI/bin/arm64/Release/net8.0-windows10.0.22621.0/win-x64/win-arm64/msixpublish
-        if-no-files-found: error
-
-    - name: Upload Instant Trace Viewer MsixBundle
-      uses: actions/upload-artifact@v4
-      with:
-        name: InstantTraceViewerBundle
-        path: src/InstantTraceViewerMsixPackaging/bin/x64/Release/Upload/InstantTraceViewerMsixPackaging_*
-        if-no-files-found: error
