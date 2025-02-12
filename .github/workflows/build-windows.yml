@@ -50,7 +50,7 @@ jobs:
     # The earlier step to publish only builds the MSIX package and its dependencies. This builds everything (like unit tests).
     - name: Build Everything
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
+      run: msbuild -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
 
     # FIXME: ParseWinError excluded because C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\winerror.h is not found on the build agent.
     - name: Run Unit Tests
