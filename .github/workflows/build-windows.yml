@@ -44,7 +44,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: InstantTraceViewerBundle
-        path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/Upload/InstantTraceViewerMsixPackaging_1.0.0.0_x64
+        path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/Upload/InstantTraceViewerMsixPackaging_*
         if-no-files-found: error
 
     # The earlier step to publish only builds the MSIX package and its dependencies. This builds everything (like unit tests).
