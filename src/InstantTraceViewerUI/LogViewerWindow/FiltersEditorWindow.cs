@@ -298,6 +298,7 @@ Examples:
                     {
                         string file = FileDialog.SaveFile("Instant Trace Viewer Filters (*.itvf)|*.itvf",
                             Settings.InstantTraceViewerFiltersLocation,
+                            ".itvf",
                             s => Settings.InstantTraceViewerFiltersLocation = s);
                         if (file != null)
                         {

@@ -9,105 +9,90 @@ namespace InstantTraceViewerUI
 {
     internal static class FileDialog
     {
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-        public unsafe struct OpenFileName
-        {
-            public int lStructSize;
-            public IntPtr hwndOwner;
-            public IntPtr hInstance;
-            public string lpstrFilter;
-            public string lpstrCustomFilter;
-            public int nMaxCustFilter;
-            public int nFilterIndex;
-            public void* lpstrFile;
-            public int nMaxFile;
-            public string lpstrFileTitle;
-            public int nMaxFileTitle;
-            public string lpstrInitialDir;
-            public string lpstrTitle;
-            public int Flags;
-            public short nFileOffset;
-            public short nFileExtension;
-            public string lpstrDefExt;
-            public IntPtr lCustData;
-            public IntPtr lpfnHook;
-            public string lpTemplateName;
-            public IntPtr pvReserved;
-            public int dwReserved;
-            public int flagsEx;
-        }
+        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode)]
+        public static unsafe extern int OpenFileDialog(string filter, string initialDirectory, char* outFileBuffer, int outFileBufferLength, int multiSelect);
 
-        [DllImport("comdlg32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-        private static extern bool GetOpenFileName([In, Out] OpenFileName ofn);
+        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode)]
+        public static unsafe extern int SaveFileDialog(string filter, string initialDirectory, char* outFileBuffer, int outFileBufferLength);
 
         public static string OpenFile(string filter, string initialDirectory, Action<string> persistDirectory)
         {
-            /*
-            var dialog = new OpenFileDialog();
-            dialog.InitialDirectory = initialDirectory;
-            dialog.Filter = filter;
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                persistDirectory(Path.GetDirectoryName(dialog.FileName));
-
-                return dialog.FileName;
-            }
-
-            return null;
-            */
+            string outFileBuffer = new string('\0', 8192);
             unsafe
             {
-                OpenFileName ofn = new OpenFileName
+                fixed (char* outFilePtr = outFileBuffer)
                 {
-                    lStructSize = Marshal.SizeOf(typeof(OpenFileName)),
-                    lpstrFilter = filter.Replace('|', '\0') + '\0',
-                    lpstrFile = NativeMemory.AllocZeroed(260, (nuint)Marshal.SystemDefaultCharSize), //new string(new char[256]),
-                    nMaxFile = 260,
-                    lpstrInitialDir = initialDirectory,
-                    // Flags = 0x8 /* OFN_NOCHANGEDIR */ | 0x1000 /* OFN_FILEMUSTEXIST */
-                    Flags = 0x1000 /* OFN_FILEMUSTEXIST */
-                };
-                if (GetOpenFileName(ofn))
-                {
-                    string file = Marshal.PtrToStringUni(new nint(ofn.lpstrFile));
-                    NativeMemory.Free(ofn.lpstrFile);
-                    persistDirectory(Path.GetDirectoryName(file));
-                    return file;
+                    if (OpenFileDialog(ReformatFilter(filter), initialDirectory, outFilePtr, outFileBuffer.Length, 0) != 0)
+                    {
+                        return null;
+                    }
+
+                    string outFileTrimmed = new string(outFilePtr); // Trim off null terminators
+                    persistDirectory(Path.GetDirectoryName(outFileTrimmed));
+                    return outFileTrimmed;
                 }
             }
-
-            return null;
         }
+
         public static IReadOnlyList<string> OpenMultipleFiles(string filter, string initialDirectory, Action<string> persistDirectory)
         {
-            /*
-            var dialog = new OpenFileDialog();
-            dialog.InitialDirectory = initialDirectory;
-            dialog.Filter = filter;
-            dialog.Multiselect = true;
-            if (dialog.ShowDialog() == DialogResult.OK && dialog.FileNames.Length > 0)
+            string outFileBuffer = new string('\0', 8192);
+            unsafe
             {
-                persistDirectory(Path.GetDirectoryName(dialog.FileNames.First()));
+                fixed (char* outFilePtr = outFileBuffer)
+                {
+                    if (OpenFileDialog(ReformatFilter(filter), initialDirectory, outFilePtr, outFileBuffer.Length, 1 /* multiselect */) != 0)
+                    {
+                        return Array.Empty<string>();
+                    }
 
-                return dialog.FileNames;
-            }*/
+                    // Break the buffer which is null separated into individual strings
+                    List<string> paths = new List<string>();
+                    int start = 0;
+                    for (int i = 0; i < outFileBuffer.Length; i++)
+                    {
+                        if (outFileBuffer[i] == '\0')
+                        {
+                            if (i == start)
+                            {
+                                break; // Double null terminator indicates the end of the list.
+                            }
+                            paths.Add(outFileBuffer.Substring(start, i - start));
+                            start = i + 1;
+                        }
+                    }
 
-            return Array.Empty<string>();
+                    // The first path is the folder, the remaining paths are files in that folder, so combine them.
+                    persistDirectory(paths[0]);
+                    return paths.Skip(1).Select(p => Path.Combine(paths[0], p)).ToArray();
+                }
+            }
         }
 
-        public static string SaveFile(string filter, string initialDirectory, Action<string> persistDirectory)
+        public static string SaveFile(string filter, string initialDirectory, string defaultExtension, Action<string> persistDirectory)
         {
-            /*var dialog = new SaveFileDialog();
-            dialog.InitialDirectory = initialDirectory;
-            dialog.Filter = filter;
-            if (dialog.ShowDialog() == DialogResult.OK)
+            string outFileBuffer = new string('\0', 8192);
+            unsafe
             {
-                persistDirectory(Path.GetDirectoryName(dialog.FileName));
+                fixed (char* outFilePtr = outFileBuffer)
+                {
+                    if (SaveFileDialog(ReformatFilter(filter), initialDirectory, outFilePtr, outFileBuffer.Length) != 0)
+                    {
+                        return null;
+                    }
 
-                return dialog.FileName;
-            }*/
+                    string outFileTrimmed = new string(outFilePtr); // Trim off null terminators
+                    if (!Path.HasExtension(outFileTrimmed))
+                    {
+                        outFileTrimmed = Path.ChangeExtension(outFileTrimmed, defaultExtension);
+                    }
 
-            return null;
+                    persistDirectory(Path.GetDirectoryName(outFileTrimmed));
+                    return outFileTrimmed;
+                }
+            }
         }
+
+        private static string ReformatFilter(string filter) => filter.Replace('|', '\0') + '\0';
     }
 }
