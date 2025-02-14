@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Numerics;
 using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.Models;
 using ImGuiNET;
@@ -119,11 +120,15 @@ namespace InstantTraceViewerUI
             {
                 ImGui.TextUnformatted(_messageBox.Message);
                 ImGui.NewLine();
+
+                // "OK" results in an awkardly small button, so make it wider by increasing padding.
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,new Vector2(32, ImGui.GetStyle().FramePadding.Y));
                 if (ImGui.Button("OK"))
                 {
                     ImGui.CloseCurrentPopup();
                     _messageBox = null;
                 }
+                ImGui.PopStyleVar();
                 ImGui.EndPopup();
             }
         }
@@ -466,6 +471,16 @@ namespace InstantTraceViewerUI
                         _adbDevicesException = null;
                     }
 
+                    ImGui.EndMenu();
+                }
+
+                if (ImGui.BeginMenu("About"))
+                {
+                    if (ImGui.MenuItem("Open GitHub page"))
+                    {
+                        Process.Start(new ProcessStartInfo("https://github.com/brycehutchings/InstantTraceViewer") { UseShellExecute = true });
+
+                    }
                     ImGui.EndMenu();
                 }
 
