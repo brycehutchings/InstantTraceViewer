@@ -29,21 +29,25 @@ jobs:
     - name: Restore NuGet packages
       run: dotnet restore InstantTraceViewer.sln
 
-    - name: Publish UI
+    - name: Publish MSIX
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:PublishProfile=src\InstantTraceViewerUI\Properties\PublishProfiles\win-${{ matrix.platform }}.pubxml -p:NoWarn=1591 .\src\InstantTraceViewerUI\InstantTraceViewerUI.csproj
+      run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 .\src\InstantTraceViewerMsixPackaging\InstantTraceViewerMsixPackaging.wapproj
 
-    - name: Upload Instant Trace Viewer
+    - name: Upload Instant Trace Viewer Unpackaged
       uses: actions/upload-artifact@v4
       with:
         name: InstantTraceViewer-${{ matrix.platform }}
-        path: src/InstantTraceViewerUI/bin/${{ matrix.platform }}/Release/net8.0-windows10.0.22621.0/publish
+        path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/InstantTraceViewerUI
         if-no-files-found: error
 
-    - name: Build Everything
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 InstantTraceViewer.sln
+    - name: Upload Instant Trace Viewer MSIX
+      uses: actions/upload-artifact@v4
+      with:
+        name: InstantTraceViewerMSIX-${{ matrix.platform }}
+        path: src/InstantTraceViewerMsixPackaging/bin/${{ matrix.platform }}/Release/Upload/InstantTraceViewerMsixPackaging_*
+        if-no-files-found: error
 
     # FIXME: ParseWinError excluded because C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\winerror.h is not found on the build agent.
     - name: Run Unit Tests
-      run: dotnet test src/UnitTests/UnitTests.csproj --configuration Release --filter "FullyQualifiedName!~ParseWinError"
+      run: dotnet test src/UnitTests/UnitTests.csproj -c Debug --filter "FullyQualifiedName!~ParseWinError"
+      if: matrix.platform == 'x64'

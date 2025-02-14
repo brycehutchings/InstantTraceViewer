@@ -92,6 +92,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="FileDialogs.cpp" />
     <ClCompile Include="ImGuiWindow.cpp" />
   </ItemGroup>
   <ItemGroup>
