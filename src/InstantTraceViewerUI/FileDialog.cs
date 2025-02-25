@@ -62,9 +62,16 @@ namespace InstantTraceViewerUI
                         }
                     }
 
-                    // The first path is the folder, the remaining paths are files in that folder, so combine them.
-                    persistDirectory(paths[0]);
-                    return paths.Skip(1).Select(p => Path.Combine(paths[0], p)).ToArray();
+                    if (paths.Count == 1)
+                    {
+                        persistDirectory(Path.GetDirectoryName(paths[0]));
+                        return paths;
+                    }
+
+                    // When there are multiple files selected, the first one is the directory and the rest are just filenames.
+                    string directoryName = paths[0];
+                    persistDirectory(directoryName);
+                    return paths.Slice(1, paths.Count - 1).Select(p => Path.Combine(directoryName, p)).ToList();
                 }
             }
         }

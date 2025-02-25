@@ -256,6 +256,13 @@ Examples:
 
                 ImGui.EndTable();
 
+                if (ImGui.Button("Clear"))
+                {
+                    rules.ClearRules();
+                }
+
+                ImGui.SameLine();
+
                 if (ImGui.Button("Import"))
                 {
                     IReadOnlyList<string> files = FileDialog.OpenMultipleFiles("Instant Trace Viewer Filters (*.itvf)|*.itvf",
