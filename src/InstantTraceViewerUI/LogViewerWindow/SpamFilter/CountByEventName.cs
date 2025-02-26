@@ -55,8 +55,8 @@ namespace InstantTraceViewerUI
                 Enumerable.Range(0, traceTable.RowCount)
                     .GroupBy(t =>
                     {
-                        var name = traceTable.GetColumnString(t, traceTable.Schema.NameColumn);
-                        var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn) : null;
+                        var name = traceTable.GetColumnValueString(t, traceTable.Schema.NameColumn);
+                        var providerName = traceTable.Schema.ProviderColumn != null ? traceTable.GetColumnValueString(t, traceTable.Schema.ProviderColumn) : null;
                         return (providerName, name);
                     })
                     .Select(g => new CountByEventName
@@ -100,7 +100,7 @@ namespace InstantTraceViewerUI
                     query += $" {TraceTableRowSelectorSyntax.AndOperatorName} ";
                 }
 
-                query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.NameColumn)} {TraceTableRowSelectorSyntax.StringInOperatorName} [{string.Join(", ", selectedTraceTypes.Select(s => TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(s.Name)))}]";
+                query += $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.NameColumn)} {TraceTableRowSelectorSyntax.InOperatorName} [{string.Join(", ", selectedTraceTypes.Select(s => TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(s.Name)))}]";
 
                 viewerRules.AddExcludeRule(query);
             }

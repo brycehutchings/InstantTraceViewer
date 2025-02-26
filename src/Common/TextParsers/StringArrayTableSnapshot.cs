@@ -19,17 +19,22 @@
 
         public int GenerationId => 1;
 
-        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
+        public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)
         {
             throw new NotImplementedException();
         }
 
-        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
+        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
         {
             throw new NotImplementedException();
         }
 
-        public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+        public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            throw new NotImplementedException();
+        }
+
+        public string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
             for (int i = 0; i < Schema.Columns.Count; i++)
             {
@@ -42,7 +47,7 @@
             throw new ArgumentException("Column not found in schema", nameof(column));
         }
 
-        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
+        public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
         {
             throw new NotImplementedException();
         }

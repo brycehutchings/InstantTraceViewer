@@ -14,10 +14,10 @@ namespace InstantTraceViewerTests
             public TraceTableSchema Schema { get; set; } = new TraceTableSchema { Columns = [Column1, Column2, Column3] };
 
             public bool GetColumnBooleanTest(int rowIndex, TraceSourceSchemaColumn column) => true;
-            public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false) => $"{column.Name}_{rowIndex}";
-            public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
-            public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
-            public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false) => $"{column.Name}_{rowIndex}";
+            public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
             public int RowCount => 16;
             public int GenerationId => 1;
         }

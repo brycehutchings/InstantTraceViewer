@@ -292,7 +292,7 @@ namespace InstantTraceViewerUI
                                 ImGui.TableNextColumn();
                             }
 
-                            string displayText = visibleTraceTable.GetColumnString(i, column, allowMultiline: false).Replace('\n', ' ');
+                            string displayText = visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false).Replace('\n', ' ');
                             ImGui.TextUnformatted(displayText);
 
                             if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnIndex)
@@ -407,7 +407,7 @@ namespace InstantTraceViewerUI
 
             if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
             {
-                var levelStr = visibleTraceTable.GetColumnUnifiedLevel(i, column).ToString();
+                var levelStr = visibleTraceTable.GetColumnValueUnifiedLevel(i, column).ToString();
 
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
@@ -416,7 +416,7 @@ namespace InstantTraceViewerUI
 
                 if (visibleTraceTable.Schema.ProviderColumn != null)
                 {
-                    var provStr = visibleTraceTable.GetColumnString(i, visibleTraceTable.Schema.ProviderColumn, allowMultiline: false);
+                    var provStr = visibleTraceTable.GetColumnValueString(i, visibleTraceTable.Schema.ProviderColumn, allowMultiline: false);
                     string[] andProvEquals = [
                         "AND",
                         TraceTableRowSelectorSyntax.CreateColumnVariableName(visibleTraceTable.Schema.ProviderColumn),
@@ -432,7 +432,7 @@ namespace InstantTraceViewerUI
             }
             else if (column == visibleTraceTable.Schema.TimestampColumn)
             {
-                var timeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnDateTime(i, column).ToString("o"));
+                var timeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnValueDateTime(i, column).ToString("o"));
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, timeStr]);
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, timeStr]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, timeStr]);
@@ -440,15 +440,26 @@ namespace InstantTraceViewerUI
             }
             else
             {
-                string text = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnString(i, column, allowMultiline: false));
+                string text = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false));
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, text]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, text]);
+
+                if (column == visibleTraceTable.Schema.ProcessIdColumn || column == visibleTraceTable.Schema.ThreadIdColumn)
+                {
+                    string nameValue = visibleTraceTable.GetColumnValueNameForId(i, column);
+                    if (!string.IsNullOrEmpty(nameValue))
+                    {
+                        string nameValueLiteral = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(nameValue);
+                        AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.StringContainsOperatorName, nameValueLiteral]);
+                        AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.StringContainsOperatorName, nameValueLiteral]);
+                    }
+                }
             }
         }
 
         private void RenderCellContentPopup(FilteredTraceTableSnapshot visibleTraceTable, int fullTableRowIndex, TraceSourceSchemaColumn column)
         {
-            string message = visibleTraceTable.FullTable.GetColumnString(fullTableRowIndex, column, true /*allow multiline*/);
+            string message = visibleTraceTable.FullTable.GetColumnValueString(fullTableRowIndex, column, true /*allow multiline*/);
 
             // Analyze the text to measure it's width and height in pixels so we can pick a reasonable popup size within limits.
             string[] lines = message.Split('\n');
@@ -664,7 +675,7 @@ namespace InstantTraceViewerUI
                     }
                     isFirstColumn = false;
 
-                    string displayText = visibleTraceTable.FullTable.GetColumnString(fullTableRowIndex, column, allowMultiline: false);
+                    string displayText = visibleTraceTable.FullTable.GetColumnValueString(fullTableRowIndex, column, allowMultiline: false);
                     copyText.Append(displayText);
                 }
                 copyText.AppendLine();
@@ -683,7 +694,7 @@ namespace InstantTraceViewerUI
             {
                 foreach (var column in visibleTraceTable.Schema.Columns)
                 {
-                    string displayText = visibleTraceTable.GetColumnString(visibleRowIndex, column, allowMultiline: false);
+                    string displayText = visibleTraceTable.GetColumnValueString(visibleRowIndex, column, allowMultiline: false);
                     if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
                     {
                         _lastSelectedVisibleRowIndex = visibleRowIndex;

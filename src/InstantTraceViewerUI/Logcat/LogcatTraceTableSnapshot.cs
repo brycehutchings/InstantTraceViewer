@@ -18,7 +18,7 @@ namespace InstantTraceViewerUI.Logcat
 
         public int GenerationId { get; init; }
 
-        public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+        public string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
             LogcatRecord traceRecord = RecordSnapshot[rowIndex];
 
@@ -55,17 +55,22 @@ namespace InstantTraceViewerUI.Logcat
 
             throw new NotImplementedException();
         }
+        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
+            => column == LogcatTraceSource.ColumnProcess ? (ProcessNames.TryGetValue(RecordSnapshot[rowIndex].ProcessId, out string processName) ? processName : null) :
+               column == LogcatTraceSource.ColumnThread ? null :
+               throw new NotSupportedException();
 
-        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
+
+        public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
                throw new NotSupportedException();
 
-        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
+        public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
                column == LogcatTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
                throw new NotSupportedException();
 
-        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
+        public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnPriority ? ConvertPriority(RecordSnapshot[rowIndex].Priority) :
                throw new NotSupportedException();
 

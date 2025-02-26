@@ -30,13 +30,16 @@ namespace InstantTraceViewer
         /// </summary>
         int GenerationId { get; }
 
-        string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false);
+        string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false);
 
-        DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column);
+        // For columns that contain both integer and a friendly name (GetColumnValueString usually combines them), this returns the friendly name.
+        string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column);
 
-        int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column);
+        DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column);
 
-        UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column);
+        int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column);
+
+        UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column);
     }
 
     public interface ITraceSource : IDisposable
@@ -66,22 +69,22 @@ namespace InstantTraceViewer
         public required IReadOnlyList<TraceSourceSchemaColumn> Columns { get; init; }
 
         /// <summary>
-        /// The column which represents the timestamp of a row. Must support queries using GetColumnDateTime.
+        /// The column which represents the timestamp of a row. Must support queries using GetColumnValueDateTime.
         /// </summary>
         public TraceSourceSchemaColumn? TimestampColumn { get; init; }
 
         /// <summary>
-        /// The column which represents the level/severity/priority of a row. Must support queries using GetColumnUnifiedLevel.
+        /// The column which represents the level/severity/priority of a row. Must support queries using GetColumnValueUnifiedLevel.
         /// </summary>
         public TraceSourceSchemaColumn? UnifiedLevelColumn { get; init; }
 
         /// <summary>
-        /// The column which represents the process id of a row. Must support queries using GetColumnInt.
+        /// The column which represents the process id of a row. Must support queries using GetColumnValueInt.
         /// </summary>
         public TraceSourceSchemaColumn? ProcessIdColumn { get; init; }
 
         /// <summary>
-        /// The column which represents the thread id of a row. Must support queries using GetColumnInt.
+        /// The column which represents the thread id of a row. Must support queries using GetColumnValueInt.
         /// </summary>
         public TraceSourceSchemaColumn? ThreadIdColumn { get; init; }
 
@@ -105,7 +108,7 @@ namespace InstantTraceViewer
                 throw new Exception("The schema does not have a timestamp column.");
             }
 
-            return snapshot.GetColumnDateTime(rowIndex, snapshot.Schema.TimestampColumn);
+            return snapshot.GetColumnValueDateTime(rowIndex, snapshot.Schema.TimestampColumn);
         }
 
         public static UnifiedLevel GetUnifiedLevel(this ITraceTableSnapshot snapshot, int rowIndex)
@@ -115,7 +118,7 @@ namespace InstantTraceViewer
                 throw new Exception("The schema does not have a unified level column.");
             }
 
-            return snapshot.GetColumnUnifiedLevel(rowIndex, snapshot.Schema.UnifiedLevelColumn);
+            return snapshot.GetColumnValueUnifiedLevel(rowIndex, snapshot.Schema.UnifiedLevelColumn);
         }
 
         public static int GetProcessId(this ITraceTableSnapshot snapshot, int rowIndex)
@@ -125,7 +128,7 @@ namespace InstantTraceViewer
                 throw new Exception("The schema does not have a process id column.");
             }
 
-            return snapshot.GetColumnInt(rowIndex, snapshot.Schema.ProcessIdColumn);
+            return snapshot.GetColumnValueInt(rowIndex, snapshot.Schema.ProcessIdColumn);
         }
 
         public static int GetThreadId(this ITraceTableSnapshot snapshot, int rowIndex)
@@ -135,7 +138,7 @@ namespace InstantTraceViewer
                 throw new Exception("The schema does not have a thread id column.");
             }
 
-            return snapshot.GetColumnInt(rowIndex, snapshot.Schema.ThreadIdColumn);
+            return snapshot.GetColumnValueInt(rowIndex, snapshot.Schema.ThreadIdColumn);
         }
     }
 }

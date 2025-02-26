@@ -18,7 +18,7 @@ namespace InstantTraceViewerUI.Etw
 
         public int GenerationId { get; init; }
 
-        public string GetColumnString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+        public string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
             EtwRecord traceRecord = RecordSnapshot[rowIndex];
 
@@ -116,16 +116,21 @@ namespace InstantTraceViewerUI.Etw
             throw new NotImplementedException();
         }
 
-        public int GetColumnInt(int rowIndex, TraceSourceSchemaColumn column)
+        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
+            => column == EtwTraceSource.ColumnProcess ? (ProcessNames.TryGetValue(RecordSnapshot[rowIndex].ProcessId, out string processName) ? processName : null) :
+               column == EtwTraceSource.ColumnThread ? (ThreadNames.TryGetValue(RecordSnapshot[rowIndex].ThreadId, out string threadName) ? threadName : null) :
+               throw new NotSupportedException();
+
+        public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
             => column == EtwTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
                column == EtwTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
                throw new NotSupportedException();
 
-        public DateTime GetColumnDateTime(int rowIndex, TraceSourceSchemaColumn column)
+        public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)
             =>  column == EtwTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
                 throw new NotSupportedException();
 
-        public UnifiedLevel GetColumnUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
+        public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
             => column == EtwTraceSource.ColumnLevel ? ConvertLevel(RecordSnapshot[rowIndex].Level) :
                throw new NotSupportedException();
 
