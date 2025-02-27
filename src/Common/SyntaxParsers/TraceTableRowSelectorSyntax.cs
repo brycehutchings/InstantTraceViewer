@@ -371,7 +371,7 @@ namespace InstantTraceViewer
 
                 if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
                 {
-                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
+                    state.CurrentTokenMatches("\"<timestamp>\""); // Encourage some timestamp string literal
                     return null; // Invalid timestamp format.
                 }
 
@@ -443,7 +443,7 @@ namespace InstantTraceViewer
             }
             else if (state.CurrentToken.Length == 1)
             {
-                state.CurrentTokenMatches("\"[text]\""); // We just have a starting quote. Encourage some content with closing quote.
+                state.CurrentTokenMatches("\"<text>\""); // We just have a starting quote. Encourage some content with closing quote.
                 return null; // End of input or malformed string literal.
             }
             else if (state.CurrentToken[^1] != '"')
