@@ -388,7 +388,7 @@ namespace InstantTraceViewerUI
 
         private void AddIncludeExcludeRuleMenuItems(FilteredTraceTableSnapshot visibleTraceTable, int i, TraceSourceSchemaColumn column, string displayTextTruncated)
         {
-            void AddIncludeRule(IReadOnlyList<string> newRule)
+            void AddIncludeRule(IEnumerable<string> newRule)
             {
                 string newRuleStr = string.Join(' ', newRule);
                 if (ImGui.MenuItem($"Include: {newRuleStr}"))
@@ -396,12 +396,26 @@ namespace InstantTraceViewerUI
                     _viewerRules.AddIncludeRule(newRuleStr);
                 }
             }
-            void AddExcludeRule(IReadOnlyList<string> newRule)
+            void AddExcludeRule(IEnumerable<string> newRule)
             {
                 string newRuleStr = string.Join(' ', newRule);
                 if (ImGui.MenuItem($"Exclude: {newRuleStr}"))
                 {
                     _viewerRules.AddExcludeRule(newRuleStr);
+                }
+            }
+            void AddCustomRule(IEnumerable<string> newRule)
+            {
+                string newRuleStr = string.Join(' ', newRule);
+                if (ImGui.MenuItem($"Custom rule..."))
+                {
+                    // Open filter editor window if not already open.
+                    if (_filtersEditorWindow == null)
+                    {
+                        _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
+                    }
+
+                    _filtersEditorWindow.SetRuleEditText(newRuleStr);
                 }
             }
 
@@ -425,9 +439,15 @@ namespace InstantTraceViewerUI
 
 
                     string[] newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, levelStr];
-                    AddIncludeRule(newRule.Concat(andProvEquals).ToList());
+                    AddIncludeRule(newRule.Concat(andProvEquals));
                     newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, levelStr];
-                    AddExcludeRule(newRule.Concat(andProvEquals).ToList());
+                    AddExcludeRule(newRule.Concat(andProvEquals));
+
+                    AddCustomRule(newRule.Concat(andProvEquals));
+                }
+                else
+                {
+                    AddCustomRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
                 }
             }
             else if (column == visibleTraceTable.Schema.TimestampColumn)
@@ -437,12 +457,13 @@ namespace InstantTraceViewerUI
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, timeStr]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, timeStr]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, timeStr]);
+                AddCustomRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, timeStr]);
             }
             else
             {
-                string text = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false));
-                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, text]);
-                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, text]);
+                string quotedStringValue = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false));
+                AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, quotedStringValue]);
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, quotedStringValue]);
 
                 if (column == visibleTraceTable.Schema.ProcessIdColumn || column == visibleTraceTable.Schema.ThreadIdColumn)
                 {
@@ -454,6 +475,9 @@ namespace InstantTraceViewerUI
                         AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.StringContainsOperatorName, nameValueLiteral]);
                     }
                 }
+
+                // Assume a "contains" for a custom rule as a good starting point...
+                AddCustomRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.StringContainsOperatorName, quotedStringValue]);
             }
         }
 

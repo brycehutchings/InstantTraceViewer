@@ -33,6 +33,11 @@ namespace InstantTraceViewerUI
             _parentWindowId = parentWindowId;
         }
 
+        public void SetRuleEditText(string rule)
+        {
+            _addRuleInputText = rule;
+        }
+
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules rules, TraceTableSchema tableSchema)
         {
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
