@@ -18,6 +18,8 @@ namespace InstantTraceViewerTests
             public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
             public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
             public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+
             public int RowCount => 16;
             public int GenerationId => 1;
         }
