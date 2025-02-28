@@ -46,7 +46,7 @@ namespace InstantTraceViewerUI
                 Enumerable.Range(0, traceTable.RowCount)
                     .GroupBy(t =>
                     {
-                        var providerName = traceTable.GetColumnString(t, traceTable.Schema.ProviderColumn);
+                        var providerName = traceTable.GetColumnValueString(t, traceTable.Schema.ProviderColumn);
                         var level = traceTable.Schema.UnifiedLevelColumn != null ? traceTable.GetUnifiedLevel(t) : (UnifiedLevel?)null;
                         return (providerName, level);
                     })

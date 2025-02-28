@@ -87,17 +87,20 @@ namespace InstantTraceViewerUI
         public int GetFullTableRowIndex(int filteredRowIndex)
             => _visibleRowIndiciesSnapshot[filteredRowIndex];
 
-        public string GetColumnString(int filteredRowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
-            => FullTable.GetColumnString(GetFullTableRowIndex(filteredRowIndex), column, allowMultiline);
+        public string GetColumnValueString(int filteredRowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+            => FullTable.GetColumnValueString(GetFullTableRowIndex(filteredRowIndex), column, allowMultiline);
 
-        public int GetColumnInt(int filteredRowIndex, TraceSourceSchemaColumn column)
-            => FullTable.GetColumnInt(GetFullTableRowIndex(filteredRowIndex), column);
+        public string GetColumnValueNameForId(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnValueNameForId(GetFullTableRowIndex(filteredRowIndex), column);
 
-        public DateTime GetColumnDateTime(int filteredRowIndex, TraceSourceSchemaColumn column)
-            => FullTable.GetColumnDateTime(GetFullTableRowIndex(filteredRowIndex), column);
+        public int GetColumnValueInt(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnValueInt(GetFullTableRowIndex(filteredRowIndex), column);
 
-        public UnifiedLevel GetColumnUnifiedLevel(int filteredRowIndex, TraceSourceSchemaColumn column)
-            => FullTable.GetColumnUnifiedLevel(GetFullTableRowIndex(filteredRowIndex), column);
+        public DateTime GetColumnValueDateTime(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnValueDateTime(GetFullTableRowIndex(filteredRowIndex), column);
+
+        public UnifiedLevel GetColumnValueUnifiedLevel(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnValueUnifiedLevel(GetFullTableRowIndex(filteredRowIndex), column);
 
         public TraceTableSchema Schema => FullTable.Schema;
 

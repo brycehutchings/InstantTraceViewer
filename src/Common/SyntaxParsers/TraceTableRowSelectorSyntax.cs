@@ -72,7 +72,7 @@ namespace InstantTraceViewer
         public const string AndOperatorName = "and";
         public const string OrOperatorName = "or";
 
-        public const string StringInOperatorName = "in";
+        public const string InOperatorName = "in";
         public const string StringInCSOperatorName = "in_cs";
         public const string StringContainsOperatorName = "contains";
         public const string StringContainsCSOperatorName = "contains_cs";
@@ -243,7 +243,7 @@ namespace InstantTraceViewer
             }
 
 
-             return TryParseStringPredicate(state, matchedColumn);
+            return TryParseStringPredicate(state, matchedColumn);
         }
 
         private Expression TryParseStringPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
@@ -272,7 +272,7 @@ namespace InstantTraceViewer
                 Expression result = ComparisonExpressions.StringEquals(GetTableString(matchedColumn), Expression.Constant(value, typeof(string)), comparisonType.Value);
                 return isNegated ? Expression.Not(result) : result;
             }
-            else if (state.CurrentTokenMatches(StringInOperatorName) || state.CurrentTokenMatches(StringInCSOperatorName))
+            else if (state.CurrentTokenMatches(InOperatorName) || state.CurrentTokenMatches(StringInCSOperatorName))
             {
                 IEqualityComparer<string> equalityComparer = TryGetStringEqualityComparer(state.CurrentToken);
                 if (equalityComparer == null)
@@ -371,7 +371,7 @@ namespace InstantTraceViewer
 
                 if (!DateTime.TryParse(timestampStr, out DateTime timestamp))
                 {
-                    state.CurrentTokenMatches("\"[timestamp]\""); // Encourage some timestamp string literal
+                    state.CurrentTokenMatches("\"<timestamp>\""); // Encourage some timestamp string literal
                     return null; // Invalid timestamp format.
                 }
 
@@ -396,7 +396,7 @@ namespace InstantTraceViewer
                 state.MoveNextToken();
                 return binaryExpression(Expression.Convert(GetTableLevel(matchedColumn), typeof(int)), Expression.Constant((int)level.Value));
             }
-            else if (state.CurrentTokenMatches(StringInOperatorName))
+            else if (state.CurrentTokenMatches(InOperatorName))
             {
                 state.MoveNextToken();
 
@@ -443,7 +443,7 @@ namespace InstantTraceViewer
             }
             else if (state.CurrentToken.Length == 1)
             {
-                state.CurrentTokenMatches("\"[text]\""); // We just have a starting quote. Encourage some content with closing quote.
+                state.CurrentTokenMatches("\"<text>\""); // We just have a starting quote. Encourage some content with closing quote.
                 return null; // End of input or malformed string literal.
             }
             else if (state.CurrentToken[^1] != '"')
@@ -456,6 +456,8 @@ namespace InstantTraceViewer
         }
 
         private static IReadOnlyList<string> TryReadStringLiteralList(ParserState state) => TryReadList<string>(state, TryReadStringLiteral);
+
+        private static IReadOnlyList<int> TryReadIntList(ParserState state) => TryReadList<int>(state, state => TryReadInt(state));
 
         private static IReadOnlyList<UnifiedLevel> TryReadLevelList(ParserState state) => TryReadList<UnifiedLevel>(state, state => TryReadLevel(state));
 
@@ -488,6 +490,17 @@ namespace InstantTraceViewer
                 }
             }
             return values;
+        }
+
+        private static int? TryReadInt(ParserState state)
+        {
+            if (!state.Eof && int.TryParse(state.CurrentToken, out int value))
+            {
+                return value;
+            }
+
+            state.CurrentTokenMatches("<integer>"); // Encourage some integer content.
+            return null;
         }
 
         private static UnifiedLevel? TryReadLevel(ParserState state)
@@ -531,22 +544,29 @@ namespace InstantTraceViewer
         private static Expression GetTableString(TraceSourceSchemaColumn column)
             => Expression.Call(
                 Param1TraceTableSnapshot,
-                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnString))!,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnValueString))!,
                 Param2RowIndex,
                 Expression.Constant(column),
                 Expression.Constant(false) /* allowMultiline */);
 
+        private static Expression GetTableInt(TraceSourceSchemaColumn column)
+            => Expression.Call(
+                Param1TraceTableSnapshot,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnValueInt))!,
+                Param2RowIndex,
+                Expression.Constant(column));
+
         private static Expression GetTableLevel(TraceSourceSchemaColumn column)
             => Expression.Call(
                 Param1TraceTableSnapshot,
-                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnUnifiedLevel))!,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnValueUnifiedLevel))!,
                 Param2RowIndex,
                 Expression.Constant(column));
 
         private static Expression GetTableTimestamp(TraceSourceSchemaColumn column)
             => Expression.Call(
                 Param1TraceTableSnapshot,
-                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnDateTime))!,
+                typeof(ITraceTableSnapshot).GetMethod(nameof(ITraceTableSnapshot.GetColumnValueDateTime))!,
                 Param2RowIndex,
                 Expression.Constant(column));
 

@@ -33,6 +33,11 @@ namespace InstantTraceViewerUI
             _parentWindowId = parentWindowId;
         }
 
+        public void SetRuleEditText(string rule)
+        {
+            _addRuleInputText = rule;
+        }
+
         public unsafe bool DrawWindow(IUiCommands uiCommands, ViewerRules rules, TraceTableSchema tableSchema)
         {
             ImGui.SetNextWindowSize(new Vector2(800, 400), ImGuiCond.FirstUseEver);
@@ -279,9 +284,9 @@ Examples:
                             TraceSourceSchemaColumn queryColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Query");
                             for (int i = 0; i < tsvSnapshot.RowCount; i++)
                             {
-                                string enabledStr = tsvSnapshot.GetColumnString(i, enabledColumn);
-                                string actionStr = tsvSnapshot.GetColumnString(i, actionColumn);
-                                string query = tsvSnapshot.GetColumnString(i, queryColumn);
+                                string enabledStr = tsvSnapshot.GetColumnValueString(i, enabledColumn);
+                                string actionStr = tsvSnapshot.GetColumnValueString(i, actionColumn);
+                                string query = tsvSnapshot.GetColumnValueString(i, queryColumn);
                                 if (string.IsNullOrWhiteSpace(enabledStr) && string.IsNullOrWhiteSpace(actionStr) && string.IsNullOrWhiteSpace(query))
                                 {
                                     continue; // Ignore empty lines.
