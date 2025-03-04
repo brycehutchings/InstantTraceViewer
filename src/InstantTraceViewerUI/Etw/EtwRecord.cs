@@ -10,6 +10,10 @@ namespace InstantTraceViewerUI.Etw
 
         public int ThreadId;
 
+        public string ProcessName;
+
+        public string ThreadName;
+
         public TraceEventLevel Level;
 
         public string ProviderName;

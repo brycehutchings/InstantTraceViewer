@@ -7,8 +7,6 @@ namespace InstantTraceViewerUI.Logcat
 {
     class LogcatTraceTableSnapshot : ITraceTableSnapshot
     {
-        public IReadOnlyDictionary<int, string> ProcessNames { get; init; }
-
         public ListBuilderSnapshot<LogcatRecord> RecordSnapshot { get; init; }
 
         #region ITraceRecordSnapshot
@@ -26,7 +24,7 @@ namespace InstantTraceViewerUI.Logcat
             {
                 return
                     traceRecord.ProcessId == -1 ? string.Empty :
-                    ProcessNames.TryGetValue(traceRecord.ProcessId, out string name) && !string.IsNullOrEmpty(name) ? $"{traceRecord.ProcessId} ({name})" : traceRecord.ProcessId.ToString();
+                    !string.IsNullOrEmpty(traceRecord.ProcessName) ? $"{traceRecord.ProcessId} ({traceRecord.ProcessName})" : traceRecord.ProcessId.ToString();
             }
             else if (column == LogcatTraceSource.ColumnThread)
             {
@@ -56,7 +54,7 @@ namespace InstantTraceViewerUI.Logcat
             throw new NotImplementedException();
         }
         public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
-            => column == LogcatTraceSource.ColumnProcess ? (ProcessNames.TryGetValue(RecordSnapshot[rowIndex].ProcessId, out string processName) ? processName : null) :
+            => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
                column == LogcatTraceSource.ColumnThread ? null :
                throw new NotSupportedException();
 

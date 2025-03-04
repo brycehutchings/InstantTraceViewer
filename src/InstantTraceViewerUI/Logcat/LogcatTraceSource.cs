@@ -1,4 +1,4 @@
-﻿using AdvancedSharpAdbClient;
+using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.DeviceCommands;
 using AdvancedSharpAdbClient.Logs;
 using AdvancedSharpAdbClient.Models;
@@ -95,7 +95,6 @@ namespace InstantTraceViewerUI.Logcat
             {
                 return new LogcatTraceTableSnapshot
                 {
-                    ProcessNames = _processNames,
                     RecordSnapshot = _traceRecords.CreateSnapshot(),
                     GenerationId = _generationId,
                     Schema = _schema,
@@ -124,10 +123,12 @@ namespace InstantTraceViewerUI.Logcat
                     {
                         ProcessSystemMessage(androidLogEntry);
 
+                        _processNames.TryGetValue(androidLogEntry.ProcessId, out string processName);
                         var preciseTimestamp = androidLogEntry.TimeStamp.ToLocalTime() + TimeSpan.FromTicks(androidLogEntry.NanoSeconds / TimeSpan.NanosecondsPerTick);
                         var traceRecord = new LogcatRecord
                         {
                             ProcessId = androidLogEntry.ProcessId,
+                            ProcessName = processName,
                             ThreadId = (int)androidLogEntry.ThreadId,
                             Timestamp = preciseTimestamp.DateTime,
                             Priority = androidLogEntry.Priority,
