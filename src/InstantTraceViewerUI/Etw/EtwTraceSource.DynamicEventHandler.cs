@@ -23,24 +23,7 @@ namespace InstantTraceViewerUI.Etw
 
             for (int i = 0; i < data.PayloadNames.Length; i++)
             {
-                // Extract process and thread IDs from events without them (e.g. Kernel events).
-                if (string.Equals(data.PayloadNames[i], "ProcessID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int pid)
-                {
-                    if (newRecord.ProcessId == -1)
-                    {
-                        newRecord.ProcessId = pid;
-                    }
-                    continue;
-                }
-                else if (string.Equals(data.PayloadNames[i], "ThreadID", StringComparison.OrdinalIgnoreCase) && data.PayloadValue(i) is int tid)
-                {
-                    if (newRecord.ThreadId == -1)
-                    {
-                        newRecord.ThreadId = tid;
-                    }
-                    continue;
-                }
-                else if (data.PayloadNames[i] == "PartA_PrivTags" && data.PayloadValue(i) is long)
+                if (data.PayloadNames[i] == "PartA_PrivTags" && data.PayloadValue(i) is long)
                 {
                     // Put the priv tag last since it's mostly noise.
                     privTag = (long)data.PayloadValue(i);

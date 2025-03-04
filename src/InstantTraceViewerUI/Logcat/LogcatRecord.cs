@@ -7,6 +7,8 @@ namespace InstantTraceViewerUI.Logcat
     {
         public int ProcessId;
 
+        public string ProcessName;
+
         public int ThreadId;
 
         public Priority Priority;

@@ -237,8 +237,6 @@ namespace InstantTraceViewerUI.Etw
 
                 return new EtwTraceTableSnapshot
                 {
-                    ProcessNames = _processNames,
-                    ThreadNames = _threadNames,
                     RecordSnapshot = _traceRecords.CreateSnapshot(),
                     GenerationId = _generationId,
                     Schema = _schema,
@@ -267,6 +265,7 @@ namespace InstantTraceViewerUI.Etw
                     {
                         // We could go lower-level if it is useful and PInvoke QueryFullProcessImageName and open the process handle with PROCESS_QUERY_LIMITED_INFORMATION,
                         // but since this is a realtime session, we're probably elevated already and shouldn't have problems. This would also avoid the need for a try-catch.
+                        // However we now have no way to know if the process terminated and the process id could be re-used in the future.
                         using (var process = Process.GetProcessById(record.ProcessId))
                         {
                             return process.ProcessName;

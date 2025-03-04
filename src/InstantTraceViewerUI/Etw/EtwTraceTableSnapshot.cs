@@ -8,8 +8,6 @@ namespace InstantTraceViewerUI.Etw
 {
     class EtwTraceTableSnapshot : ITraceTableSnapshot
     {
-        public IReadOnlyDictionary<int, string> ThreadNames { get; init; }
-        public IReadOnlyDictionary<int, string> ProcessNames { get; init; }
         public ListBuilderSnapshot<EtwRecord> RecordSnapshot { get; init; }
 
         public TraceTableSchema Schema { get; init; }
@@ -26,13 +24,13 @@ namespace InstantTraceViewerUI.Etw
             {
                 return
                     traceRecord.ProcessId == -1 ? string.Empty :
-                    ProcessNames.TryGetValue(traceRecord.ProcessId, out string name) && !string.IsNullOrEmpty(name) ? $"{traceRecord.ProcessId} ({name})" : traceRecord.ProcessId.ToString();
+                    !string.IsNullOrEmpty(traceRecord.ProcessName) ? $"{traceRecord.ProcessId} ({traceRecord.ProcessName})" : traceRecord.ProcessId.ToString();
             }
             else if (column == EtwTraceSource.ColumnThread)
             {
                 return
                     traceRecord.ThreadId == -1 ? string.Empty :
-                    ThreadNames.TryGetValue(traceRecord.ThreadId, out string name) ? $"{traceRecord.ThreadId} ({name})" : traceRecord.ThreadId.ToString();
+                    !string.IsNullOrEmpty(traceRecord.ThreadName) ? $"{traceRecord.ThreadId} ({traceRecord.ThreadName})" : traceRecord.ThreadId.ToString();
             }
             else if (column == EtwTraceSource.ColumnProvider)
             {
@@ -117,8 +115,8 @@ namespace InstantTraceViewerUI.Etw
         }
 
         public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
-            => column == EtwTraceSource.ColumnProcess ? (ProcessNames.TryGetValue(RecordSnapshot[rowIndex].ProcessId, out string processName) ? processName : null) :
-               column == EtwTraceSource.ColumnThread ? (ThreadNames.TryGetValue(RecordSnapshot[rowIndex].ThreadId, out string threadName) ? threadName : null) :
+            => column == EtwTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
+               column == EtwTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadName :
                throw new NotSupportedException();
 
         public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
