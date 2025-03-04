@@ -131,7 +131,6 @@ namespace InstantTraceViewerUI
                 _timelineInline.DrawTimelineGraph(visibleTraceTable, startWindow, endWindow);
             }
 
-            // If we are scrolling to show a line (like for CTRL+F), position the line ~1/3 of the way down.
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
 
@@ -177,7 +176,7 @@ namespace InstantTraceViewerUI
                     }
                 };
 
-                // Maintain scroll position when the view was rebuilt. The scroll will happen after the table is drawn so that the row height can be used to calculate the scroll offset.
+                // Maintain scroll position when the view was rebuilt.
                 if (filteredViewRebuilt)
                 {
                     void ScrollToRow(int topmostVisibleFullTableRowIndex, float yOffset)
@@ -229,12 +228,6 @@ namespace InstantTraceViewerUI
                 {
                     for (int i = _tableClipper.DisplayStart; i < _tableClipper.DisplayEnd; i++)
                     {
-                        // Don't bother to scroll to the selected index if it's already in view.
-                        if (i == setScrollIndex)
-                        {
-                            setScrollIndex = null;
-                        }
-
                         int fullTableRowIndex = visibleTraceTable.GetFullTableRowIndex(i);
 
                         ImGui.PushID(fullTableRowIndex);
@@ -274,14 +267,21 @@ namespace InstantTraceViewerUI
                             _lastSelectedFullTableRowIndex = fullTableRowIndex;
                         }
 
-                        // If this is the last selected row, remember its vertical offset from the top of the table so it can be preserved if the filter changes.
-                        if (fullTableRowIndex == _lastSelectedFullTableRowIndex)
-                        {
-                            _lastSelectedRowYOffset = rowYOffset - ImGui.GetScrollY() - topVisibleRowYOffset;
-                        }
-
+                        // The list clipper will prevent rows that aren't visible from being processed EXCEPT for the first row, which it always processes
+                        // to determine row height (all rows must have the same height). So we use IsItemVisible to determine if actually visible.
                         if (ImGui.IsItemVisible())
                         {
+                            // Don't bother to scroll to the selected index if it's already in view.
+                            if (i == setScrollIndex)
+                            {
+                                setScrollIndex = null;
+                            }
+
+                            // If this is the last selected row, remember its vertical offset from the top of the table so it can be preserved if the filter changes.
+                            if (fullTableRowIndex == _lastSelectedFullTableRowIndex)
+                            {
+                                _lastSelectedRowYOffset = rowYOffset - ImGui.GetScrollY() - topVisibleRowYOffset;
+                            }
                             if (_topmostRenderedFullTableRowIndex == null)
                             {
                                 _topmostRenderedFullTableRowIndex = fullTableRowIndex;
@@ -291,7 +291,7 @@ namespace InstantTraceViewerUI
                                 _topmostRenderedVisibleRowIndex = i;
                             }
 
-                            _bottommostRenderedVisibleRowIndex = i;
+                            _bottommostRenderedVisibleRowIndex = i; // Each visible row stomps on the previous value so that the last one wins.
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
@@ -399,6 +399,7 @@ namespace InstantTraceViewerUI
                 if (setScrollIndex.HasValue)
                 {
                     // If we're trying to precisely maintain the content after the count has changed, we need to account for the partial row scroll.
+                    // 0.3f means the selected row will be 30% down in the table so some of the earlier trace messages can also be seen.
                     int setScrollIncludePriorRowCount = (int)((remainingRegion.Y * 0.3f) / _tableClipper.ItemsHeight);
                     float partialRowScroll = setScrollIncludePriorRowCount == 0 ? ((int)ImGui.GetScrollY() % (int)_tableClipper.ItemsHeight) : 0;
                     ImGui.SetScrollY((setScrollIndex.Value - setScrollIncludePriorRowCount) * _tableClipper.ItemsHeight + partialRowScroll);
@@ -569,7 +570,8 @@ namespace InstantTraceViewerUI
                 }
             }
 
-            // When clicking a row, this manifests as a "unselect all rows" + "select this row" request. So often a row will be unselected+reselected.
+            // When clicking a row, this manifests as a "unselect all rows" + "select this row" request. So often a row will be unselected+reselected
+            // which is why lastSelectedRowUnselected is ignored if lastSelectedRowSelected is true.
             if (lastSelectedRowUnselected && !lastSelectedRowSelected)
             {
                 _lastSelectedRowYOffset = null;
@@ -632,20 +634,30 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            if (ImGui.Button("Navigation"))
+            if (ImGui.Button("\uF05B Navigation..."))
+            {
+                ImGui.OpenPopup("Navigation");
+            }
+
+            if (ImGui.BeginPopup("Navigation"))
             {
                 ImGui.BeginDisabled(!_lastSelectedVisibleRowIndex.HasValue);
-                if (ImGui.Button("Scroll to last selected row"))
+                string scrollToHint = "";
+                if (_lastSelectedVisibleRowIndex.HasValue && visibleTraceTable.Schema.NameColumn != null)
+                {
+                    scrollToHint = $" ({visibleTraceTable.GetColumnValueString(_lastSelectedVisibleRowIndex.Value, visibleTraceTable.Schema.NameColumn)})";
+                }
+                if (ImGui.MenuItem($"Go to last selected row{scrollToHint}"))
                 {
                     setScrollIndex = _lastSelectedVisibleRowIndex;
                 }
                 ImGui.EndDisabled();
+                ImGui.EndPopup();
             }
 
             ImGui.SameLine();
             if (ImGui.Button("\uF080 Visualizations..."))
             {
-                // Popup menu
                 ImGui.OpenPopup("Visualizations");
             }
             if (ImGui.BeginPopup("Visualizations"))

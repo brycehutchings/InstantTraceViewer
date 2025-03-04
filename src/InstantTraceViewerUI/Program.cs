@@ -145,6 +145,7 @@ namespace InstantTraceViewerUI
                     0xF00D, // "xmark"
                     0xF044, // "pen-to-square"
                     0xF059, // "circle-question"
+                    0xF05B, // "crosshairs"
                     0xF060, // "arrow-left"
                     0xF061, // "arrow-right"
                     0xF06A, // "circle-exclamation"
