@@ -157,6 +157,7 @@ namespace InstantTraceViewerUI
             return new ViewerRules
             {
                 _visibleRules = _visibleRules.ToList(),
+                _applyFiltering = _applyFiltering,
                 GenerationId = GenerationId
             };
         }

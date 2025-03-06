@@ -48,7 +48,7 @@ namespace InstantTraceViewerUI
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
 
         private string _findBuffer = string.Empty;
-        private bool _findFoward = true;
+        private bool _findForward = true;
         private bool _isDisposed;
 
         public LogViewerWindow(SharedTraceSource traceSource)
@@ -583,7 +583,7 @@ namespace InstantTraceViewerUI
         private void DrawToolStrip(IUiCommands uiCommands, FilteredTraceTableSnapshot visibleTraceTable, ref int? setScrollIndex)
         {
             ImGui.BeginDisabled(!_selectedFullTableRowIndices.Any());
-            if (ImGui.Button("\uF0C5 Copy rows") || ImGui.IsKeyChordPressed(ImGuiKey.C | ImGuiKey.ModCtrl))
+            if (ImGui.Button("\uF0C5 Copy rows"))
             {
                 CopySelectedRows(visibleTraceTable);
             }
@@ -625,7 +625,6 @@ namespace InstantTraceViewerUI
 
                 ImGui.Separator();
 
-                // Hotkey mentioned here corresponds to IsKeyChordPressed usage below.
                 bool applyFiltering = _viewerRules.ApplyFiltering;
                 if (ImGui.MenuItem("Apply filtering", "Ctrl+H", ref applyFiltering))
                 {
@@ -650,7 +649,6 @@ namespace InstantTraceViewerUI
 
             if (ImGui.BeginPopup("Navigation"))
             {
-                // Note: If logic is changed here, it may need to change in the hot key (key chord) handler too.
                 ImGui.BeginDisabled(!_lastSelectedVisibleRowIndex.HasValue);
                 string scrollToHint = "";
                 if (_lastSelectedVisibleRowIndex.HasValue && visibleTraceTable.Schema.NameColumn != null)
@@ -662,6 +660,20 @@ namespace InstantTraceViewerUI
                     setScrollIndex = _lastSelectedVisibleRowIndex;
                 }
                 ImGui.EndDisabled();
+
+                if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
+                {
+                    ImGui.Separator();
+                    if (ImGui.MenuItem("Find previous error", "Alt+,"))
+                    {
+                        setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: false);
+                    }
+                    if (ImGui.MenuItem("Find next error", "Alt+."))
+                    {
+                        setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: true);
+                    }
+                }
+
                 ImGui.EndPopup();
             }
 
@@ -702,7 +714,7 @@ namespace InstantTraceViewerUI
             }
             ImGui.PopItemWidth();
             ImGui.SameLine();
-            if (ImGui.Button(_findFoward ? "\uF061" : "\uF060"))
+            if (ImGui.Button(_findForward ? "\uF061" : "\uF060"))
             {
                 findRequested = true;
             }
@@ -725,20 +737,25 @@ namespace InstantTraceViewerUI
 
             if (!string.IsNullOrEmpty(_findBuffer))
             {
-                if (ImGui.IsKeyPressed(ImGuiKey.F3) && ImGui.IsKeyDown(ImGuiKey.ModShift))
+                // ImGui.Shortcut handles focus management but it doesn't allow the key to be held down to repeat searches quickly, so
+                // we have to check focus and key press manually.
+                if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows))
                 {
-                    _findFoward = false;
-                    findRequested = true;
-                }
-                else if (ImGui.IsKeyPressed(ImGuiKey.F3))
-                {
-                    _findFoward = true;
-                    findRequested = true;
+                    if (ImGui.IsKeyPressed(ImGuiKey.F3) && ImGui.IsKeyDown(ImGuiKey.ModShift))
+                    {
+                        _findForward = false;
+                        findRequested = true;
+                    }
+                    else if (ImGui.IsKeyPressed(ImGuiKey.F3))
+                    {
+                        _findForward = true;
+                        findRequested = true;
+                    }
                 }
 
                 if (findRequested)
                 {
-                    setScrollIndex = FindText(visibleTraceTable, _findBuffer);
+                    setScrollIndex = FindText(visibleTraceTable, _findBuffer, _findForward);
                 }
             }
 
@@ -746,26 +763,42 @@ namespace InstantTraceViewerUI
             // Handle hotkeys for menu bar here. They can't be nested inside the 'if's.
             //
 
-            if (ImGui.IsKeyChordPressed(ImGuiKey.ModCtrl | ImGuiKey.E))
+            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.C))
+            {
+                CopySelectedRows(visibleTraceTable);
+            }
+
+            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.E))
             {
                 _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
             }
 
-            if (ImGui.IsKeyChordPressed(ImGuiKey.ModCtrl | ImGuiKey.S))
+            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.S))
             {
                 _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
             }
 
-            // "Apply filtering" hot key.
-            if (ImGui.IsKeyChordPressed(ImGuiKey.ModCtrl | ImGuiKey.H))
+            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.H))
             {
                 _viewerRules.ApplyFiltering = !_viewerRules.ApplyFiltering;
             }
 
-            // "Go to last selected row" hot key.
-            if (_lastSelectedVisibleRowIndex.HasValue && ImGui.IsKeyChordPressed(ImGuiKey.ModAlt | ImGuiKey.LeftArrow))
+            if (_lastSelectedVisibleRowIndex.HasValue && ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.LeftArrow))
             {
                 setScrollIndex = _lastSelectedVisibleRowIndex;
+            }
+
+            if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
+            {
+                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Comma))
+                {
+                    setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: false);
+                }
+
+                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Period))
+                {
+                    setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: true);
+                }
             }
         }
 
@@ -810,10 +843,10 @@ namespace InstantTraceViewerUI
             ImGui.SetClipboardText(copyText.ToString());
         }
 
-        private int? FindText(FilteredTraceTableSnapshot visibleTraceTable, string text)
+        private int? FindText(FilteredTraceTableSnapshot visibleTraceTable, string text, bool findForward)
         {
             int visibleRowIndex =
-                _findFoward ?
+                findForward ?
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value + 1 : 0) :
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : visibleTraceTable.RowCount - 1);
             while (visibleRowIndex >= 0 && visibleRowIndex < visibleTraceTable.RowCount)
@@ -830,7 +863,28 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                visibleRowIndex = (_findFoward ? visibleRowIndex + 1 : visibleRowIndex - 1);
+                visibleRowIndex = (findForward ? visibleRowIndex + 1 : visibleRowIndex - 1);
+            }
+            return null;
+        }
+
+        private int? FindNextError(FilteredTraceTableSnapshot visibleTraceTable, string text, bool findForward)
+        {
+            int visibleRowIndex =
+                findForward ?
+                   (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value + 1 : 0) :
+                   (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : visibleTraceTable.RowCount - 1);
+            while (visibleRowIndex >= 0 && visibleRowIndex < visibleTraceTable.RowCount)
+            {
+                if (visibleTraceTable.GetUnifiedLevel(visibleRowIndex) >= UnifiedLevel.Error)
+                {
+                    _lastSelectedVisibleRowIndex = visibleRowIndex;
+                    _selectedFullTableRowIndices.Clear();
+                    _selectedFullTableRowIndices.Add(visibleTraceTable.GetFullTableRowIndex(visibleRowIndex));
+                    return visibleRowIndex;
+                }
+
+                visibleRowIndex = (findForward ? visibleRowIndex + 1 : visibleRowIndex - 1);
             }
             return null;
         }
