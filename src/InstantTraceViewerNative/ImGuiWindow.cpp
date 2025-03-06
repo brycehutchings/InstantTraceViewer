@@ -219,7 +219,7 @@ struct CurrentInputTextState {
 extern "C" CurrentInputTextState __declspec(dllexport) __stdcall GetCurrentInputTextState() noexcept
 {
     const ImGuiInputTextState& textState = ImGui::GetCurrentContext()->InputTextState;
-    return CurrentInputTextState{ .Id = textState.ID, .CursorPos = textState.GetCursorPos(), .ScrollX = textState.ScrollX };
+    return CurrentInputTextState{ .Id = textState.ID, .CursorPos = textState.GetCursorPos(), .ScrollX = textState.Scroll.x };
 }
 
 //
