@@ -604,31 +604,40 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
-            string filterCountSuffix = _viewerRules.Rules.Count > 0 ? $" ({_viewerRules.Rules.Count})" : string.Empty;
+            string filterCountSuffix =
+                !_viewerRules.ApplyFiltering ? "(Off)" :
+                _viewerRules.Rules.Count > 0 ? $"({_viewerRules.Rules.Count})" : string.Empty;
             if (ImGui.Button($"\uf0b0 Filtering {filterCountSuffix}..."))
             {
                 ImGui.OpenPopup("Filtering");
             }
             if (ImGui.BeginPopup("Filtering"))
             {
-                if (ImGui.MenuItem("Spam filter..."))
-                {
-                    _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
-                }
-
-                ImGui.Separator();
-
-                if (ImGui.MenuItem("Edit filters..."))
+                if (ImGui.MenuItem("Edit filters...", "Ctrl+E"))
                 {
                     _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
                 }
 
-                ImGui.BeginDisabled(_viewerRules.Rules.Count == 0);
-                if (ImGui.MenuItem($"Clear filters"))
+                if (ImGui.MenuItem($"Clear filters", _viewerRules.Rules.Count > 0))
                 {
                     _viewerRules.ClearRules();
                 }
-                ImGui.EndDisabled();
+
+                ImGui.Separator();
+
+                // Hotkey mentioned here corresponds to IsKeyChordPressed usage below.
+                bool applyFiltering = _viewerRules.ApplyFiltering;
+                if (ImGui.MenuItem("Apply filtering", "Ctrl+H", ref applyFiltering))
+                {
+                    _viewerRules.ApplyFiltering = applyFiltering;
+                }
+
+                ImGui.Separator();
+
+                if (ImGui.MenuItem("Spam filter...", "Ctrl+S"))
+                {
+                    _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
+                }
 
                 ImGui.EndPopup();
             }
@@ -641,13 +650,14 @@ namespace InstantTraceViewerUI
 
             if (ImGui.BeginPopup("Navigation"))
             {
+                // Note: If logic is changed here, it may need to change in the hot key (key chord) handler too.
                 ImGui.BeginDisabled(!_lastSelectedVisibleRowIndex.HasValue);
                 string scrollToHint = "";
                 if (_lastSelectedVisibleRowIndex.HasValue && visibleTraceTable.Schema.NameColumn != null)
                 {
                     scrollToHint = $" ({visibleTraceTable.GetColumnValueString(_lastSelectedVisibleRowIndex.Value, visibleTraceTable.Schema.NameColumn)})";
                 }
-                if (ImGui.MenuItem($"Go to last selected row{scrollToHint}"))
+                if (ImGui.MenuItem($"Go to last selected row{scrollToHint}", "Alt+Left Arrow"))
                 {
                     setScrollIndex = _lastSelectedVisibleRowIndex;
                 }
@@ -730,6 +740,32 @@ namespace InstantTraceViewerUI
                 {
                     setScrollIndex = FindText(visibleTraceTable, _findBuffer);
                 }
+            }
+
+            //
+            // Handle hotkeys for menu bar here. They can't be nested inside the 'if's.
+            //
+
+            if (ImGui.IsKeyChordPressed(ImGuiKey.ModCtrl | ImGuiKey.E))
+            {
+                _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
+            }
+
+            if (ImGui.IsKeyChordPressed(ImGuiKey.ModCtrl | ImGuiKey.S))
+            {
+                _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
+            }
+
+            // "Apply filtering" hot key.
+            if (ImGui.IsKeyChordPressed(ImGuiKey.ModCtrl | ImGuiKey.H))
+            {
+                _viewerRules.ApplyFiltering = !_viewerRules.ApplyFiltering;
+            }
+
+            // "Go to last selected row" hot key.
+            if (_lastSelectedVisibleRowIndex.HasValue && ImGui.IsKeyChordPressed(ImGuiKey.ModAlt | ImGuiKey.LeftArrow))
+            {
+                setScrollIndex = _lastSelectedVisibleRowIndex;
             }
         }
 
