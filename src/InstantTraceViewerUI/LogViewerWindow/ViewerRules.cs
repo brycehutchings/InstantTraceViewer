@@ -49,6 +49,17 @@ namespace InstantTraceViewerUI
         // Bumping this id will trigger a complete rebuild of the filtered trace table.
         public int GenerationId { get; private set; } = 1;
 
+        public bool _applyFiltering = true;
+        public bool ApplyFiltering
+        {
+            get => _applyFiltering;
+            set
+            {
+                _applyFiltering = value;
+                GenerationId++;
+            }
+        }
+
         public void ClearRules()
         {
             _visibleRules.Clear();
@@ -106,7 +117,7 @@ namespace InstantTraceViewerUI
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {
-            if (_visibleRules.Count == 0)
+            if (_visibleRules.Count == 0 || !ApplyFiltering)
             {
                 return TraceRowRuleAction.Include;
             }
@@ -146,6 +157,7 @@ namespace InstantTraceViewerUI
             return new ViewerRules
             {
                 _visibleRules = _visibleRules.ToList(),
+                _applyFiltering = _applyFiltering,
                 GenerationId = GenerationId
             };
         }

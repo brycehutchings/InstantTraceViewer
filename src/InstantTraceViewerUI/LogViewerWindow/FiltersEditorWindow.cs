@@ -132,6 +132,15 @@ Examples:
 
             RenderParsingError(addRuleId, _addRuleInputText, _addRuleLastParseResult, inputScreenPos);
 
+            if (rules.ApplyFiltering)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.WarningColor));
+                ImGui.TextUnformatted("\uF06A");
+                ImGui.PopStyleColor();
+                ImGui.SameLine();
+                ImGui.TextUnformatted($"Filtering is not being applied currently.");
+            }
+
             // Size table to fit the window but with room for one rows of buttons at the bottom.
             float buttonHeight = ImGui.GetFrameHeightWithSpacing();
             Vector2 tableSize = new Vector2(-1, -buttonHeight);
