@@ -41,6 +41,7 @@ namespace InstantTraceViewerUI
         private int? _hoveredThreadId;
 
         private TimelineWindow _timelineInline = null;
+        private ScopeWindow _scopeGraphWindow = null;
         private FiltersEditorWindow _filtersEditorWindow = null;
         private SpamFilterWindow _spamFilterWindow = null;
 
@@ -105,6 +106,19 @@ namespace InstantTraceViewerUI
                 if (!_spamFilterWindow.DrawWindow(uiCommands, _viewerRules, visibleTraceTable))
                 {
                     _spamFilterWindow = null;
+                }
+            }
+
+            if (_scopeGraphWindow != null)
+            {
+                // The topmost/bottommost row index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
+                DateTime? startWindow = _topmostRenderedVisibleRowIndex.HasValue && _topmostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
+                    visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
+                DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
+                    visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
+                if (!_scopeGraphWindow.DrawWindow(uiCommands, visibleTraceTable, startWindow, endWindow))
+                {
+                    _scopeGraphWindow = null;
                 }
             }
 
@@ -684,10 +698,16 @@ namespace InstantTraceViewerUI
             }
             if (ImGui.BeginPopup("Visualizations"))
             {
+                // FIXME: Move criteria to helper property to avoid duplication.
                 ImGui.BeginDisabled(visibleTraceTable.Schema.TimestampColumn == null);
                 if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
                 {
                     _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName, _windowIdString) : null;
+                }
+                // FIXME: BeginDisabled is missing some criteria here.
+                if (ImGui.MenuItem("Inline scopes", "", _scopeGraphWindow != null))
+                {
+                    _scopeGraphWindow = (_scopeGraphWindow == null) ? new ScopeWindow(_traceSource.TraceSource.DisplayName, _windowIdString) : null;
                 }
                 ImGui.EndDisabled();
                 ImGui.EndPopup();

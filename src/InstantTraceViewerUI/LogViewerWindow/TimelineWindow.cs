@@ -55,7 +55,7 @@ namespace InstantTraceViewerUI
         public void DrawTimelineGraph(ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
             int sectionCount = (int)ImGui.GetContentRegionAvail().X / PixelsPerSection;
-            if (sectionCount <= 0 || traceTable.RowCount == 0 || traceTable.Schema.TimestampColumn == null )
+            if (sectionCount <= 0 || traceTable.RowCount == 0 || traceTable.Schema.TimestampColumn == null)
             {
                 return;
             }

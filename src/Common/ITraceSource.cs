@@ -68,8 +68,6 @@
         /// Returns null when the column size is stretched (this is only recommended for the message).
         /// </summary>
         public float? DefaultColumnSize { get; init; }
-
-        public bool AllowMultiline { get; init; }
     }
 
     public class TraceTableSchema
