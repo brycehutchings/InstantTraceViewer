@@ -24,7 +24,15 @@ namespace InstantTraceViewerUI
         {
             public DateTime Start;
             public DateTime Stop;
-            public int Level;
+            public int Depth;
+            public string Name;
+        }
+
+        public struct InstantEvent
+        {
+            public DateTime Timestamp;
+            public int Depth;
+            public UnifiedLevel Level;
             public string Name;
         }
 
@@ -34,22 +42,40 @@ namespace InstantTraceViewerUI
             // Processing State:
             //
 
-            // TODO: Needs name too. Maybe row index too?
-            public Stack<DateTime> StartTimes = new Stack<DateTime>();
+            public struct StartEvent
+            {
+                public DateTime Timestamp;
+                public string Name;
+            }
+
+            public Stack<StartEvent> StartEvents = new Stack<StartEvent>();
 
             //
             // Output:
             //
 
+            public string? ProcessName;
+            public string? ThreadName;
             public List<Bar> Bars = new();
+            public List<InstantEvent> InstantEvents = new();
         }
 
         struct ComputedTrack
         {
-            public int ProcessId;
-            public int ThreadId;
+            public string ProcessName;
+            public string ThreadName;
             public List<Bar> Bars;
+            public List<InstantEvent> InstantEvents;
         }
+
+        class ComputedTracks
+        {
+            public IReadOnlyList<ComputedTrack> Tracks;
+        }
+
+        private Task<ComputedTracks> _computedTracks = null;
+        private DateTime? _startRange = null;
+        private DateTime? _endRange = null;
 
         public ScopeWindow(string name, string parentWindowId)
         {
@@ -71,10 +97,6 @@ namespace InstantTraceViewerUI
 
             return _open;
         }
-
-        private Task<List<ComputedTrack>> _computedTracks = null;
-        private DateTime? _startRange = null;
-        private DateTime? _endRange = null;
 
         private void DrawTimelineGraph(ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
@@ -106,6 +128,14 @@ namespace InstantTraceViewerUI
             if (_computedTracks.IsCompletedSuccessfully)
             {
                 DrawTracks(startLog, endLog);
+            }
+            else if (_computedTracks.IsFaulted)
+            {
+                ImGui.TextUnformatted($"Error computing tracks: {_computedTracks.Exception?.InnerExceptions.First().Message}");
+            }
+            else
+            {
+                ImGui.TextUnformatted("Processing tracks...");
             }
         }
 
@@ -141,7 +171,7 @@ namespace InstantTraceViewerUI
 
             if (zoomAmount != 0)
             {
-                float percentZoomPerWheelClick = 0.05f; // 5% zoom per wheel click.
+                float percentZoomPerWheelClick = 0.1f; // 10% zoom per wheel click.
 
                 // Adjust zoom to the left/right of the mouse cursor so that the zoom is centered around the mouse cursor.
                 float zoomPointPercent = (ImGui.GetMousePos().X - tracksTopLeftScreenPos.X) / contentRegionAvailable.X;
@@ -154,13 +184,15 @@ namespace InstantTraceViewerUI
 
             uint textColor = ImGui.GetColorU32(ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
             float barHeight = ImGui.GetTextLineHeight();
+            float tickPadding = barHeight / 7.0f;
+            float tickDivit = barHeight / 10.0f;
 
             float tickToPixel = contentRegionAvailable.X / rangeDuration.Ticks;
             int totalBars = 0;
             Debug.Assert(_computedTracks.IsCompletedSuccessfully);
-            foreach (var track in _computedTracks.Result)
+            foreach (var track in _computedTracks.Result.Tracks)
             {
-                ImGui.TextUnformatted(track.ThreadId > 0 ? $"{track.ProcessId}:{track.ThreadId}" : track.ProcessId.ToString());
+                ImGui.TextUnformatted(track.ThreadName != null ? $"{track.ProcessName}:{track.ThreadName}" : track.ProcessName);
 
                 Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
 
@@ -170,7 +202,7 @@ namespace InstantTraceViewerUI
                 //    break; // We are below the fold and won't be seen.
                 //}
 
-                int maxLevel = 0;
+                float maxHeight = 0;
                 foreach (var bar in track.Bars)
                 {
                     if (bar.Stop.Ticks < startRange.Ticks || bar.Start.Ticks > endRange.Ticks)
@@ -181,8 +213,8 @@ namespace InstantTraceViewerUI
                     long startRelativeTicks = bar.Start.Ticks - startRange.Ticks;
                     long stopRelativeTicks = bar.Stop.Ticks - startRange.Ticks;
 
-                    Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Level * barHeight) + trackBarsTopLeft;
-                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1, (bar.Level + 1) * barHeight + 1) + trackBarsTopLeft; // + 1 because the max is apparently exclusive.
+                    Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
+                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1, (bar.Depth + 1) * barHeight + 1) + trackBarsTopLeft; // + 1 because the max is apparently exclusive.
 
                     // If the bottom of the bar is above the top of the content region, or the top of the bar is below
                     // the bottom of the content region, no need to draw since it won't be seen.
@@ -192,32 +224,38 @@ namespace InstantTraceViewerUI
                         drawList.AddText(min + new Vector2(1, 0), ImGui.GetColorU32(new Vector4(0.0f, 0.0f, 0.0f, 1.0f)), bar.Name);
                     }
 
-                    maxLevel = Math.Max(maxLevel, bar.Level);
+                    maxHeight = Math.Max(maxHeight, bar.Depth * barHeight);
                     totalBars++;
                 }
 
-                float totalBarHeight = (maxLevel + 1) * barHeight;
-                ImGui.Dummy(new Vector2(contentRegionAvailable.X, totalBarHeight));
+                foreach (var instantEvent in track.InstantEvents)
+                {
+                    if (instantEvent.Timestamp.Ticks < startRange.Ticks || instantEvent.Timestamp.Ticks > endRange.Ticks)
+                    {
+                        continue; // Skip if the event is outside the range.
+                    }
+                    long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
+                    Vector2 tickTop = new Vector2(relativeTicks * tickToPixel, instantEvent.Depth * barHeight) + trackBarsTopLeft;
+
+                    drawList.AddTriangleFilled(
+                        tickTop + new Vector2(0, tickPadding),
+                        tickTop + new Vector2(-4, barHeight - tickPadding * 2),
+                        tickTop + new Vector2(0, barHeight - tickPadding * 2 - tickDivit),
+                        ImGui.GetColorU32(0xFF9073EF));
+                    drawList.AddTriangleFilled(
+                        tickTop + new Vector2(0, tickPadding),
+                        tickTop + new Vector2(0, barHeight - tickPadding * 2 - tickDivit),
+                        tickTop + new Vector2(4, barHeight - tickPadding * 2),
+                        ImGui.GetColorU32(0xFF9073EF));
+
+                    maxHeight = Math.Max(maxHeight, (instantEvent.Depth + 1) * barHeight);
+                }
+
+                ImGui.Dummy(new Vector2(contentRegionAvailable.X, maxHeight));
             }
-
-            // ImGui.GetContentRegionAvail()
-            // ImGui.GetCursorScreenPos();
-            // ImGui.Dummy
-            // ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-            // drawList.AddRectFilled
-            // drawList.AddLine
-            // ImGui.GetColorU32...
-            // ImGui.CalcTextSize(startTimeOffsetStr);
-            // ImGui.SetCursorPos
-            // ImGui.TextUnformatted
-
-            //if ((startX < 0 && eventX < 0) || (startX > contentRegionAvailable.X && eventX > contentRegionAvailable.X))
-            //{
-            //    continue; // Skip if both start and end are outside the range.
-            //}
         }
 
-        private static List<ComputedTrack> ComputeTracks(ITraceTableSnapshot traceTable, DateTime endLog)
+        private static ComputedTracks ComputeTracks(ITraceTableSnapshot traceTable, DateTime endLog)
         {
             var stopwatch = Stopwatch.StartNew();
 
@@ -233,6 +271,15 @@ namespace InstantTraceViewerUI
                     tracks.Add(trackKey, track);
                 }
 
+                if (track.ProcessName == null)
+                {
+                    track.ProcessName = traceTable.GetColumnValueString(i, traceTable.Schema.ProcessIdColumn);
+                }
+                if (track.ThreadName == null)
+                {
+                    track.ThreadName = traceTable.GetColumnValueString(i, traceTable.Schema.ThreadIdColumn);
+                }
+
                 DateTime traceEventTime = traceTable.GetTimestamp(i);
                 UnifiedOpcode opcode = traceTable.GetUnifiedOpcode(i);
                 string name = traceTable.GetName(i);
@@ -240,30 +287,29 @@ namespace InstantTraceViewerUI
                 if (opcode == UnifiedOpcode.Start)
                 {
                     // Push the start time onto the stack.
-                    track.StartTimes.Push(traceEventTime);
+                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name });
                 }
                 else if (opcode == UnifiedOpcode.Stop)
                 {
                     // TODO: Verify StartTime is for the same Stop by Name. If it isn't... idk
                     // Pop until we find a match, or leave alone if no match.
-                    if (track.StartTimes.TryPop(out DateTime startTime))
+                    if (track.StartEvents.TryPop(out Track.StartEvent startEvent))
                     {
-                        track.Bars.Add(new Bar { Start = startTime, Stop = traceEventTime, Level = track.StartTimes.Count, Name = name });
+                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name });
                     }
                 }
                 else
                 {
-                    // Instant event.
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Name = name });
                 }
             }
 
             // Add implicit stops for any starts that are still open
             foreach (var trackKeyValue in tracks)
             {
-                DateTime startTime;
-                while (trackKeyValue.Value.StartTimes.TryPop(out startTime))
+                while (trackKeyValue.Value.StartEvents.TryPop(out Track.StartEvent startEvent))
                 {
-                    trackKeyValue.Value.Bars.Add(new Bar { Start = startTime, Stop = endLog, Level = trackKeyValue.Value.StartTimes.Count, Name = "TODO" });
+                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name });
                 }
             }
 
@@ -275,20 +321,25 @@ namespace InstantTraceViewerUI
                     // Next order the tracks for the process so that the most active threads are at the top.
                     foreach (var track in processTracks.OrderByDescending(t => t.Value.Bars.Count))
                     {
-                        // TODO: Once there are instant events then this needs to be removed or updated.
-                        if (track.Value.Bars.Count == 0)
+                        if (track.Value.Bars.Count == 0 && track.Value.InstantEvents.Count == 0)
                         {
                             continue;
                         }
 
-                        computedTracks.Add(new ComputedTrack { ProcessId = track.Key.Item1, ThreadId = track.Key.Item2, Bars = track.Value.Bars });
+                        computedTracks.Add(new ComputedTrack
+                        {
+                            ProcessName = track.Value.ProcessName,
+                            ThreadName = track.Value.ThreadName,
+                            Bars = track.Value.Bars,
+                            InstantEvents = track.Value.InstantEvents
+                        });
                     }
                 }
             }
 
             Trace.WriteLine($"Computed tracks in {stopwatch.ElapsedMilliseconds}ms");
 
-            return computedTracks;
+            return new ComputedTracks { Tracks = computedTracks };
         }
 
         private string GetSmartDurationString(TimeSpan timeSpan)
