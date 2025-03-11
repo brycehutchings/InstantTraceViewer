@@ -72,6 +72,9 @@ namespace InstantTraceViewerUI.Logcat
             => column == LogcatTraceSource.ColumnPriority ? ConvertPriority(RecordSnapshot[rowIndex].Priority) :
                throw new NotSupportedException();
 
+        public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
+            => throw new NotSupportedException();
+
         private UnifiedLevel ConvertPriority(Priority priority)
             => priority == Priority.Fatal ? UnifiedLevel.Fatal :
                priority == Priority.Error ? UnifiedLevel.Error :

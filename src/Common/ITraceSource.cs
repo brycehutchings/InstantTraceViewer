@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace InstantTraceViewer
+﻿namespace InstantTraceViewer
 {
     /// <summary>
     /// A unified level that all sources can use for a special level column type used for colorization.
@@ -13,6 +10,13 @@ namespace InstantTraceViewer
         Warning,
         Error,
         Fatal,
+    }
+
+    public enum UnifiedOpcode
+    {
+        None,
+        Start,
+        Stop
     }
 
     public interface ITraceTableSnapshot
@@ -40,6 +44,8 @@ namespace InstantTraceViewer
         int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column);
 
         UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column);
+
+        UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column);
     }
 
     public interface ITraceSource : IDisposable
@@ -62,6 +68,8 @@ namespace InstantTraceViewer
         /// Returns null when the column size is stretched (this is only recommended for the message).
         /// </summary>
         public float? DefaultColumnSize { get; init; }
+
+        public bool AllowMultiline { get; init; }
     }
 
     public class TraceTableSchema
@@ -77,6 +85,11 @@ namespace InstantTraceViewer
         /// The column which represents the level/severity/priority of a row. Must support queries using GetColumnValueUnifiedLevel.
         /// </summary>
         public TraceSourceSchemaColumn? UnifiedLevelColumn { get; init; }
+
+        /// <summary>
+        /// The column which represents the unified opcode of a row. Must support queries using GetColumnValueUnifiedOpcode.
+        /// </summary>
+        public TraceSourceSchemaColumn? UnifiedOpcodeColumn { get; init; }
 
         /// <summary>
         /// The column which represents the process id of a row. Must support queries using GetColumnValueInt.
@@ -110,6 +123,15 @@ namespace InstantTraceViewer
 
             return snapshot.GetColumnValueDateTime(rowIndex, snapshot.Schema.TimestampColumn);
         }
+        public static string GetName(this ITraceTableSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.NameColumn == null)
+            {
+                throw new Exception("The schema does not have a name column.");
+            }
+
+            return snapshot.GetColumnValueString(rowIndex, snapshot.Schema.NameColumn);
+        }
 
         public static UnifiedLevel GetUnifiedLevel(this ITraceTableSnapshot snapshot, int rowIndex)
         {
@@ -119,6 +141,15 @@ namespace InstantTraceViewer
             }
 
             return snapshot.GetColumnValueUnifiedLevel(rowIndex, snapshot.Schema.UnifiedLevelColumn);
+        }
+
+        public static UnifiedOpcode GetUnifiedOpcode(this ITraceTableSnapshot snapshot, int rowIndex)
+        {
+            if (snapshot.Schema.UnifiedOpcodeColumn == null)
+            {
+                throw new Exception("The schema does not have a unified opcode column.");
+            }
+            return snapshot.GetColumnValueUnifiedOpcode(rowIndex, snapshot.Schema.UnifiedOpcodeColumn);
         }
 
         public static int GetProcessId(this ITraceTableSnapshot snapshot, int rowIndex)
