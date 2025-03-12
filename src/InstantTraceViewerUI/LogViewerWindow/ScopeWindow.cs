@@ -69,10 +69,10 @@ namespace InstantTraceViewerUI
 
         class ComputedTracks
         {
+            // Tracks are ordered so that all tracks for a given process are continguous. The renderer depends on this because it creates a new group whenever the process name changes.
             public IReadOnlyList<ComputedTrack> Tracks;
         }
 
-        private Dictionary<string, bool> _processCollapsed = new Dictionary<string, bool>();
         private Task<ComputedTracks> _computedTracks = null;
         private DateTime? _startRange = null;
         private DateTime? _endRange = null;
@@ -112,9 +112,21 @@ namespace InstantTraceViewerUI
                 return;
             }
 
+            bool? expandCollapse = null; // true=expand, false=collapse, null=no change
+
             if (ImGui.Button("Refresh"))
             {
                 _computedTracks = null;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Collapse All"))
+            {
+                expandCollapse = true;
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Expand All"))
+            {
+                expandCollapse = false;
             }
 
             DateTime startLog = traceTable.GetTimestamp(0);
@@ -127,7 +139,7 @@ namespace InstantTraceViewerUI
 
             if (_computedTracks.IsCompletedSuccessfully)
             {
-                DrawTracks(startLog, endLog);
+                DrawTracks(startLog, endLog, expandCollapse);
             }
             else if (_computedTracks.IsFaulted)
             {
@@ -139,7 +151,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTracks(DateTime startLog, DateTime endLog)
+        private void DrawTracks(DateTime startLog, DateTime endLog, bool? expandCollapse)
         {
             Vector2 contentRegionAvailable = ImGui.GetContentRegionAvail();
 
@@ -177,21 +189,28 @@ namespace InstantTraceViewerUI
             }
 
             uint textColor = ImGui.GetColorU32(ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
-            float barHeight = ImGui.GetTextLineHeight();
+            float textLineHeight = ImGui.GetTextLineHeight();
+            float barHeight = textLineHeight;
             float tickPadding = barHeight / 7.0f;
             float tickDivit = barHeight / 10.0f;
 
             float tickToPixel = contentRegionAvailable.X / rangeDuration.Ticks;
             int totalBars = 0;
+
             string? previousProcessName = null;
+            bool isCollapsed = false;
+
             Debug.Assert(_computedTracks.IsCompletedSuccessfully);
             foreach (var track in _computedTracks.Result.Tracks)
             {
-                _processCollapsed.TryGetValue(track.ProcessName, out bool isCollapsed);
                 if (previousProcessName != track.ProcessName)
                 {
+                    if (expandCollapse.HasValue)
+                    {
+                        ImGui.SetNextItemOpen(expandCollapse.Value, ImGuiCond.Always);
+                    }
+
                     isCollapsed = ImGui.CollapsingHeader(track.ProcessName);
-                    _processCollapsed[track.ProcessName] = isCollapsed;
                     previousProcessName = track.ProcessName;
                 }
 
@@ -210,6 +229,7 @@ namespace InstantTraceViewerUI
                 //    break; // We are below the fold and won't be seen.
                 //}
 
+                float minTextRenderLengthPixels = textLineHeight * 0.2f;
                 float maxHeight = 0;
                 foreach (var bar in track.Bars)
                 {
@@ -229,10 +249,18 @@ namespace InstantTraceViewerUI
                     // if (max.Y >= contentRegionTopLeft.Y && min.Y <= (contentRegionTopLeft.Y + contentRegionAvailable.Y))
                     {
                         drawList.AddRectFilled(min, max, ImGui.GetColorU32(new Vector4(0.5f, 0.4f, 0.3f, 1.0f)));
-                        drawList.AddText(min + new Vector2(1, 0), ImGui.GetColorU32(new Vector4(0.0f, 0.0f, 0.0f, 1.0f)), bar.Name);
+
+                        // Don't bother rendering any text in a bar unless it has some space to see something
+                        if (max.X - min.X >= minTextRenderLengthPixels)
+                        {
+                            Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
+                            drawList.AddText(null /* default font  */, 0.0f /* default font size */,
+                                min + new Vector2(1, 0), ImGui.GetColorU32(0xFF000000), bar.Name, 0.0f /* no text wrap */,
+                                ref clipRect);
+                        }
                     }
 
-                    maxHeight = Math.Max(maxHeight, bar.Depth * barHeight);
+                    maxHeight = Math.Max(maxHeight, (bar.Depth + 1) * barHeight);
                     totalBars++;
                 }
 
@@ -330,8 +358,9 @@ namespace InstantTraceViewerUI
 
             var computedTracks = new List<ComputedTrack>();
             {
-                // Group by process id, ordered so that the most active processes are at the top.
-                foreach (var processTracks in tracks.GroupBy(t => t.Key.Item1).OrderByDescending(tg => tg.Sum(tg2 => tg2.Value.Bars.Count)))
+                // Group by process name, ordered so that the most active processes are at the top. Bars count as two events (start/stop), instant events count as one.
+                // We must group by process name because ComputedTracks.Tracks requires this for proper UI rendering.
+                foreach (var processTracks in tracks.GroupBy(t => t.Value.ProcessName).OrderByDescending(tg => tg.Sum(tg2 => (tg2.Value.Bars.Count * 2) + tg2.Value.InstantEvents.Count)))
                 {
                     // Next order the tracks for the process by thread id so they are easy to visually search.
                     foreach (var track in processTracks.OrderBy(t => t.Value.ThreadId))
