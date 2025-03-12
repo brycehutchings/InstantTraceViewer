@@ -41,7 +41,6 @@ namespace InstantTraceViewerUI
             //
             // Processing State:
             //
-
             public struct StartEvent
             {
                 public DateTime Timestamp;
@@ -51,10 +50,10 @@ namespace InstantTraceViewerUI
             public Stack<StartEvent> StartEvents = new Stack<StartEvent>();
 
             //
-            // Output:
+            // Post-processing Output:
             //
-
             public string? ProcessName;
+            public int ThreadId;
             public string? ThreadName;
             public List<Bar> Bars = new();
             public List<InstantEvent> InstantEvents = new();
@@ -73,6 +72,7 @@ namespace InstantTraceViewerUI
             public IReadOnlyList<ComputedTrack> Tracks;
         }
 
+        private Dictionary<string, bool> _processCollapsed = new Dictionary<string, bool>();
         private Task<ComputedTracks> _computedTracks = null;
         private DateTime? _startRange = null;
         private DateTime? _endRange = null;
@@ -146,20 +146,14 @@ namespace InstantTraceViewerUI
             Vector2 tracksTopLeft = ImGui.GetCursorPos();
             Vector2 tracksTopLeftScreenPos = ImGui.GetCursorScreenPos();
 
-            // Fun/hacky thing here to cover the entire window with an invisible item (button) so that it can capture the mouse wheel Y
-            // when CTRL is held down.
             float zoomAmount = 0;
+            if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
             {
-                ImGui.InvisibleButton("###Reserved", contentRegionAvailable);
-                if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
+                ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY);
+                if (ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
                 {
-                    ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY);
-                    if (ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
-                    {
-                        zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
-                    }
+                    zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
                 }
-                ImGui.SetCursorPos(tracksTopLeft);
             }
 
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
@@ -189,10 +183,24 @@ namespace InstantTraceViewerUI
 
             float tickToPixel = contentRegionAvailable.X / rangeDuration.Ticks;
             int totalBars = 0;
+            string? previousProcessName = null;
             Debug.Assert(_computedTracks.IsCompletedSuccessfully);
             foreach (var track in _computedTracks.Result.Tracks)
             {
-                ImGui.TextUnformatted(track.ThreadName != null ? $"{track.ProcessName}:{track.ThreadName}" : track.ProcessName);
+                _processCollapsed.TryGetValue(track.ProcessName, out bool isCollapsed);
+                if (previousProcessName != track.ProcessName)
+                {
+                    isCollapsed = ImGui.CollapsingHeader(track.ProcessName);
+                    _processCollapsed[track.ProcessName] = isCollapsed;
+                    previousProcessName = track.ProcessName;
+                }
+
+                if (isCollapsed)
+                {
+                    continue;
+                }
+
+                ImGui.TextUnformatted(track.ThreadName);
 
                 Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
 
@@ -265,9 +273,16 @@ namespace InstantTraceViewerUI
             for (int i = 0; i < traceTable.RowCount; i++)
             {
                 (int, int) trackKey = (traceTable.GetProcessId(i), traceTable.GetThreadId(i));
+
+                // If PID or TID is 0 or -1 (these are values from ETW parsing sometimes) then there is no process/thread attributed to the event.
+                if (trackKey.Item1 <= 0 || trackKey.Item2 <= 0)
+                {
+                    continue;
+                }
+
                 if (!tracks.TryGetValue(trackKey, out Track? track))
                 {
-                    track = new Track();
+                    track = new Track { ThreadId = trackKey.Item2 };
                     tracks.Add(trackKey, track);
                 }
 
@@ -318,8 +333,8 @@ namespace InstantTraceViewerUI
                 // Group by process id, ordered so that the most active processes are at the top.
                 foreach (var processTracks in tracks.GroupBy(t => t.Key.Item1).OrderByDescending(tg => tg.Sum(tg2 => tg2.Value.Bars.Count)))
                 {
-                    // Next order the tracks for the process so that the most active threads are at the top.
-                    foreach (var track in processTracks.OrderByDescending(t => t.Value.Bars.Count))
+                    // Next order the tracks for the process by thread id so they are easy to visually search.
+                    foreach (var track in processTracks.OrderBy(t => t.Value.ThreadId))
                     {
                         if (track.Value.Bars.Count == 0 && track.Value.InstantEvents.Count == 0)
                         {
