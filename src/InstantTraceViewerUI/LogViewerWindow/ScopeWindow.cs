@@ -63,7 +63,11 @@ namespace InstantTraceViewerUI
         {
             public string ProcessName;
             public string ThreadName;
+
+            public int MaxBarDepth;
             public List<Bar> Bars;
+
+            public int MaxInstantEventDepth;
             public List<InstantEvent> InstantEvents;
         }
 
@@ -195,7 +199,6 @@ namespace InstantTraceViewerUI
             float tickDivit = barHeight / 10.0f;
 
             float tickToPixel = contentRegionAvailable.X / rangeDuration.Ticks;
-            int totalBars = 0;
 
             string? previousProcessName = null;
             bool isCollapsed = false;
@@ -223,14 +226,15 @@ namespace InstantTraceViewerUI
 
                 Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
 
-                // This optimization might not help
-                //if (trackBarsTopLeft.Y > (contentRegionTopLeft.Y + contentRegionAvailable.Y))
-                //{
-                //    break; // We are below the fold and won't be seen.
-                //}
+                // Reserve space for rendering. This conveniently also allows us to check visibility and skip rendering for non-visible tracks.
+                float trackHeight = Math.Max((track.MaxBarDepth + 1) * barHeight, (track.MaxInstantEventDepth + 1) * barHeight);
+                ImGui.Dummy(new Vector2(contentRegionAvailable.X, trackHeight));
+                if (!ImGui.IsItemVisible())
+                {
+                    continue;
+                }
 
                 float minTextRenderLengthPixels = textLineHeight * 0.2f;
-                float maxHeight = 0;
                 foreach (var bar in track.Bars)
                 {
                     if (bar.Stop.Ticks < startRange.Ticks || bar.Start.Ticks > endRange.Ticks)
@@ -244,24 +248,16 @@ namespace InstantTraceViewerUI
                     Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
                     Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1, (bar.Depth + 1) * barHeight + 1) + trackBarsTopLeft; // + 1 because the max is apparently exclusive.
 
-                    // If the bottom of the bar is above the top of the content region, or the top of the bar is below
-                    // the bottom of the content region, no need to draw since it won't be seen.
-                    // if (max.Y >= contentRegionTopLeft.Y && min.Y <= (contentRegionTopLeft.Y + contentRegionAvailable.Y))
+                    drawList.AddRectFilled(min, max, ImGui.GetColorU32(new Vector4(0.5f, 0.4f, 0.3f, 1.0f)));
+
+                    // Don't bother rendering any text in a bar unless it has some space to see something
+                    if (max.X - min.X >= minTextRenderLengthPixels)
                     {
-                        drawList.AddRectFilled(min, max, ImGui.GetColorU32(new Vector4(0.5f, 0.4f, 0.3f, 1.0f)));
-
-                        // Don't bother rendering any text in a bar unless it has some space to see something
-                        if (max.X - min.X >= minTextRenderLengthPixels)
-                        {
-                            Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
-                            drawList.AddText(null /* default font  */, 0.0f /* default font size */,
-                                min + new Vector2(1, 0), ImGui.GetColorU32(0xFF000000), bar.Name, 0.0f /* no text wrap */,
-                                ref clipRect);
-                        }
+                        Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
+                        drawList.AddText(null /* default font  */, 0.0f /* default font size */,
+                            min + new Vector2(1, 0), ImGui.GetColorU32(0xFF000000), bar.Name, 0.0f /* no text wrap */,
+                            ref clipRect);
                     }
-
-                    maxHeight = Math.Max(maxHeight, (bar.Depth + 1) * barHeight);
-                    totalBars++;
                 }
 
                 foreach (var instantEvent in track.InstantEvents)
@@ -270,24 +266,14 @@ namespace InstantTraceViewerUI
                     {
                         continue; // Skip if the event is outside the range.
                     }
+
                     long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
                     Vector2 tickTop = new Vector2(relativeTicks * tickToPixel, instantEvent.Depth * barHeight) + trackBarsTopLeft;
+                    float tickHeight = barHeight - tickPadding * 2;
 
-                    drawList.AddTriangleFilled(
-                        tickTop + new Vector2(0, tickPadding),
-                        tickTop + new Vector2(-4, barHeight - tickPadding * 2),
-                        tickTop + new Vector2(0, barHeight - tickPadding * 2 - tickDivit),
-                        ImGui.GetColorU32(0xFF9073EF));
-                    drawList.AddTriangleFilled(
-                        tickTop + new Vector2(0, tickPadding),
-                        tickTop + new Vector2(0, barHeight - tickPadding * 2 - tickDivit),
-                        tickTop + new Vector2(4, barHeight - tickPadding * 2),
-                        ImGui.GetColorU32(0xFF9073EF));
-
-                    maxHeight = Math.Max(maxHeight, (instantEvent.Depth + 1) * barHeight);
+                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(-4, tickHeight), tickTop + new Vector2(0, tickHeight - tickDivit), ImGui.GetColorU32(0xFF9073EF));
+                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(0, tickHeight - tickDivit), tickTop + new Vector2(4, tickHeight), ImGui.GetColorU32(0xFF9073EF));
                 }
-
-                ImGui.Dummy(new Vector2(contentRegionAvailable.X, maxHeight));
             }
         }
 
@@ -356,6 +342,9 @@ namespace InstantTraceViewerUI
                 }
             }
 
+            Trace.WriteLine($"Processed events in {stopwatch.ElapsedMilliseconds}ms");
+            stopwatch.Restart();
+
             var computedTracks = new List<ComputedTrack>();
             {
                 // Group by process name, ordered so that the most active processes are at the top. Bars count as two events (start/stop), instant events count as one.
@@ -374,14 +363,16 @@ namespace InstantTraceViewerUI
                         {
                             ProcessName = track.Value.ProcessName,
                             ThreadName = track.Value.ThreadName,
+                            MaxBarDepth = track.Value.Bars.Count > 0 ? track.Value.Bars.Max(b => b.Depth) : 0,
                             Bars = track.Value.Bars,
+                            MaxInstantEventDepth = track.Value.InstantEvents.Count > 0 ? track.Value.InstantEvents.Max(b => b.Depth) : 0,
                             InstantEvents = track.Value.InstantEvents
                         });
                     }
                 }
             }
 
-            Trace.WriteLine($"Computed tracks in {stopwatch.ElapsedMilliseconds}ms");
+            Trace.WriteLine($"Grouped and sorted events in {stopwatch.ElapsedMilliseconds}ms");
 
             return new ComputedTracks { Tracks = computedTracks };
         }
