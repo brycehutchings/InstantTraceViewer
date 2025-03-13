@@ -1,6 +1,4 @@
-﻿// Colorization research: https://www.perplexity.ai/search/what-algorithm-does-ui-perfett-0cQg61wjSjykpzHEY5loMQ
-
-using ImGuiNET;
+﻿using ImGuiNET;
 using System;
 using System.Numerics;
 using InstantTraceViewer;
@@ -26,6 +24,7 @@ namespace InstantTraceViewerUI
             public DateTime Stop;
             public int Depth;
             public string Name;
+            public uint Color;
         }
 
         public struct InstantEvent
@@ -34,6 +33,7 @@ namespace InstantTraceViewerUI
             public int Depth;
             public UnifiedLevel Level;
             public string Name;
+            public uint Color;
         }
 
         class Track
@@ -248,7 +248,7 @@ namespace InstantTraceViewerUI
                     Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
                     Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1, (bar.Depth + 1) * barHeight + 1) + trackBarsTopLeft; // + 1 because the max is apparently exclusive.
 
-                    drawList.AddRectFilled(min, max, ImGui.GetColorU32(new Vector4(0.5f, 0.4f, 0.3f, 1.0f)));
+                    drawList.AddRectFilled(min, max, bar.Color);
 
                     // Don't bother rendering any text in a bar unless it has some space to see something
                     if (max.X - min.X >= minTextRenderLengthPixels)
@@ -271,8 +271,8 @@ namespace InstantTraceViewerUI
                     Vector2 tickTop = new Vector2(relativeTicks * tickToPixel, instantEvent.Depth * barHeight) + trackBarsTopLeft;
                     float tickHeight = barHeight - tickPadding * 2;
 
-                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(-4, tickHeight), tickTop + new Vector2(0, tickHeight - tickDivit), ImGui.GetColorU32(0xFF9073EF));
-                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(0, tickHeight - tickDivit), tickTop + new Vector2(4, tickHeight), ImGui.GetColorU32(0xFF9073EF));
+                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(-4, tickHeight), tickTop + new Vector2(0, tickHeight - tickDivit), instantEvent.Color);
+                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(0, tickHeight - tickDivit), tickTop + new Vector2(4, tickHeight), instantEvent.Color);
                 }
             }
         }
@@ -289,6 +289,7 @@ namespace InstantTraceViewerUI
                 (int, int) trackKey = (traceTable.GetProcessId(i), traceTable.GetThreadId(i));
 
                 // If PID or TID is 0 or -1 (these are values from ETW parsing sometimes) then there is no process/thread attributed to the event.
+                // For example, a Kernel Process Start event has no associated thread.
                 if (trackKey.Item1 <= 0 || trackKey.Item2 <= 0)
                 {
                     continue;
@@ -324,12 +325,12 @@ namespace InstantTraceViewerUI
                     // Pop until we find a match, or leave alone if no match.
                     if (track.StartEvents.TryPop(out Track.StartEvent startEvent))
                     {
-                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name });
+                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name, Color = PickColor(name) });
                     }
                 }
                 else
                 {
-                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Name = name });
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Name = name, Color = PickColor(name) });
                 }
             }
 
@@ -338,7 +339,7 @@ namespace InstantTraceViewerUI
             {
                 while (trackKeyValue.Value.StartEvents.TryPop(out Track.StartEvent startEvent))
                 {
-                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name });
+                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, Color = PickColor(startEvent.Name) });
                 }
             }
 
@@ -375,6 +376,19 @@ namespace InstantTraceViewerUI
             Trace.WriteLine($"Grouped and sorted events in {stopwatch.ElapsedMilliseconds}ms");
 
             return new ComputedTracks { Tracks = computedTracks };
+        }
+
+        private static uint PickColor(string name)
+        {
+            uint hash = (uint)name.GetHashCode();
+            uint hue = hash % 360;
+            uint saturation = 70 + (hash % 15);
+            uint lightness = 80 + (hash % 10);
+
+            // Convert HSL to RGB
+            ImGui.ColorConvertHSVtoRGB(hue / 360.0f, saturation / 100.0f, lightness / 100.0f, out float r, out float g, out float b);
+
+            return ImGui.GetColorU32(new Vector4(r, g, b, 1.0f));
         }
 
         private string GetSmartDurationString(TimeSpan timeSpan)
