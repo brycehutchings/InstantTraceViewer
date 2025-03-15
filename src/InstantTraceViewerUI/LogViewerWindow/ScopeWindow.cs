@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using System.IO.Hashing;
 
 namespace InstantTraceViewerUI
 {
@@ -195,8 +196,9 @@ namespace InstantTraceViewerUI
             uint textColor = ImGui.GetColorU32(ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
             float textLineHeight = ImGui.GetTextLineHeight();
             float barHeight = textLineHeight;
-            float tickPadding = barHeight / 7.0f;
-            float tickDivit = barHeight / 10.0f;
+            float tickHeight = (float)Math.Round(barHeight * 0.8f);
+            float tickDivit = (float)Math.Round(barHeight / 10.0f);
+            float tickHalfWidth = (float)Math.Round(barHeight / 5.0f);
 
             float tickToPixel = contentRegionAvailable.X / rangeDuration.Ticks;
 
@@ -246,7 +248,7 @@ namespace InstantTraceViewerUI
                     long stopRelativeTicks = bar.Stop.Ticks - startRange.Ticks;
 
                     Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
-                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1, (bar.Depth + 1) * barHeight + 1) + trackBarsTopLeft; // + 1 because the max is apparently exclusive.
+                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackBarsTopLeft;
 
                     drawList.AddRectFilled(min, max, bar.Color);
 
@@ -255,7 +257,7 @@ namespace InstantTraceViewerUI
                     {
                         Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
                         drawList.AddText(null /* default font  */, 0.0f /* default font size */,
-                            min + new Vector2(1, 0), ImGui.GetColorU32(0xFF000000), bar.Name, 0.0f /* no text wrap */,
+                            min + new Vector2(1, 0), ImGui.GetColorU32(0xFFFFFFFF), bar.Name, 0.0f /* no text wrap */,
                             ref clipRect);
                     }
                 }
@@ -268,11 +270,14 @@ namespace InstantTraceViewerUI
                     }
 
                     long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
-                    Vector2 tickTop = new Vector2(relativeTicks * tickToPixel, instantEvent.Depth * barHeight) + trackBarsTopLeft;
-                    float tickHeight = barHeight - tickPadding * 2;
 
-                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(-4, tickHeight), tickTop + new Vector2(0, tickHeight - tickDivit), instantEvent.Color);
-                    drawList.AddTriangleFilled(tickTop + new Vector2(0, tickPadding), tickTop + new Vector2(0, tickHeight - tickDivit), tickTop + new Vector2(4, tickHeight), instantEvent.Color);
+
+                    Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), instantEvent.Depth * barHeight) + trackBarsTopLeft;
+                    Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight + 1);
+                    Vector2 tickBottomMiddle = tickTop + new Vector2(0, tickHeight - tickDivit + 1);
+                    Vector2 tickBottomLeft = tickTop + new Vector2(-tickHalfWidth, tickHeight + 1);
+                    drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, instantEvent.Color);
+                    drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, instantEvent.Color);
                 }
             }
         }
@@ -380,13 +385,15 @@ namespace InstantTraceViewerUI
 
         private static uint PickColor(string name)
         {
-            uint hash = (uint)name.GetHashCode();
+            uint hash = XxHash32.HashToUInt32(System.Text.Encoding.UTF8.GetBytes(name));
+
             uint hue = hash % 360;
-            uint saturation = 70 + (hash % 15);
-            uint lightness = 80 + (hash % 10);
+            uint saturation = 50 + (hash % 50);
+            // Values over 80 can make white text hard to read and under 60 are aesthetically displeasing.
+            uint value = 60 + (hash % 20); 
 
             // Convert HSL to RGB
-            ImGui.ColorConvertHSVtoRGB(hue / 360.0f, saturation / 100.0f, lightness / 100.0f, out float r, out float g, out float b);
+            ImGui.ColorConvertHSVtoRGB(hue / 360.0f, saturation / 100.0f, value / 100.0f, out float r, out float g, out float b);
 
             return ImGui.GetColorU32(new Vector4(r, g, b, 1.0f));
         }
