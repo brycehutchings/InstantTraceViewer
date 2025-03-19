@@ -1,8 +1,8 @@
 ﻿/*
- * 1. Show pinned tracks at top. Give up to 50% Y region space.
- * 2. Mouse hover toolip
- * 3. Mouse pan (shift+click+move)
- * 4. Click to jump to event? (both directions?)
+ * 1. Mouse hover toolip
+ * 2. Mouse pan (shift+click+move)
+ * 3. Click to jump to event? (both directions?)
+ * 4. Click-drag to select time range?
  */
 using ImGuiNET;
 using System;
@@ -16,7 +16,7 @@ using System.IO.Hashing;
 
 namespace InstantTraceViewerUI
 {
-    internal class ScopeWindow
+    internal class ThreadTimelineWindow
     {
         private const string PopupName = "Scopes";
 
@@ -94,7 +94,7 @@ namespace InstantTraceViewerUI
         private float? _trackAreaLeftScreenPos;
         private float? _trackAreaWidth;
 
-        public ScopeWindow(string name, string parentWindowId)
+        public ThreadTimelineWindow(string name, string parentWindowId)
         {
             _name = name;
             _parentWindowId = parentWindowId;
@@ -115,14 +115,12 @@ namespace InstantTraceViewerUI
             return _open;
         }
 
+        public static bool IsSupported(TraceTableSchema schema)
+            => schema.TimestampColumn != null && schema.NameColumn != null && schema.ProcessIdColumn != null && schema.ThreadIdColumn != null;
+
         private void DrawTimelineGraph(ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
-            if (traceTable.Schema.TimestampColumn == null || traceTable.Schema.NameColumn == null ||
-                traceTable.Schema.ProcessIdColumn == null || traceTable.Schema.ThreadIdColumn == null)
-            {
-                ImGui.TextUnformatted("Required timestamp, name, process id and/or thread id columns are missing.");
-                return;
-            }
+            Trace.Assert(IsSupported(traceTable.Schema));
 
             if (traceTable.RowCount == 0)
             {
@@ -170,20 +168,15 @@ namespace InstantTraceViewerUI
 
         private void DrawTracks(DateTime startLog, DateTime endLog, bool? expandCollapse)
         {
-            Vector2 tracksTopLeft = ImGui.GetCursorPos();
-            Vector2 tracksTopLeftScreenPos = ImGui.GetCursorScreenPos();
-
             float zoomAmount = 0;
             if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
             {
                 ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY);
-                if (ImGui.IsWindowHovered(ImGuiHoveredFlags.AllowWhenBlockedByPopup))
+                if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows))
                 {
                     zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
                 }
             }
-
-            ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
             DateTime startRange = (_startRange.HasValue && _startRange.Value >= startLog) ? _startRange.Value : startLog;
             DateTime endRange = (_endRange.HasValue && _endRange.Value <= endLog) ? _endRange.Value : endLog;
@@ -209,15 +202,90 @@ namespace InstantTraceViewerUI
             _trackAreaLeftScreenPos = null;
             _trackAreaWidth = null;
 
-            if (!ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH))
-            {
-                return;
-            }
-
-            float dpiBase = ImGui.GetFontSize();
-            ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
-            ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch, 1.0f);
             // ImGui.TableHeadersRow(); // We don't actually want the header shown
+
+            Debug.Assert(_computedTracks.IsCompletedSuccessfully);
+
+            Vector2 contentRegion = ImGui.GetContentRegionAvail();
+            ImDrawListPtr drawList = ImGui.GetWindowDrawList();
+
+            // 'ScrollY' required for freezing rows (for pinning).
+            if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
+            {
+                var pinnedTracks = _computedTracks.Result.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
+                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count); // Pinned tracks are always visible.
+
+                float dpiBase = ImGui.GetFontSize();
+                ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
+
+                // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
+                ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
+
+                foreach (var track in pinnedTracks)
+                {
+                    DrawTrack(track, drawList, startRange, endRange, isPinned: true);
+                }
+
+                if (pinnedTracks.Any())
+                {
+                    // Ensure custom drawing doesn't scroll up into the frozen track area.
+                    // 100,000 is a "very large size" to include everything to the right and below this point (float.MaxValue doesn't work).
+                    Vector2 startClip = ImGui.GetCursorScreenPos();
+                    drawList.PushClipRect(startClip, new Vector2(startClip.X + 100000, 100000), false);
+                }
+
+                string? previousProcessName = null;
+                bool isOpen = false;
+                foreach (var track in _computedTracks.Result.Tracks)
+                {
+                    bool isPinned = _pinnedTracks.Contains(track.UniqueKey);
+                    if (isPinned)
+                    {
+                        continue; // Pinned tracks were already rendered.
+                    }
+
+                    if (previousProcessName != track.ProcessName)
+                    {
+                        if (isOpen)
+                        {
+                            ImGui.TreePop();
+                        }
+
+                        ImGui.TableNextRow();
+                        ImGui.TableNextColumn();
+
+                        if (expandCollapse.HasValue)
+                        {
+                            ImGui.SetNextItemOpen(!expandCollapse.Value, ImGuiCond.Always);
+                        }
+                        isOpen = ImGui.TreeNodeEx(track.ProcessName, ImGuiTreeNodeFlags.SpanFullWidth);
+                        ImGui.TableNextColumn();
+
+                        previousProcessName = track.ProcessName;
+                    }
+
+                    if (!isOpen)
+                    {
+                        continue;
+                    }
+
+                    DrawTrack(track, drawList, startRange, endRange, isPinned);
+                }
+
+                drawList.PopClipRect();
+
+                if (isOpen)
+                {
+                    ImGui.TreePop();
+                }
+
+                ImGui.EndTable();
+            }
+        }
+
+        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned)
+        {
+            TimeSpan rangeDuration = endRange - startRange;
 
             uint textColor = ImGui.GetColorU32(ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
             float textLineHeight = ImGui.GetTextLineHeight();
@@ -226,152 +294,113 @@ namespace InstantTraceViewerUI
             float tickDivit = (float)Math.Round(barHeight / 6.0f);
             float tickHalfWidth = (float)Math.Round(barHeight / 4.0f);
 
-            string? previousProcessName = null;
-            bool isOpen = false;
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
 
-            Debug.Assert(_computedTracks.IsCompletedSuccessfully);
-            foreach (var track in _computedTracks.Result.Tracks)
+            ImGui.PushID(track.UniqueKey);
+
+            if (isPinned)
             {
-                if (previousProcessName != track.ProcessName)
+                if (ImGuiWidgets.UndecoratedButton("\uE68F", "Unpin"))
                 {
-                    if (isOpen)
-                    {
-                        ImGui.TreePop();
-                    }
-
-                    ImGui.TableNextRow();
-                    ImGui.TableNextColumn();
-
-                    if (expandCollapse.HasValue)
-                    {
-                        ImGui.SetNextItemOpen(!expandCollapse.Value, ImGuiCond.Always);
-                    }
-                    isOpen = ImGui.TreeNodeEx(track.ProcessName, ImGuiTreeNodeFlags.SpanFullWidth);
-                    ImGui.TableNextColumn();
-
-                    previousProcessName = track.ProcessName;
+                    _pinnedTracks.Remove(track.UniqueKey);
                 }
-
-                if (!isOpen)
+            }
+            else
+            {
+                if (ImGuiWidgets.UndecoratedButton("\uF08D", "Pin to top"))
                 {
-                    continue;
+                    _pinnedTracks.Add(track.UniqueKey);
                 }
+            }
+            ImGui.SameLine();
 
-                ImGui.TableNextRow();
-                ImGui.TableNextColumn();
+            ImGui.TextUnformatted(track.ThreadName);
 
-                ImGui.PushID(track.UniqueKey);
+            ImGui.TableNextColumn();
 
-                bool isPinned = _pinnedTracks.Contains(track.UniqueKey);
-                if (isPinned)
-                {
-                    if (ImGuiWidgets.UndecoratedButton("\uE68F", "Unpin"))
-                    {
-                        _pinnedTracks.Remove(track.UniqueKey);
-                    }
-                }
-                else
-                {
-                    if (ImGuiWidgets.UndecoratedButton("\uF08D", "Pin to top"))
-                    {
-                        _pinnedTracks.Add(track.UniqueKey);
-                    }
-                }
-                ImGui.SameLine();
-                ImGui.TextUnformatted(track.ThreadName);
+            Vector2 trackRegionAvailable = ImGui.GetContentRegionAvail();
+            Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
 
-                ImGui.TableNextColumn();
-
-                Vector2 trackRegionAvailable = ImGui.GetContentRegionAvail();
-                Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
-
-                // We need to remember the starting X and width to do zooming centered on the mouse X coord.
-                if (_trackAreaLeftScreenPos == null && _trackAreaWidth == null)
-                {
-                    _trackAreaLeftScreenPos = trackBarsTopLeft.X;
-                    _trackAreaWidth = trackRegionAvailable.X;
-                }
-
-                float tickToPixel = trackRegionAvailable.X / rangeDuration.Ticks;
-
-                // Reserve space for rendering. This conveniently also allows us to check visibility and skip rendering for non-visible tracks.
-                float trackHeight = Math.Max((track.MaxBarDepth + 1) * barHeight, (track.MaxInstantEventDepth + 1) * barHeight);
-                ImGui.Dummy(new Vector2(trackRegionAvailable.X, trackHeight));
-                if (ImGui.IsItemVisible())
-                {
-                    float minTextRenderLengthPixels = textLineHeight * 0.2f;
-                    foreach (var bar in track.Bars)
-                    {
-                        if (bar.Stop.Ticks < startRange.Ticks || bar.Start.Ticks > endRange.Ticks)
-                        {
-                            continue; // Skip if the bar is outside the range.
-                        }
-
-                        long startRelativeTicks = bar.Start.Ticks - startRange.Ticks;
-                        long stopRelativeTicks = bar.Stop.Ticks - startRange.Ticks;
-
-                        // Truncate the bar so it doesn't draw outside the range.
-                        startRelativeTicks = Math.Max(startRelativeTicks, 0);
-                        stopRelativeTicks = Math.Min(stopRelativeTicks, endRange.Ticks - startRange.Ticks);
-
-                        Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
-                        Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackBarsTopLeft;
-
-                        drawList.AddRectFilled(min, max, bar.Color);
-
-                        // Don't bother rendering any text in a bar unless it has some space to see something
-                        if (max.X - min.X >= minTextRenderLengthPixels)
-                        {
-                            float centerX = ((max.X - min.X) - ImGui.CalcTextSize(bar.Name).X) / 2.0f;
-                            Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
-                            drawList.AddText(null /* default font  */, 0.0f /* default font size */,
-                                min + new Vector2(centerX, 0), ImGui.GetColorU32(0xFFFFFFFF), bar.Name, 0.0f /* no text wrap */,
-                                ref clipRect);
-                        }
-                    }
-
-                    foreach (var instantEvent in track.InstantEvents)
-                    {
-                        if (instantEvent.Timestamp.Ticks < startRange.Ticks || instantEvent.Timestamp.Ticks > endRange.Ticks)
-                        {
-                            continue; // Skip if the event is outside the range.
-                        }
-
-                        long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
-
-                        Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), instantEvent.Depth * barHeight) + trackBarsTopLeft;
-                        Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight);
-                        Vector2 tickBottomMiddle = tickTop + new Vector2(0, tickHeight - tickDivit);
-                        Vector2 tickBottomLeft = tickTop + new Vector2(-tickHalfWidth, tickHeight);
-                        drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, instantEvent.Color);
-                        drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, instantEvent.Color);
-
-                        Vector4? diamondColor = instantEvent.Level switch
-                        {
-                            UnifiedLevel.Fatal => AppTheme.FatalColor,
-                            UnifiedLevel.Error => AppTheme.ErrorColor,
-                            UnifiedLevel.Warning => AppTheme.WarningColor,
-                            _ => null
-                        };
-
-                        if (diamondColor.HasValue)
-                        {
-                            Vector2 diamondBottom = tickBottomMiddle + new Vector2(0, tickDivit * 2);
-                            drawList.AddTriangleFilled(tickBottomMiddle, tickBottomRight, diamondBottom, ImGui.ColorConvertFloat4ToU32(diamondColor.Value));
-                            drawList.AddTriangleFilled(diamondBottom, tickBottomLeft, tickBottomMiddle, ImGui.ColorConvertFloat4ToU32(diamondColor.Value));
-                        }
-                    }
-                }
-
-                ImGui.PopID();
+            // We need to remember the starting X and width to do zooming centered on the mouse X coord.
+            if (_trackAreaLeftScreenPos == null && _trackAreaWidth == null)
+            {
+                _trackAreaLeftScreenPos = trackBarsTopLeft.X;
+                _trackAreaWidth = trackRegionAvailable.X;
             }
 
-            if (isOpen)
+            float tickToPixel = trackRegionAvailable.X / rangeDuration.Ticks;
+
+            // Reserve space for rendering. This conveniently also allows us to check visibility and skip rendering for non-visible tracks.
+            float trackHeight = Math.Max((track.MaxBarDepth + 1) * barHeight, (track.MaxInstantEventDepth + 1) * barHeight);
+            ImGui.Dummy(new Vector2(trackRegionAvailable.X, trackHeight));
+            if (ImGui.IsItemVisible())
             {
-                ImGui.TreePop();
+                float minTextRenderLengthPixels = textLineHeight * 0.2f;
+                foreach (var bar in track.Bars)
+                {
+                    if (bar.Stop.Ticks < startRange.Ticks || bar.Start.Ticks > endRange.Ticks)
+                    {
+                        continue; // Skip if the bar is outside the range.
+                    }
+
+                    long startRelativeTicks = bar.Start.Ticks - startRange.Ticks;
+                    long stopRelativeTicks = bar.Stop.Ticks - startRange.Ticks;
+
+                    // Truncate the bar so it doesn't draw outside the range.
+                    startRelativeTicks = Math.Max(startRelativeTicks, 0);
+                    stopRelativeTicks = Math.Min(stopRelativeTicks, endRange.Ticks - startRange.Ticks);
+
+                    Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
+                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackBarsTopLeft;
+
+                    drawList.AddRectFilled(min, max, bar.Color);
+
+                    // Don't bother rendering any text in a bar unless it has some space to see something
+                    if (max.X - min.X >= minTextRenderLengthPixels)
+                    {
+                        float centerX = ((max.X - min.X) - ImGui.CalcTextSize(bar.Name).X) / 2.0f;
+                        Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
+                        drawList.AddText(null /* default font  */, 0.0f /* default font size */,
+                            min + new Vector2(centerX, -1), ImGui.GetColorU32(0xFFFFFFFF), bar.Name, 0.0f /* no text wrap */,
+                            ref clipRect);
+                    }
+                }
+
+                foreach (var instantEvent in track.InstantEvents)
+                {
+                    if (instantEvent.Timestamp.Ticks < startRange.Ticks || instantEvent.Timestamp.Ticks > endRange.Ticks)
+                    {
+                        continue; // Skip if the event is outside the range.
+                    }
+
+                    long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
+
+                    Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), instantEvent.Depth * barHeight) + trackBarsTopLeft;
+                    Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight);
+                    Vector2 tickBottomMiddle = tickTop + new Vector2(0, tickHeight - tickDivit);
+                    Vector2 tickBottomLeft = tickTop + new Vector2(-tickHalfWidth, tickHeight);
+                    drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, instantEvent.Color);
+                    drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, instantEvent.Color);
+
+                    Vector4? diamondColor = instantEvent.Level switch
+                    {
+                        UnifiedLevel.Fatal => AppTheme.FatalColor,
+                        UnifiedLevel.Error => AppTheme.ErrorColor,
+                        UnifiedLevel.Warning => AppTheme.WarningColor,
+                        _ => null
+                    };
+
+                    if (diamondColor.HasValue)
+                    {
+                        Vector2 diamondBottom = tickBottomMiddle + new Vector2(0, tickDivit * 2);
+                        drawList.AddTriangleFilled(tickBottomMiddle, tickBottomRight, diamondBottom, ImGui.ColorConvertFloat4ToU32(diamondColor.Value));
+                        drawList.AddTriangleFilled(diamondBottom, tickBottomLeft, tickBottomMiddle, ImGui.ColorConvertFloat4ToU32(diamondColor.Value));
+                    }
+                }
             }
 
-            ImGui.EndTable();
+            ImGui.PopID();
         }
 
         private static ComputedTracks ComputeTracks(ITraceTableSnapshot traceTable, DateTime endLog)
