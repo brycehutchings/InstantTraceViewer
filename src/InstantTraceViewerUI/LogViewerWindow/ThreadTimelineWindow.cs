@@ -1,8 +1,8 @@
 ﻿/*
- * 1. Mouse hover toolip
- * 2. Mouse pan (shift+click+move)
- * 3. Click to jump to event? (both directions?)
- * 4. Click-drag to select time range?
+ * 1. Mouse hover toolip. Show multiple names if multiple events are within 1-2px of the mouse pointer X.
+ * 2. Click to jump to event? (both directions?)
+ * 3. Show time range / ticks at the top. Rename ticks below to something more like "arrow"?
+ * 4. Click-drag to select time range and show duration. Allow zoom to it?
  */
 using ImGuiNET;
 using System;
@@ -168,13 +168,19 @@ namespace InstantTraceViewerUI
 
         private void DrawTracks(DateTime startLog, DateTime endLog, bool? expandCollapse)
         {
-            float zoomAmount = 0;
-            if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
+            float zoomAmount = 0, moveAmount = 0;
+            if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows))
             {
-                ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY);
-                if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows))
+                if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
                 {
+                    ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY);
                     zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
+
+                }
+                if (ImGui.IsKeyDown(ImGuiKey.ModShift) && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                {
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEW);
+                    moveAmount = ImGui.GetIO().MouseDelta.X;
                 }
             }
 
@@ -183,19 +189,33 @@ namespace InstantTraceViewerUI
 
             TimeSpan rangeDuration = endRange - startRange;
 
-            if (zoomAmount != 0 && _trackAreaWidth.HasValue && _trackAreaLeftScreenPos.HasValue)
+            if (_trackAreaWidth.HasValue && _trackAreaLeftScreenPos.HasValue && _trackAreaWidth.Value > 0)
             {
-                float percentZoomPerWheelClick = 0.15f; // 15% zoom per wheel click.
+                if (zoomAmount != 0)
+                {
+                    float percentZoomPerWheelClick = 0.15f; // 15% zoom per wheel click.
 
-                // Adjust zoom to the left/right of the mouse cursor so that the zoom is centered around the mouse cursor.
-                float zoomPointPercent = (ImGui.GetMousePos().X - _trackAreaLeftScreenPos.Value) / _trackAreaWidth.Value;
+                    // Adjust zoom to the left/right of the mouse cursor so that the zoom is centered around the mouse cursor.
+                    float zoomPointPercent = (ImGui.GetMousePos().X - _trackAreaLeftScreenPos.Value) / _trackAreaWidth.Value;
 
-                Trace.WriteLine($"{ImGui.GetMousePos().X} - {_trackAreaLeftScreenPos.Value} / {_trackAreaWidth.Value} = {zoomPointPercent}");
+                    // Zoom in proportionally to the mouse position to maintain the position of what is under the mouse.
+                    TimeSpan adjustDuration = rangeDuration * percentZoomPerWheelClick * zoomAmount;
+                    _startRange = startRange + adjustDuration * zoomPointPercent;
+                    _endRange = endRange - adjustDuration * (1 - zoomPointPercent);
+                }
+                if (moveAmount != 0)
+                {
+                    TimeSpan pixelToTick = rangeDuration / _trackAreaWidth.Value;
+                    TimeSpan adjustDuration = pixelToTick * -moveAmount;
 
-                // Zoom in proportionally to the mouse position to maintain the position of what is under the mouse.
-                TimeSpan adjustDuration = rangeDuration * percentZoomPerWheelClick * zoomAmount;
-                _startRange = startRange + adjustDuration * zoomPointPercent;
-                _endRange = endRange - adjustDuration * (1 - zoomPointPercent);
+                    // Slide the start/end range by the same amount without going out of bounds.
+                    _startRange = _startRange + adjustDuration < startLog ? startLog : _startRange + adjustDuration;
+                    _endRange = _endRange + adjustDuration > endLog ? endLog : _endRange + adjustDuration;
+
+                    // Prevent the range from going outside the log range to keep the range duration constant.
+                    _startRange = (_endRange == endLog) ? (endLog - rangeDuration) : _startRange;
+                    _endRange = (_startRange == startLog) ? (startLog + rangeDuration) : _endRange;
+                }
             }
 
             // These will be set as we draw the table which is when this information is available.
@@ -272,7 +292,10 @@ namespace InstantTraceViewerUI
                     DrawTrack(track, drawList, startRange, endRange, isPinned);
                 }
 
-                drawList.PopClipRect();
+                if (pinnedTracks.Any())
+                {
+                    drawList.PopClipRect();
+                }
 
                 if (isOpen)
                 {
@@ -383,7 +406,7 @@ namespace InstantTraceViewerUI
                     drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, instantEvent.Color);
                     drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, instantEvent.Color);
 
-                    Vector4? diamondColor = instantEvent.Level switch
+                    Vector4? levelMarkerColor = instantEvent.Level switch
                     {
                         UnifiedLevel.Fatal => AppTheme.FatalColor,
                         UnifiedLevel.Error => AppTheme.ErrorColor,
@@ -391,11 +414,13 @@ namespace InstantTraceViewerUI
                         _ => null
                     };
 
-                    if (diamondColor.HasValue)
+                    if (levelMarkerColor.HasValue)
                     {
-                        Vector2 diamondBottom = tickBottomMiddle + new Vector2(0, tickDivit * 2);
-                        drawList.AddTriangleFilled(tickBottomMiddle, tickBottomRight, diamondBottom, ImGui.ColorConvertFloat4ToU32(diamondColor.Value));
-                        drawList.AddTriangleFilled(diamondBottom, tickBottomLeft, tickBottomMiddle, ImGui.ColorConvertFloat4ToU32(diamondColor.Value));
+                        Vector2 levelMarkerBottomRight = tickBottomRight + new Vector2(0, tickDivit);
+                        Vector2 levelMarkerBottomLeft = tickBottomLeft + new Vector2(0, tickDivit);
+                        drawList.AddTriangleFilled(tickBottomMiddle, tickBottomRight, levelMarkerBottomRight, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
+                        drawList.AddTriangleFilled(tickBottomMiddle, levelMarkerBottomRight, levelMarkerBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
+                        drawList.AddTriangleFilled(tickBottomMiddle, levelMarkerBottomLeft, tickBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
                     }
                 }
             }
