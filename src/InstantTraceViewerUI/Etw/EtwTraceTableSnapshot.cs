@@ -45,7 +45,7 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (column == EtwTraceSource.ColumnTime)
             {
-                return traceRecord.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+                return FriendlyStringify.ToString(traceRecord.Timestamp);
             }
             else if (column == EtwTraceSource.ColumnOpCode)
             {

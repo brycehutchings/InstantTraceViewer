@@ -1,8 +1,7 @@
 ﻿/*
  * 1. Mouse hover toolip. Show multiple names if multiple events are within 1-2px of the mouse pointer X.
  * 2. Click to jump to event? (both directions?)
- * 3. Show time range / ticks at the top. Rename ticks below to something more like "arrow"?
- * 4. Click-drag to select time range and show duration. Allow zoom to it?
+ * 3. Click-drag to select time range and show duration. Allow zoom to it?
  */
 using ImGuiNET;
 using System;
@@ -226,14 +225,13 @@ namespace InstantTraceViewerUI
 
             Debug.Assert(_computedTracks.IsCompletedSuccessfully);
 
-            Vector2 contentRegion = ImGui.GetContentRegionAvail();
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
             // 'ScrollY' required for freezing rows (for pinning).
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
                 var pinnedTracks = _computedTracks.Result.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
-                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count); // Pinned tracks are always visible.
+                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count + 1); // Pinned tracks are always visible. Plus one because we also want to pin the timeline.
 
                 float dpiBase = ImGui.GetFontSize();
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
@@ -241,18 +239,17 @@ namespace InstantTraceViewerUI
                 // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
                 ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
 
+                DrawTimeline(drawList, startLog, endLog, startRange, endRange);
+
                 foreach (var track in pinnedTracks)
                 {
                     DrawTrack(track, drawList, startRange, endRange, isPinned: true);
                 }
 
-                if (pinnedTracks.Any())
-                {
-                    // Ensure custom drawing doesn't scroll up into the frozen track area.
-                    // 100,000 is a "very large size" to include everything to the right and below this point (float.MaxValue doesn't work).
-                    Vector2 startClip = ImGui.GetCursorScreenPos();
-                    drawList.PushClipRect(startClip, new Vector2(startClip.X + 100000, 100000), false);
-                }
+                // Ensure custom drawing doesn't scroll up into the frozen track area.
+                // 1,000,000 is a "very large size" to include everything below this point (float.MaxValue doesn't work).
+                Vector2 startClip = ImGui.GetCursorScreenPos();
+                drawList.PushClipRect(startClip, new Vector2(startClip.X + 1000000, 1000000), false);
 
                 string? previousProcessName = null;
                 bool isOpen = false;
@@ -292,10 +289,7 @@ namespace InstantTraceViewerUI
                     DrawTrack(track, drawList, startRange, endRange, isPinned);
                 }
 
-                if (pinnedTracks.Any())
-                {
-                    drawList.PopClipRect();
-                }
+                drawList.PopClipRect();
 
                 if (isOpen)
                 {
@@ -303,6 +297,46 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.EndTable();
+            }
+        }
+
+        private void DrawTimeline(ImDrawListPtr drawList, DateTime startLog, DateTime endLog, DateTime startRange, DateTime endRange)
+        {
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn(); // Track name (none for timeline)
+            ImGui.TableNextColumn(); // Track graph area
+
+            // BEWARE: GetContentRegionAvail does not give a reliable value for Y after scrolling one page or more.
+            Vector2 trackRegionAvailable = ImGui.GetContentRegionAvail();
+            Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
+
+            // We need to remember the starting X and width to do zooming centered on the mouse X coord.
+            if (_trackAreaLeftScreenPos == null && _trackAreaWidth == null)
+            {
+                _trackAreaLeftScreenPos = trackBarsTopLeft.X;
+                _trackAreaWidth = trackRegionAvailable.X;
+            }
+
+            TimeSpan rangeDuration = endRange - startRange;
+            float tickToPixel = trackRegionAvailable.X / rangeDuration.Ticks;
+            float timelineHeight = ImGui.GetFontSize() * 2;
+            ImGui.Dummy(new Vector2(trackRegionAvailable.X, timelineHeight));
+            if (ImGui.IsItemVisible())
+            {
+                float lineHeight = ImGui.GetTextLineHeight();
+                Vector4 clipRect = new(trackBarsTopLeft.X, trackBarsTopLeft.Y, trackBarsTopLeft.X + trackRegionAvailable.X, trackBarsTopLeft.Y + timelineHeight);
+                var drawAligned = (string text, float xPercent, float y) =>
+                {
+                    float textLength = ImGui.CalcTextSize(text).X;
+                    float x = xPercent * (trackRegionAvailable.X - textLength);
+                    drawList.AddText(null /* default font  */, 0.0f /* default font size */,
+                        trackBarsTopLeft + new Vector2(x, y), ImGui.GetColorU32(ImGuiCol.Text), text, 0.0f /* no text wrap */,
+                        ref clipRect);
+                };
+
+                drawAligned($"{FriendlyStringify.ToString(startRange)} (+{FriendlyStringify.ToString(startRange - startLog)})", 0.0f, lineHeight * 0);
+                drawAligned($"{FriendlyStringify.ToString(endRange)} (-{FriendlyStringify.ToString(endLog - endRange)})", 1.0f, lineHeight * 0);
+                drawAligned(FriendlyStringify.ToString(rangeDuration), 0.5f, lineHeight * 1);
             }
         }
 
@@ -342,15 +376,9 @@ namespace InstantTraceViewerUI
 
             ImGui.TableNextColumn();
 
+            // BEWARE: GetContentRegionAvail does not give a reliable value for Y after scrolling one page or more.
             Vector2 trackRegionAvailable = ImGui.GetContentRegionAvail();
             Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
-
-            // We need to remember the starting X and width to do zooming centered on the mouse X coord.
-            if (_trackAreaLeftScreenPos == null && _trackAreaWidth == null)
-            {
-                _trackAreaLeftScreenPos = trackBarsTopLeft.X;
-                _trackAreaWidth = trackRegionAvailable.X;
-            }
 
             float tickToPixel = trackRegionAvailable.X / rangeDuration.Ticks;
 
@@ -542,18 +570,6 @@ namespace InstantTraceViewerUI
             ImGui.ColorConvertHSVtoRGB(hue / 360.0f, saturation / 100.0f, value / 100.0f, out float r, out float g, out float b);
 
             return ImGui.GetColorU32(new Vector4(r, g, b, 1.0f));
-        }
-
-        private string GetSmartDurationString(TimeSpan timeSpan)
-        {
-            if (timeSpan.TotalSeconds >= 60)
-            {
-                return $"{(int)timeSpan.TotalMinutes}m {timeSpan.TotalSeconds - (int)timeSpan.TotalMinutes * 60:0.000000}s";
-            }
-            else
-            {
-                return $"{timeSpan.TotalSeconds:0.000000}s";
-            }
         }
     }
 }

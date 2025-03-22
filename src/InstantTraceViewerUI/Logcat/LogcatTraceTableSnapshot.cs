@@ -36,7 +36,7 @@ namespace InstantTraceViewerUI.Logcat
             }
             else if (column == LogcatTraceSource.ColumnTime)
             {
-                return traceRecord.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+                return FriendlyStringify.ToString(traceRecord.Timestamp);
             }
             else if (column == LogcatTraceSource.ColumnBufferId)
             {
