@@ -134,6 +134,16 @@ namespace InstantTraceViewerUI
 
             DrawToolStrip(uiCommands, visibleTraceTable, ref setScrollIndex);
 
+            if (setScrollIndex == null && _threadTimelineWindow?.ClickedVisibleRowIndex != null)
+            {
+                // If the user clicked on a row in the timeline window, then scroll to that row.
+                _lastSelectedVisibleRowIndex = _threadTimelineWindow.ClickedVisibleRowIndex;
+                _selectedFullTableRowIndices.Clear();
+                _selectedFullTableRowIndices.Add(visibleTraceTable.GetFullTableRowIndex(_lastSelectedVisibleRowIndex.Value));
+
+                setScrollIndex = _lastSelectedVisibleRowIndex;
+            }
+
             // TODO: For inline thread timeline
             /*
             if (_timelineInline != null)

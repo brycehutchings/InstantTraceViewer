@@ -1,6 +1,6 @@
 ﻿/*
- * 1. Click to jump to event? (both directions?)
- * 2. Click-drag to select time range and show duration. Allow zoom to it?
+ * 1. Click-drag to select time range and show duration. Allow zoom to it?
+ * 2. Fix stack popping with name matching.
  */
 using ImGuiNET;
 using System;
@@ -103,6 +103,9 @@ namespace InstantTraceViewerUI
             _parentWindowId = parentWindowId;
         }
 
+        // This is reset every frame and only set if a click happens on an event.
+        public int? ClickedVisibleRowIndex { get; set; }
+
         public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
@@ -171,6 +174,9 @@ namespace InstantTraceViewerUI
 
         private void DrawTrackGraph(DateTime startLog, DateTime endLog, bool? expandCollapse)
         {
+            ClickedVisibleRowIndex = null;
+
+            bool zoomMode = ImGui.IsKeyDown(ImGuiKey.ModShift);
             float zoomAmount = 0, moveAmount = 0;
             if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows))
             {
@@ -180,7 +186,7 @@ namespace InstantTraceViewerUI
                     zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
 
                 }
-                if (ImGui.IsKeyDown(ImGuiKey.ModShift) && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                if (zoomMode && ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
                     ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEW);
                     moveAmount = ImGui.GetIO().MouseDelta.X;
@@ -311,10 +317,18 @@ namespace InstantTraceViewerUI
                 {
                     if (hoveredEvent.Bar != null)
                     {
+                        if (!zoomMode && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                        {
+                            ClickedVisibleRowIndex = hoveredEvent.Bar.Value.VisibleRowIndex;
+                        }
                         ImGui.Text($"{hoveredEvent.Bar.Value.Name} ({FriendlyStringify.ToString(hoveredEvent.Bar.Value.Duration)})");
                     }
                     else if (hoveredEvent.InstantEvent != null)
                     {
+                        if (!zoomMode && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                        {
+                            ClickedVisibleRowIndex = hoveredEvent.InstantEvent.Value.VisibleRowIndex;
+                        }
                         ImGui.Text($"{hoveredEvent.InstantEvent.Value.Name} ({hoveredEvent.InstantEvent.Value.Level})");
                     }
                     ImGui.EndTooltip();
@@ -568,7 +582,7 @@ namespace InstantTraceViewerUI
             {
                 while (trackKeyValue.Value.StartEvents.TryPop(out Track.StartEvent startEvent))
                 {
-                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, Color = PickColor(startEvent.Name) });
+                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(startEvent.Name) });
                 }
             }
 
