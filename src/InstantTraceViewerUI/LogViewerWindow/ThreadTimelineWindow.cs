@@ -1,7 +1,6 @@
 ﻿/*
- * 1. Mouse hover toolip. Show multiple names if multiple events are within 1-2px of the mouse pointer X.
- * 2. Click to jump to event? (both directions?)
- * 3. Click-drag to select time range and show duration. Allow zoom to it?
+ * 1. Click to jump to event? (both directions?)
+ * 2. Click-drag to select time range and show duration. Allow zoom to it?
  */
 using ImGuiNET;
 using System;
@@ -30,7 +29,10 @@ namespace InstantTraceViewerUI
             public DateTime Stop;
             public int Depth;
             public string Name;
+            public int VisibleRowIndex; // For start event.
             public uint Color;
+
+            public TimeSpan Duration => Stop - Start;
         }
 
         public struct InstantEvent
@@ -39,6 +41,7 @@ namespace InstantTraceViewerUI
             public int Depth;
             public UnifiedLevel Level;
             public string Name;
+            public int VisibleRowIndex;
             public uint Color;
         }
 
@@ -51,6 +54,7 @@ namespace InstantTraceViewerUI
             {
                 public DateTime Timestamp;
                 public string Name;
+                public int VisibleRowIndex; // For start event.
             }
 
             public Stack<StartEvent> StartEvents = new Stack<StartEvent>();
@@ -153,7 +157,7 @@ namespace InstantTraceViewerUI
 
             if (_computedTracks.IsCompletedSuccessfully)
             {
-                DrawTracks(startLog, endLog, expandCollapse);
+                DrawTrackGraph(startLog, endLog, expandCollapse);
             }
             else if (_computedTracks.IsFaulted)
             {
@@ -165,7 +169,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTracks(DateTime startLog, DateTime endLog, bool? expandCollapse)
+        private void DrawTrackGraph(DateTime startLog, DateTime endLog, bool? expandCollapse)
         {
             float zoomAmount = 0, moveAmount = 0;
             if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows))
@@ -239,11 +243,14 @@ namespace InstantTraceViewerUI
                 // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
                 ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
 
+                // A poor man's discriminated union. Only one of these will be set at a time, if any.
+                (Bar? Bar, InstantEvent? InstantEvent) hoveredEvent = new();
+
                 DrawTimeline(drawList, startLog, endLog, startRange, endRange);
 
                 foreach (var track in pinnedTracks)
                 {
-                    DrawTrack(track, drawList, startRange, endRange, isPinned: true);
+                    DrawTrack(track, drawList, startRange, endRange, isPinned: true, ref hoveredEvent);
                 }
 
                 // Ensure custom drawing doesn't scroll up into the frozen track area.
@@ -286,7 +293,7 @@ namespace InstantTraceViewerUI
                         continue;
                     }
 
-                    DrawTrack(track, drawList, startRange, endRange, isPinned);
+                    DrawTrack(track, drawList, startRange, endRange, isPinned, ref hoveredEvent);
                 }
 
                 drawList.PopClipRect();
@@ -297,6 +304,21 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.EndTable();
+
+                Vector2 mousePos = ImGui.GetMousePos();
+
+                if ((hoveredEvent.InstantEvent != null || hoveredEvent.Bar != null) && ImGui.BeginTooltip())
+                {
+                    if (hoveredEvent.Bar != null)
+                    {
+                        ImGui.Text($"{hoveredEvent.Bar.Value.Name} ({FriendlyStringify.ToString(hoveredEvent.Bar.Value.Duration)})");
+                    }
+                    else if (hoveredEvent.InstantEvent != null)
+                    {
+                        ImGui.Text($"{hoveredEvent.InstantEvent.Value.Name} ({hoveredEvent.InstantEvent.Value.Level})");
+                    }
+                    ImGui.EndTooltip();
+                }
             }
         }
 
@@ -306,29 +328,28 @@ namespace InstantTraceViewerUI
             ImGui.TableNextColumn(); // Track name (none for timeline)
             ImGui.TableNextColumn(); // Track graph area
 
-            // BEWARE: GetContentRegionAvail does not give a reliable value for Y after scrolling one page or more.
-            Vector2 trackRegionAvailable = ImGui.GetContentRegionAvail();
+            float trackRegionAvailableWidth = ImGui.GetContentRegionAvail().X;
             Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
 
             // We need to remember the starting X and width to do zooming centered on the mouse X coord.
             if (_trackAreaLeftScreenPos == null && _trackAreaWidth == null)
             {
                 _trackAreaLeftScreenPos = trackBarsTopLeft.X;
-                _trackAreaWidth = trackRegionAvailable.X;
+                _trackAreaWidth = trackRegionAvailableWidth;
             }
 
             TimeSpan rangeDuration = endRange - startRange;
-            float tickToPixel = trackRegionAvailable.X / rangeDuration.Ticks;
+            float tickToPixel = trackRegionAvailableWidth / rangeDuration.Ticks;
             float timelineHeight = ImGui.GetFontSize() * 2;
-            ImGui.Dummy(new Vector2(trackRegionAvailable.X, timelineHeight));
+            ImGui.Dummy(new Vector2(trackRegionAvailableWidth, timelineHeight));
             if (ImGui.IsItemVisible())
             {
                 float lineHeight = ImGui.GetTextLineHeight();
-                Vector4 clipRect = new(trackBarsTopLeft.X, trackBarsTopLeft.Y, trackBarsTopLeft.X + trackRegionAvailable.X, trackBarsTopLeft.Y + timelineHeight);
+                Vector4 clipRect = new(trackBarsTopLeft.X, trackBarsTopLeft.Y, trackBarsTopLeft.X + trackRegionAvailableWidth, trackBarsTopLeft.Y + timelineHeight);
                 var drawAligned = (string text, float xPercent, float y) =>
                 {
                     float textLength = ImGui.CalcTextSize(text).X;
-                    float x = xPercent * (trackRegionAvailable.X - textLength);
+                    float x = xPercent * (trackRegionAvailableWidth - textLength);
                     drawList.AddText(null /* default font  */, 0.0f /* default font size */,
                         trackBarsTopLeft + new Vector2(x, y), ImGui.GetColorU32(ImGuiCol.Text), text, 0.0f /* no text wrap */,
                         ref clipRect);
@@ -340,7 +361,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned)
+        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned, ref (Bar? Bar, InstantEvent? InstantEvent) hoveredEvent)
         {
             TimeSpan rangeDuration = endRange - startRange;
 
@@ -376,17 +397,22 @@ namespace InstantTraceViewerUI
 
             ImGui.TableNextColumn();
 
-            // BEWARE: GetContentRegionAvail does not give a reliable value for Y after scrolling one page or more.
-            Vector2 trackRegionAvailable = ImGui.GetContentRegionAvail();
+            float trackRegionAvailableWidth = ImGui.GetContentRegionAvail().X;
             Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
 
-            float tickToPixel = trackRegionAvailable.X / rangeDuration.Ticks;
+            float tickToPixel = trackRegionAvailableWidth / rangeDuration.Ticks;
 
             // Reserve space for rendering. This conveniently also allows us to check visibility and skip rendering for non-visible tracks.
             float trackHeight = Math.Max((track.MaxBarDepth + 1) * barHeight, (track.MaxInstantEventDepth + 1) * barHeight);
-            ImGui.Dummy(new Vector2(trackRegionAvailable.X, trackHeight));
+            ImGui.Dummy(new Vector2(trackRegionAvailableWidth, trackHeight));
             if (ImGui.IsItemVisible())
             {
+                Vector2 mousePos = ImGui.GetMousePos();
+
+                DateTime mouseTimestamp = new DateTime(Math.Max((long)((mousePos.X - trackBarsTopLeft.X) * (1 / tickToPixel)), DateTime.MinValue.Ticks));
+                TimeSpan nearestEventOffset = TimeSpan.MaxValue;
+                object? nearestEvent = null;
+
                 float minTextRenderLengthPixels = textLineHeight * 0.2f;
                 foreach (var bar in track.Bars)
                 {
@@ -405,7 +431,9 @@ namespace InstantTraceViewerUI
                     Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
                     Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackBarsTopLeft;
 
-                    drawList.AddRectFilled(min, max, bar.Color);
+                    bool isHovered = mousePos.Y >= min.Y && mousePos.Y < max.Y && mousePos.X >= min.X && mousePos.X < max.X;
+                    uint barColor = isHovered ? DarkenColor(bar.Color) : bar.Color;
+                    drawList.AddRectFilled(min, max, barColor);
 
                     // Don't bother rendering any text in a bar unless it has some space to see something
                     if (max.X - min.X >= minTextRenderLengthPixels)
@@ -415,6 +443,12 @@ namespace InstantTraceViewerUI
                         drawList.AddText(null /* default font  */, 0.0f /* default font size */,
                             min + new Vector2(centerX, -1), ImGui.GetColorU32(0xFFFFFFFF), bar.Name, 0.0f /* no text wrap */,
                             ref clipRect);
+                    }
+
+                    if (isHovered)
+                    {
+                        nearestEvent = bar;
+                        nearestEventOffset = TimeSpan.Zero;
                     }
                 }
 
@@ -431,8 +465,12 @@ namespace InstantTraceViewerUI
                     Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight);
                     Vector2 tickBottomMiddle = tickTop + new Vector2(0, tickHeight - tickDivit);
                     Vector2 tickBottomLeft = tickTop + new Vector2(-tickHalfWidth, tickHeight);
-                    drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, instantEvent.Color);
-                    drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, instantEvent.Color);
+
+                    bool isHovered = mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X;
+                    uint tickColor = isHovered ? DarkenColor(instantEvent.Color) : instantEvent.Color;
+
+                    drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, tickColor);
+                    drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, tickColor);
 
                     Vector4? levelMarkerColor = instantEvent.Level switch
                     {
@@ -450,7 +488,19 @@ namespace InstantTraceViewerUI
                         drawList.AddTriangleFilled(tickBottomMiddle, levelMarkerBottomRight, levelMarkerBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
                         drawList.AddTriangleFilled(tickBottomMiddle, levelMarkerBottomLeft, tickBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
                     }
+
+                    if (isHovered)
+                    {
+                        TimeSpan mouseTimeDelta = (instantEvent.Timestamp - mouseTimestamp).Duration();
+                        if (mouseTimeDelta < nearestEventOffset)
+                        {
+                            nearestEvent = instantEvent;
+                            nearestEventOffset = mouseTimeDelta;
+                        }
+                    }
                 }
+
+                hoveredEvent = (hoveredEvent.Bar ?? nearestEvent as Bar?, hoveredEvent.InstantEvent ?? nearestEvent as InstantEvent?);
             }
 
             ImGui.PopID();
@@ -496,7 +546,7 @@ namespace InstantTraceViewerUI
                 if (opcode == UnifiedOpcode.Start)
                 {
                     // Push the start time onto the stack.
-                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name });
+                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name, VisibleRowIndex = i });
                 }
                 else if (opcode == UnifiedOpcode.Stop)
                 {
@@ -504,12 +554,12 @@ namespace InstantTraceViewerUI
                     // Pop until we find a match, or leave alone if no match.
                     if (track.StartEvents.TryPop(out Track.StartEvent startEvent))
                     {
-                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name, Color = PickColor(name) });
+                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(name) });
                     }
                 }
                 else
                 {
-                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Name = name, Color = PickColor(name) });
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Name = name, VisibleRowIndex = i, Color = PickColor(name) });
                 }
             }
 
@@ -555,6 +605,14 @@ namespace InstantTraceViewerUI
             Trace.WriteLine($"Grouped and sorted events in {stopwatch.ElapsedMilliseconds}ms");
 
             return new ComputedTracks { Tracks = computedTracks };
+        }
+
+        private static uint DarkenColor(uint originalColor)
+        {
+            Vector4 originalColorVec = ImGui.ColorConvertU32ToFloat4(originalColor);
+            ImGui.ColorConvertRGBtoHSV(originalColorVec.X, originalColorVec.Y, originalColorVec.Z, out float h, out float s, out float v);
+            ImGui.ColorConvertHSVtoRGB(h, s, v * 0.8f /* darken by 20% */, out float r, out float g, out float b);
+            return ImGui.ColorConvertFloat4ToU32(new Vector4(r, g, b, originalColorVec.W));
         }
 
         private static uint PickColor(string name)
