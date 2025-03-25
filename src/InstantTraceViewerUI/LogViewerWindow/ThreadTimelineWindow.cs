@@ -1,4 +1,4 @@
-﻿/*
+/*
  * 1. Click-drag to select time range and show duration. Allow zoom to it?
  * 2. Fix stack popping with name matching.
  */
@@ -182,7 +182,7 @@ namespace InstantTraceViewerUI
             {
                 if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
                 {
-                    ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY);
+                    ImGui.SetItemKeyOwner(ImGuiKey.MouseWheelY); // Prevent mouse wheel from scrolling.
                     zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
 
                 }
@@ -317,7 +317,7 @@ namespace InstantTraceViewerUI
                 {
                     if (hoveredEvent.Bar != null)
                     {
-                        if (!zoomMode && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                        if (!zoomMode && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                         {
                             ClickedVisibleRowIndex = hoveredEvent.Bar.Value.VisibleRowIndex;
                         }
@@ -325,7 +325,7 @@ namespace InstantTraceViewerUI
                     }
                     else if (hoveredEvent.InstantEvent != null)
                     {
-                        if (!zoomMode && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                        if (!zoomMode && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                         {
                             ClickedVisibleRowIndex = hoveredEvent.InstantEvent.Value.VisibleRowIndex;
                         }
