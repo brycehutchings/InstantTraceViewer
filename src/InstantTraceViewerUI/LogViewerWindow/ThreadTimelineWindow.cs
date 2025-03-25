@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI
 {
     internal class ThreadTimelineWindow
     {
-        private const string PopupName = "Scopes";
+        private const string PopupName = "Thread Timeline";
 
         private readonly string _name;
         private readonly string _parentWindowId;
@@ -111,7 +111,7 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{PopupName} - {_name}###Scopes_{_parentWindowId}", ref _open))
+            if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open))
             {
                 DrawTimelineGraph(traceTable, startWindow, endWindow);
             }
@@ -153,7 +153,7 @@ namespace InstantTraceViewerUI
             ImGui.SameLine();
             ImGuiWidgets.HelpIconToolip(
                 "CTRL+Mouse Wheel --- Zoom in and out centered on mouse cursor\n" +
-                "SHIFT+Mouse Move Left/Right --- Pan left/right\n" + 
+                "SHIFT+Mouse Move Left/Right --- Pan left/right\n" +
                 "CTRL+Mouse click --- Jump to hovered event");
 
             DateTime startLog = traceTable.GetTimestamp(0);
@@ -255,14 +255,21 @@ namespace InstantTraceViewerUI
                 // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
                 ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
 
-                // A poor man's discriminated union. Only one of these will be set at a time, if any.
-                (Bar? Bar, InstantEvent? InstantEvent) hoveredEvent = new();
-
                 DrawTimeline(drawList, startLog, endLog, startRange, endRange);
 
+                object hoveredEvent = null; // Either 'Bar' or 'InstantEvent'
                 foreach (var track in pinnedTracks)
                 {
                     DrawTrack(track, drawList, startRange, endRange, isPinned: true, ref hoveredEvent);
+                }
+
+                if (pinnedTracks.Any())
+                {
+                    // Blank row to separate pinned tracks from the rest. Fill color matches border color so it looks like a solid thick separator.
+                    ImGui.TableNextRow();
+                    ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(ImGuiCol.TableBorderLight));
+                    ImGui.TableNextColumn(); // Track name (none for timeline)
+                    ImGui.TableNextColumn(); // Track graph area
                 }
 
                 // Ensure custom drawing doesn't scroll up into the frozen track area.
@@ -319,7 +326,7 @@ namespace InstantTraceViewerUI
 
                 Vector2 mousePos = ImGui.GetMousePos();
 
-                if ((hoveredEvent.InstantEvent != null || hoveredEvent.Bar != null))
+                if (hoveredEvent != null)
                 {
                     bool clickable = false;
                     if (!zoomMode && ImGui.IsKeyDown(ImGuiKey.ModCtrl))
@@ -330,21 +337,21 @@ namespace InstantTraceViewerUI
 
                     if (ImGui.BeginTooltip())
                     {
-                        if (hoveredEvent.Bar != null)
+                        if (hoveredEvent is Bar bar)
                         {
                             if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                             {
-                                ClickedVisibleRowIndex = hoveredEvent.Bar.Value.VisibleRowIndex;
+                                ClickedVisibleRowIndex = bar.VisibleRowIndex;
                             }
-                            ImGui.Text($"{hoveredEvent.Bar.Value.Name} ({FriendlyStringify.ToString(hoveredEvent.Bar.Value.Duration)})");
+                            ImGui.Text($"{bar.Name} ({FriendlyStringify.ToString(bar.Duration)})");
                         }
-                        else if (hoveredEvent.InstantEvent != null)
+                        else if (hoveredEvent is InstantEvent instantEvent)
                         {
                             if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                             {
-                                ClickedVisibleRowIndex = hoveredEvent.InstantEvent.Value.VisibleRowIndex;
+                                ClickedVisibleRowIndex = instantEvent.VisibleRowIndex;
                             }
-                            ImGui.Text($"{hoveredEvent.InstantEvent.Value.Name} ({hoveredEvent.InstantEvent.Value.Level})");
+                            ImGui.Text($"{instantEvent.Name} ({instantEvent.Level})");
                         }
                         ImGui.EndTooltip();
                     }
@@ -392,7 +399,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned, ref (Bar? Bar, InstantEvent? InstantEvent) hoveredEvent)
+        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned, ref object hoveredEvent)
         {
             TimeSpan rangeDuration = endRange - startRange;
 
@@ -531,7 +538,7 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                hoveredEvent = (hoveredEvent.Bar ?? nearestEvent as Bar?, hoveredEvent.InstantEvent ?? nearestEvent as InstantEvent?);
+                hoveredEvent ??= nearestEvent;
             }
 
             ImGui.PopID();
@@ -571,9 +578,9 @@ namespace InstantTraceViewerUI
                 }
 
                 DateTime traceEventTime = traceTable.GetTimestamp(i);
-                UnifiedOpcode opcode = traceTable.GetUnifiedOpcode(i);
                 string name = traceTable.GetName(i);
 
+                UnifiedOpcode opcode = traceTable.Schema.UnifiedOpcodeColumn != null ? traceTable.GetUnifiedOpcode(i) : UnifiedOpcode.None;
                 if (opcode == UnifiedOpcode.Start)
                 {
                     // Push the start time onto the stack.
