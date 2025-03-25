@@ -150,6 +150,12 @@ namespace InstantTraceViewerUI
                 expandCollapse = false;
             }
 
+            ImGui.SameLine();
+            ImGuiWidgets.HelpIconToolip(
+                "CTRL+Mouse Wheel --- Zoom in and out centered on mouse cursor\n" +
+                "SHIFT+Mouse Move Left/Right --- Pan left/right\n" + 
+                "CTRL+Mouse click --- Jump to hovered event");
+
             DateTime startLog = traceTable.GetTimestamp(0);
             DateTime endLog = traceTable.GetTimestamp(traceTable.RowCount - 1);
 
@@ -313,26 +319,37 @@ namespace InstantTraceViewerUI
 
                 Vector2 mousePos = ImGui.GetMousePos();
 
-                if ((hoveredEvent.InstantEvent != null || hoveredEvent.Bar != null) && ImGui.BeginTooltip())
+                if ((hoveredEvent.InstantEvent != null || hoveredEvent.Bar != null))
                 {
-                    if (hoveredEvent.Bar != null)
+                    bool clickable = false;
+                    if (!zoomMode && ImGui.IsKeyDown(ImGuiKey.ModCtrl))
                     {
-                        if (!zoomMode && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                        {
-                            ClickedVisibleRowIndex = hoveredEvent.Bar.Value.VisibleRowIndex;
-                        }
-                        ImGui.Text($"{hoveredEvent.Bar.Value.Name} ({FriendlyStringify.ToString(hoveredEvent.Bar.Value.Duration)})");
+                        clickable = true;
+                        ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
                     }
-                    else if (hoveredEvent.InstantEvent != null)
+
+                    if (ImGui.BeginTooltip())
                     {
-                        if (!zoomMode && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                        if (hoveredEvent.Bar != null)
                         {
-                            ClickedVisibleRowIndex = hoveredEvent.InstantEvent.Value.VisibleRowIndex;
+                            if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                            {
+                                ClickedVisibleRowIndex = hoveredEvent.Bar.Value.VisibleRowIndex;
+                            }
+                            ImGui.Text($"{hoveredEvent.Bar.Value.Name} ({FriendlyStringify.ToString(hoveredEvent.Bar.Value.Duration)})");
                         }
-                        ImGui.Text($"{hoveredEvent.InstantEvent.Value.Name} ({hoveredEvent.InstantEvent.Value.Level})");
+                        else if (hoveredEvent.InstantEvent != null)
+                        {
+                            if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                            {
+                                ClickedVisibleRowIndex = hoveredEvent.InstantEvent.Value.VisibleRowIndex;
+                            }
+                            ImGui.Text($"{hoveredEvent.InstantEvent.Value.Name} ({hoveredEvent.InstantEvent.Value.Level})");
+                        }
+                        ImGui.EndTooltip();
                     }
-                    ImGui.EndTooltip();
                 }
+            }
             }
         }
 
