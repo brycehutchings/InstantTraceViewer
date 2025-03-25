@@ -1,6 +1,8 @@
-/*
+﻿/*
+ * 0. Show startWindow/endWindow range in graph.
  * 1. Click-drag to select time range and show duration. Allow zoom to it?
  * 2. Fix stack popping with name matching.
+ * 3. Show indication in hover tooltip if there are multiple events under the mouse.
  */
 using ImGuiNET;
 using System;
@@ -17,6 +19,8 @@ namespace InstantTraceViewerUI
     internal class ThreadTimelineWindow
     {
         private const string PopupName = "Thread Timeline";
+
+        private record struct PidTidKey(int Pid, int Tid);
 
         private readonly string _name;
         private readonly string _parentWindowId;
@@ -87,6 +91,9 @@ namespace InstantTraceViewerUI
         {
             // Tracks are ordered so that all tracks for a given process are continguous. The renderer depends on this because it creates a new group whenever the process name changes.
             public IReadOnlyList<ComputedTrack> Tracks;
+
+            // Snapshot of the trace table used to compute the Tracks.
+            public ITraceTableSnapshot TraceTableSnapshot;
         }
 
         private Task<ComputedTracks> _computedTracks = null;
@@ -108,8 +115,8 @@ namespace InstantTraceViewerUI
 
         public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, DateTime? startWindow, DateTime? endWindow)
         {
-            ImGui.SetNextWindowSize(new Vector2(1000, 70), ImGuiCond.FirstUseEver);
-            ImGui.SetNextWindowSizeConstraints(new Vector2(100, 70), new Vector2(float.MaxValue, float.MaxValue));
+            ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
+            ImGui.SetNextWindowSizeConstraints(new Vector2(600, 200), new Vector2(float.MaxValue, float.MaxValue));
 
             if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open))
             {
@@ -128,16 +135,11 @@ namespace InstantTraceViewerUI
         {
             Trace.Assert(IsSupported(traceTable.Schema));
 
-            if (traceTable.RowCount == 0)
-            {
-                return;
-            }
-
             bool? expandCollapse = null; // true=expand, false=collapse, null=no change
 
-            if (ImGui.Button("Refresh"))
+            if (ImGui.Button("Expand All"))
             {
-                _computedTracks = null;
+                expandCollapse = false;
             }
             ImGui.SameLine();
             if (ImGui.Button("Collapse All"))
@@ -145,9 +147,9 @@ namespace InstantTraceViewerUI
                 expandCollapse = true;
             }
             ImGui.SameLine();
-            if (ImGui.Button("Expand All"))
+            if (ImGui.Button("Refresh"))
             {
-                expandCollapse = false;
+                _computedTracks = null;
             }
 
             ImGui.SameLine();
@@ -156,17 +158,14 @@ namespace InstantTraceViewerUI
                 "SHIFT+Mouse Move Left/Right --- Pan left/right\n" +
                 "CTRL+Mouse click --- Jump to hovered event");
 
-            DateTime startLog = traceTable.GetTimestamp(0);
-            DateTime endLog = traceTable.GetTimestamp(traceTable.RowCount - 1);
-
             if (_computedTracks == null)
             {
-                _computedTracks = Task.Run(() => ComputeTracks(traceTable, endLog));
+                _computedTracks = Task.Run(() => ComputeTracks(traceTable));
             }
 
             if (_computedTracks.IsCompletedSuccessfully)
             {
-                DrawTrackGraph(startLog, endLog, expandCollapse);
+                DrawTrackGraph(_computedTracks.Result, expandCollapse);
             }
             else if (_computedTracks.IsFaulted)
             {
@@ -178,9 +177,16 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTrackGraph(DateTime startLog, DateTime endLog, bool? expandCollapse)
+        private void DrawTrackGraph(ComputedTracks computedTracks, bool? expandCollapse)
         {
             ClickedVisibleRowIndex = null;
+
+            if (computedTracks.TraceTableSnapshot.RowCount == 0)
+            {
+                // This also protects code below which assumes there is at least one row.
+                ImGui.TextUnformatted("No events to display.");
+                return;
+            }
 
             bool zoomMode = ImGui.IsKeyDown(ImGuiKey.ModShift);
             float zoomAmount = 0, moveAmount = 0;
@@ -199,8 +205,20 @@ namespace InstantTraceViewerUI
                 }
             }
 
+            DateTime startLog = computedTracks.TraceTableSnapshot.GetTimestamp(0);
+            DateTime endLog = computedTracks.TraceTableSnapshot.GetTimestamp(computedTracks.TraceTableSnapshot.RowCount - 1);
+
             DateTime startRange = (_startRange.HasValue && _startRange.Value >= startLog) ? _startRange.Value : startLog;
             DateTime endRange = (_endRange.HasValue && _endRange.Value <= endLog) ? _endRange.Value : endLog;
+
+            if (startRange == startLog)
+            {
+                _startRange = null; // Reset to null so we can use the default range next time.
+            }
+            if (endRange == endLog)
+            {
+                _endRange = null; // Reset to null so we can use the default range next time.
+            }
 
             TimeSpan rangeDuration = endRange - startRange;
 
@@ -237,16 +255,17 @@ namespace InstantTraceViewerUI
             _trackAreaLeftScreenPos = null;
             _trackAreaWidth = null;
 
-            // ImGui.TableHeadersRow(); // We don't actually want the header shown
-
-            Debug.Assert(_computedTracks.IsCompletedSuccessfully);
-
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
+
+            // TODO: This can improve CPU perf if there are lots of things to draw:
+            // drawList.Flags &= ~ImDrawListFlags.AntiAliasedFill;
+            // <Draw here>
+            // drawList.Flags |= ImDrawListFlags.AntiAliasedFill;
 
             // 'ScrollY' required for freezing rows (for pinning).
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
-                var pinnedTracks = _computedTracks.Result.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
+                var pinnedTracks = computedTracks.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
                 ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count + 1); // Pinned tracks are always visible. Plus one because we also want to pin the timeline.
 
                 float dpiBase = ImGui.GetFontSize();
@@ -254,6 +273,8 @@ namespace InstantTraceViewerUI
 
                 // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
                 ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
+
+                // ImGui.TableHeadersRow(); // We don't actually want the header shown
 
                 DrawTimeline(drawList, startLog, endLog, startRange, endRange);
 
@@ -351,12 +372,37 @@ namespace InstantTraceViewerUI
                             {
                                 ClickedVisibleRowIndex = instantEvent.VisibleRowIndex;
                             }
-                            ImGui.Text($"{instantEvent.Name} ({instantEvent.Level})");
+
+                            DrawEventDetails(computedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex);
                         }
                         ImGui.EndTooltip();
                     }
                 }
             }
+        }
+
+        private static void DrawEventDetails(ITraceTableSnapshot traceTable, int visibleRowIndex)
+        {
+            foreach (var col in traceTable.Schema.Columns)
+            {
+                if (col == traceTable.Schema.ProcessIdColumn || col == traceTable.Schema.ThreadIdColumn)
+                {
+                    continue; // These are already displayed in the track graphically.
+                }
+
+                string value = traceTable.GetColumnValueString(visibleRowIndex, col, allowMultiline: true);
+                if (!string.IsNullOrEmpty(value))
+                {
+                    if (value.Contains('\n'))
+                    {
+                        ImGui.SeparatorText(col.Name);
+                        ImGui.TextUnformatted(value);
+                    }
+                    else
+                    {
+                        ImGui.TextUnformatted($"{col.Name}: {value}");
+                    }
+                }
             }
         }
 
@@ -544,27 +590,26 @@ namespace InstantTraceViewerUI
             ImGui.PopID();
         }
 
-        private static ComputedTracks ComputeTracks(ITraceTableSnapshot traceTable, DateTime endLog)
+        private static ComputedTracks ComputeTracks(ITraceTableSnapshot traceTable)
         {
             var stopwatch = Stopwatch.StartNew();
 
-            // Key=pid, tid.
-            Dictionary<(int, int), Track> tracks = new();
+            Dictionary<PidTidKey, Track> tracks = new();
 
             for (int i = 0; i < traceTable.RowCount; i++)
             {
-                (int, int) trackKey = (traceTable.GetProcessId(i), traceTable.GetThreadId(i));
+                PidTidKey trackKey = new PidTidKey(traceTable.GetProcessId(i), traceTable.GetThreadId(i));
 
                 // If PID or TID is 0 or -1 (these are values from ETW parsing sometimes) then there is no process/thread attributed to the event.
                 // For example, a Kernel Process Start event has no associated thread.
-                if (trackKey.Item1 <= 0 || trackKey.Item2 <= 0)
+                if (trackKey.Pid <= 0 || trackKey.Tid <= 0)
                 {
                     continue;
                 }
 
                 if (!tracks.TryGetValue(trackKey, out Track? track))
                 {
-                    track = new Track { ThreadId = trackKey.Item2 };
+                    track = new Track { ThreadId = trackKey.Tid };
                     tracks.Add(trackKey, track);
                 }
 
@@ -604,6 +649,7 @@ namespace InstantTraceViewerUI
             // Add implicit stops for any starts that are still open
             foreach (var trackKeyValue in tracks)
             {
+                DateTime endLog = traceTable.GetTimestamp(traceTable.RowCount - 1);
                 while (trackKeyValue.Value.StartEvents.TryPop(out Track.StartEvent startEvent))
                 {
                     trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(startEvent.Name) });
@@ -642,7 +688,7 @@ namespace InstantTraceViewerUI
 
             Trace.WriteLine($"Grouped and sorted events in {stopwatch.ElapsedMilliseconds}ms");
 
-            return new ComputedTracks { Tracks = computedTracks };
+            return new ComputedTracks { Tracks = computedTracks, TraceTableSnapshot = traceTable };
         }
 
         private static uint DarkenColor(uint originalColor)
