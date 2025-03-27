@@ -140,7 +140,7 @@ namespace InstantTraceViewerUI
 
                 // Symbol font is reduced by 2 pixels, otherwise it has full height which looks awkward.
                 AddFontFromBytes(CalcScaledFontSize(Settings.FontSize - 2), symbolFont, true /* merge */, [
-                    // Use https://fontawesome.com/v6/search?o=r&m=free to search for icons.
+                    // Use https://fontawesome.com/v6/search?ic=free to search for icons.
                     0xE68F, // "thumbtack-slash"
                     0xF00C, // "check"
                     0xF00D, // "xmark"
@@ -159,6 +159,8 @@ namespace InstantTraceViewerUI
                     0xF0FE, // "square-plus"
                     0xF12D, // "eraser"
                     0xF2ED, // "trash-can"
+                    0xF31E, // "maximize"
+                    0xF78C, // "minimize"
                 ]);
             }
 
