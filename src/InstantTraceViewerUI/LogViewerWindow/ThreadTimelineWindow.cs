@@ -2,7 +2,6 @@
  * --- MVP
  * 0. Show startWindow/endWindow range in graph.
  * 1. Fix stack popping with name matching.
- * 2. Fix window moving while panning. ImGui.SetItemKeyOwner(ImGuiKey.MouseLeft); ?
  * --- FUTURE
  * 0. Show indication in hover tooltip if there are multiple events under the mouse.
  * 1. Click-drag to select time range and show duration. Allow zoom to it.
@@ -99,6 +98,10 @@ namespace InstantTraceViewerUI
 
             // Snapshot of the trace table used to compute the Tracks.
             public ITraceTableSnapshot TraceTableSnapshot;
+
+            public DateTime StartTraceTable => TraceTableSnapshot.GetTimestamp(0);
+
+            public DateTime EndTraceTable => TraceTableSnapshot.GetTimestamp(TraceTableSnapshot.RowCount - 1);
         }
 
         private Task<ComputedTracks> _computedTracksTask = null;
@@ -106,6 +109,7 @@ namespace InstantTraceViewerUI
         private HashSet<string> _pinnedTracks = new(); // Value is ComputedTrack UniqueKey.
         private DateTime _startZoomRange = DateTime.MinValue;
         private DateTime _endZoomRange = DateTime.MaxValue;
+        private bool _isMouseHoveringTable = false;
 
         private float? _trackAreaLeftScreenPos;
         private float? _trackAreaWidth;
@@ -124,7 +128,11 @@ namespace InstantTraceViewerUI
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(600, 200), new Vector2(float.MaxValue, float.MaxValue));
 
-            if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open/*, ImGuiWindowFlags.NoMove*/))
+            // There is no input control over the track column of the table (it is all drawn manually), so when the user
+            // uses SHIFT+MouseMove to pan, we need to disable the window moving because ImGui allows windows to move by
+            // click+dragging anywhere there is no input control.
+            ImGuiWindowFlags flags = _isMouseHoveringTable ? ImGuiWindowFlags.NoMove : ImGuiWindowFlags.None;
+            if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open, flags))
             {
                 DrawTimelineGraph(traceTable, startWindow, endWindow);
             }
@@ -200,21 +208,7 @@ namespace InstantTraceViewerUI
                 return;
             }
 
-            DateTime startLog = _latestComputedTracks.TraceTableSnapshot.GetTimestamp(0);
-            DateTime endLog = _latestComputedTracks.TraceTableSnapshot.GetTimestamp(_latestComputedTracks.TraceTableSnapshot.RowCount - 1);
-
-            bool zoomMode = ImGui.IsKeyDown(ImGuiKey.ModShift); // fixme
-            {
-                DateTime ClampDateTime(DateTime dateTime, DateTime min, DateTime max) => dateTime < min ? min : dateTime > max ? max : dateTime;
-
-                _startZoomRange = ClampDateTime(_startZoomRange, startLog, endLog);
-                _endZoomRange = ClampDateTime(_endZoomRange, startLog, endLog);
-
-                ApplyZoomPan(startLog, endLog, zoomMode);
-
-                _startZoomRange = ClampDateTime(_startZoomRange, startLog, endLog);
-                _endZoomRange = ClampDateTime(_endZoomRange, startLog, endLog);
-            }
+            ApplyZoomPanAndClamp();
 
             TimeSpan zoomDuration = _startZoomRange - _endZoomRange;
 
@@ -230,7 +224,6 @@ namespace InstantTraceViewerUI
             // drawList.Flags |= ImDrawListFlags.AntiAliasedFill;
 
             // 'ScrollY' required for freezing rows (for pinning/timeline header).
-            Vector2 tablePos = ImGui.GetCursorPos();
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
                 var pinnedTracks = _latestComputedTracks.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
@@ -240,11 +233,11 @@ namespace InstantTraceViewerUI
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
 
                 // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
-                ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
+                ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch /*| ImGuiTableColumnFlags.NoClip*/, 1.0f);
 
                 // ImGui.TableHeadersRow(); // We don't actually want the header shown
 
-                DrawTimeline(drawList, startLog, endLog, _startZoomRange, _endZoomRange);
+                DrawTimeline(drawList, _startZoomRange, _endZoomRange);
 
                 object hoveredEvent = null; // Either 'Bar' or 'InstantEvent'
                 foreach (var track in pinnedTracks)
@@ -313,11 +306,12 @@ namespace InstantTraceViewerUI
 
                 ImGui.EndTable();
 
-                Vector2 mousePos = ImGui.GetMousePos();
+                _isMouseHoveringTable = ImGui.IsMouseHoveringRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
+
                 if (hoveredEvent != null)
                 {
                     bool clickable = false;
-                    if (!zoomMode && ImGui.IsKeyDown(ImGuiKey.ModCtrl))
+                    if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
                     {
                         clickable = true;
                         ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
@@ -348,35 +342,38 @@ namespace InstantTraceViewerUI
             }
 
             // If the zoomed region begins and/or ends with the log range, then reset the zoom so that it is "sticky" when new data comes in.
-            // The start/end clamp will handle santizing this and make it sticky (i.e. endZoomRange will lock onto a new endLog)
-            if (_endZoomRange == endLog)
+            // ApplyZoomPanAndClamp will handle santizing this on the next frame and make it sticky (i.e. endZoomRange will lock onto a new endTraceTable)
+            if (_endZoomRange == _latestComputedTracks.EndTraceTable)
             {
                 _endZoomRange = DateTime.MaxValue;
             }
-            if (_startZoomRange == endLog)
+            if (_startZoomRange == _latestComputedTracks.StartTraceTable)
             {
                 _startZoomRange = DateTime.MinValue;
             }
         }
 
-        private void ApplyZoomPan(DateTime startLog, DateTime endLog, bool zoomMode)
+        private void ApplyZoomPanAndClamp()
         {
+            _startZoomRange = ClampDateTime(_startZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
+            _endZoomRange = ClampDateTime(_endZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
+
             if (!_trackAreaWidth.HasValue || !_trackAreaLeftScreenPos.HasValue || _trackAreaWidth.Value <= 0)
             {
                 return;
             }
 
-            float zoomAmount = 0, moveAmount = 0;
+            float zoomAmount = 0, panAmount = 0;
             if (ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows))
             {
                 if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
                 {
                     zoomAmount = ImGui.GetIO().MouseWheel; // Positive = zoom in. Negative = zoom out.
                 }
-                if (zoomMode && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+                if (ImGui.IsKeyDown(ImGuiKey.ModShift) && ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
                     ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEW);
-                    moveAmount = ImGui.GetIO().MouseDelta.X;
+                    panAmount = ImGui.GetIO().MouseDelta.X;
                 }
             }
 
@@ -394,19 +391,22 @@ namespace InstantTraceViewerUI
                 _endZoomRange = _endZoomRange - adjustDuration * (1 - zoomPointPercent);
             }
 
-            if (moveAmount != 0)
+            if (panAmount != 0)
             {
                 TimeSpan pixelToTick = zoomDuration / _trackAreaWidth.Value;
-                TimeSpan adjustDuration = pixelToTick * -moveAmount;
+                TimeSpan adjustDuration = pixelToTick * -panAmount;
 
                 // Slide the start/end range by the same amount without going out of bounds.
-                _startZoomRange = _startZoomRange + adjustDuration < startLog ? startLog : _startZoomRange + adjustDuration;
-                _endZoomRange = _endZoomRange + adjustDuration > endLog ? endLog : _endZoomRange + adjustDuration;
+                _startZoomRange = _startZoomRange + adjustDuration < _latestComputedTracks.StartTraceTable ? _latestComputedTracks.StartTraceTable : _startZoomRange + adjustDuration;
+                _endZoomRange = _endZoomRange + adjustDuration > _latestComputedTracks.EndTraceTable ? _latestComputedTracks.EndTraceTable : _endZoomRange + adjustDuration;
 
                 // Prevent the range from going outside the log range while keeping the range duration constant (dumb clamping will result in a zoom).
-                _startZoomRange = (_endZoomRange == endLog) ? (endLog - zoomDuration) : _startZoomRange;
-                _endZoomRange = (_startZoomRange == startLog) ? (startLog + zoomDuration) : _endZoomRange;
+                _startZoomRange = (_endZoomRange == _latestComputedTracks.EndTraceTable) ? (_latestComputedTracks.EndTraceTable - zoomDuration) : _startZoomRange;
+                _endZoomRange = (_startZoomRange == _latestComputedTracks.StartTraceTable) ? (_latestComputedTracks.StartTraceTable + zoomDuration) : _endZoomRange;
             }
+
+            _startZoomRange = ClampDateTime(_startZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
+            _endZoomRange = ClampDateTime(_endZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
         }
 
         private static void DrawEventDetails(ITraceTableSnapshot traceTable, int visibleRowIndex)
@@ -434,7 +434,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTimeline(ImDrawListPtr drawList, DateTime startLog, DateTime endLog, DateTime startRange, DateTime endRange)
+        private void DrawTimeline(ImDrawListPtr drawList, DateTime startRange, DateTime endRange)
         {
             ImGui.TableNextRow();
             ImGui.TableNextColumn(); // Track name (none for timeline)
@@ -452,7 +452,7 @@ namespace InstantTraceViewerUI
 
             TimeSpan rangeDuration = endRange - startRange;
             float tickToPixel = trackRegionAvailableWidth / rangeDuration.Ticks;
-            float timelineHeight = ImGui.GetFontSize() * 2;
+            float timelineHeight = ImGui.GetFontSize() * 1; // * 1 because there is just one row of text at the moment.
             ImGui.Dummy(new Vector2(trackRegionAvailableWidth, timelineHeight));
             if (ImGui.IsItemVisible())
             {
@@ -467,9 +467,10 @@ namespace InstantTraceViewerUI
                         ref clipRect);
                 };
 
-                drawAligned($"{FriendlyStringify.ToString(startRange)} (+{FriendlyStringify.ToString(startRange - startLog)})", 0.0f, lineHeight * 0);
-                drawAligned($"{FriendlyStringify.ToString(endRange)} (-{FriendlyStringify.ToString(endLog - endRange)})", 1.0f, lineHeight * 0);
-                drawAligned(FriendlyStringify.ToString(rangeDuration), 0.5f, lineHeight * 1);
+                // NOTE: Update timelineHeight coefficient if more lines are added.
+                drawAligned($"\uF060 {FriendlyStringify.ToString(startRange - _latestComputedTracks.StartTraceTable)}", 0.0f, lineHeight * 0);
+                drawAligned($"{FriendlyStringify.ToString(endRange - _latestComputedTracks.StartTraceTable)} \uF061", 1.0f, lineHeight * 0);
+                drawAligned($"[{FriendlyStringify.ToString(rangeDuration)}]", 0.5f, lineHeight * 0);
             }
         }
 
@@ -677,10 +678,10 @@ namespace InstantTraceViewerUI
             // Add implicit stops for any starts that are still open
             foreach (var trackKeyValue in tracks)
             {
-                DateTime endLog = traceTable.GetTimestamp(traceTable.RowCount - 1);
+                DateTime endTraceTable = traceTable.GetTimestamp(traceTable.RowCount - 1);
                 while (trackKeyValue.Value.StartEvents.TryPop(out Track.StartEvent startEvent))
                 {
-                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endLog, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(startEvent.Name) });
+                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endTraceTable, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(startEvent.Name) });
                 }
             }
 
@@ -741,5 +742,8 @@ namespace InstantTraceViewerUI
 
             return ImGui.GetColorU32(new Vector4(r, g, b, 1.0f));
         }
+
+        private static DateTime ClampDateTime(DateTime dateTime, DateTime min, DateTime max)
+            => dateTime < min ? min : dateTime > max ? max : dateTime;
     }
 }
