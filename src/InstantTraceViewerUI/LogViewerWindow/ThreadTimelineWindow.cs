@@ -477,7 +477,7 @@ namespace InstantTraceViewerUI
             float textLineHeight = ImGui.GetTextLineHeight();
             float barHeight = textLineHeight;
             float tickHeight = (float)Math.Round(barHeight * 0.8f);
-            float tickDivit = (float)Math.Round(barHeight / 6.0f);
+            float tickLevelHeight = (float)Math.Round(barHeight / 6.0f);
             float tickHalfWidth = (float)Math.Round(barHeight / 4.0f);
 
             ImGui.TableNextRow();
@@ -570,15 +570,17 @@ namespace InstantTraceViewerUI
                     long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
 
                     Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), instantEvent.Depth * barHeight) + trackBarsTopLeft;
-                    Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight);
-                    Vector2 tickBottomMiddle = tickTop + new Vector2(0, tickHeight - tickDivit);
+                    tickTop.X += 0.5f; // Move half a pixel so that the top tip is inside the triangle and thus rendered as a single pixel.
                     Vector2 tickBottomLeft = tickTop + new Vector2(-tickHalfWidth, tickHeight);
+                    Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight);
+                    // This '+ 0.01f' is mysterious to me, but it results in the left and right edges of the triangle being symmetrical.
+                    // I think because D3D uses the "Top-Left" rule, this results in the right edge being biased to match the left edge.
+                    tickBottomRight.X += 0.01f;
 
                     bool isHovered = mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X;
                     uint tickColor = isHovered ? DarkenColor(instantEvent.Color) : instantEvent.Color;
 
-                    drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomMiddle, tickColor);
-                    drawList.AddTriangleFilled(tickBottomMiddle, tickBottomLeft, tickTop, tickColor);
+                    drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomLeft, tickColor);
 
                     Vector4? levelMarkerColor = instantEvent.Level switch
                     {
@@ -590,11 +592,10 @@ namespace InstantTraceViewerUI
 
                     if (levelMarkerColor.HasValue)
                     {
-                        Vector2 levelMarkerBottomRight = tickBottomRight + new Vector2(0, tickDivit);
-                        Vector2 levelMarkerBottomLeft = tickBottomLeft + new Vector2(0, tickDivit);
-                        drawList.AddTriangleFilled(tickBottomMiddle, tickBottomRight, levelMarkerBottomRight, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
-                        drawList.AddTriangleFilled(tickBottomMiddle, levelMarkerBottomRight, levelMarkerBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
-                        drawList.AddTriangleFilled(tickBottomMiddle, levelMarkerBottomLeft, tickBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
+                        Vector2 levelMarkerBottomRight = tickBottomRight + new Vector2(0, tickLevelHeight);
+                        Vector2 levelMarkerBottomLeft = tickBottomLeft + new Vector2(0, tickLevelHeight);
+                        drawList.AddTriangleFilled(tickBottomLeft, tickBottomRight, levelMarkerBottomRight, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
+                        drawList.AddTriangleFilled(tickBottomLeft, levelMarkerBottomRight, levelMarkerBottomLeft, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
                     }
 
                     if (isHovered)
