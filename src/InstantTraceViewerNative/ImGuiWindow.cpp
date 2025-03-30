@@ -18,6 +18,7 @@ static ID3D11DeviceContext* g_d3dDeviceContext = nullptr;
 static IDXGISwapChain* g_swapChain = nullptr;
 static UINT g_resizeWidth = 0, g_resizeHeight = 0;
 static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
+static bool g_msaaEnabled = false;
 
 // Forward declarations of helper functions
 bool CreateDeviceD3D(HWND hWnd);
@@ -77,6 +78,12 @@ extern "C" int __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** i
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    if (g_msaaEnabled)
+    {
+        ImGui::GetStyle().AntiAliasedLines = false;
+        ImGui::GetStyle().AntiAliasedFill = false;
+    }
 
     ImGui_ImplWin32_Init(g_hwnd);
     ImGui_ImplDX11_Init(g_d3dDevice, g_d3dDeviceContext);
@@ -240,10 +247,16 @@ bool CreateDeviceD3D(HWND hWnd)
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     sd.OutputWindow = hWnd;
-    sd.SampleDesc.Count = 1;
-    sd.SampleDesc.Quality = 0;
     sd.Windowed = TRUE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+    // When MSAA is enabled (by setting this to 2+), the ImGui fringe-based anti-aliasing will be disabled (see where g_msaaEnabled is read).
+    // However, the ImGui anti-aliasing looks better than MSAA for the most part. So support for this is only here in case this needs to be
+    // revisited later. ImGui fringe-based anti-aliasing will draw 6 additional triangles per triangle to create a smooth edge.
+    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
+
+    g_msaaEnabled = sd.SampleDesc.Count > 1;
 
     UINT createDeviceFlags = 0;
     //createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;

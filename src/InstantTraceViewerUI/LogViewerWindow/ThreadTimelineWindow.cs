@@ -218,11 +218,6 @@ namespace InstantTraceViewerUI
 
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
-            // TODO: This can improve CPU perf if there are lots of things to draw:
-            // drawList.Flags &= ~ImDrawListFlags.AntiAliasedFill;
-            // <Draw here>
-            // drawList.Flags |= ImDrawListFlags.AntiAliasedFill;
-
             // 'ScrollY' required for freezing rows (for pinning/timeline header).
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
