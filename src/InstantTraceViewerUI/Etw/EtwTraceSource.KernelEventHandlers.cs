@@ -1,4 +1,4 @@
-﻿using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
@@ -172,6 +172,8 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.ProcessDCStart += OnProcessEvent;
             _etwSource.Kernel.ProcessDCStop += OnProcessEvent;
             _etwSource.Kernel.ProcessDefunct += OnProcessEvent;
+            // Process Terminate (Opcode=11) events are not subscribable here and come in as "Dynamic" events.
+            // I think they are not technically Kernel events and they have associated threads.
 
             //
             // Keywords.FileIO (and Keywords.DiskFileIO for Filename?)

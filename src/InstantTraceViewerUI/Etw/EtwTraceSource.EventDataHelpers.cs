@@ -1,14 +1,13 @@
-﻿using InstantTraceViewer;
-using Microsoft.Diagnostics.Tracing;
+﻿using Microsoft.Diagnostics.Tracing;
 using System;
-using System.Text;
 
 namespace InstantTraceViewerUI.Etw
 {
     internal partial class EtwTraceSource
     {
-        // The ETW parser calls the kernel event provider "MSNT_SystemTrace" but we rename to Kernel for simplicity.
-        private readonly static Guid SystemProvider = Guid.Parse("{9e814aad-3204-11d2-9a82-006008a86939}");
+        // Sometimes the tracing library will show this provider name is shown as "MSNT_SystemTrace" and other times as "Kernel Provider" (and maybe other names?).
+        // https://learn.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace
+        public readonly static Guid SystemProvider = Guid.Parse("{9e814aad-3204-11d2-9a82-006008a86939}");
 
         private EtwRecord CreateBaseTraceRecord(TraceEvent data)
         {
@@ -38,17 +37,8 @@ namespace InstantTraceViewerUI.Etw
 
             newRecord.ProcessName = _processNames.TryGetValue(newRecord.ProcessId, out string processName) ? processName : null;
             newRecord.ThreadName = _threadNames.TryGetValue(newRecord.ThreadId, out string threadName) ? threadName : null;
-
-            if (data.ProviderGuid == SystemProvider)
-            {
-                newRecord.ProviderName = $"Kernel.{data.TaskName}";
-                newRecord.Name = data.OpcodeName;
-            }
-            else
-            {
-                newRecord.ProviderName = data.ProviderName;
-                newRecord.Name = data.TaskName;
-            }
+            newRecord.ProviderName = data.ProviderName;
+            newRecord.Name = data.TaskName;
 
             return newRecord;
         }
