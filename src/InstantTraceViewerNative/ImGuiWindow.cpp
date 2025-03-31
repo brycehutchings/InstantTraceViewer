@@ -251,8 +251,8 @@ bool CreateDeviceD3D(HWND hWnd)
     sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
     // When MSAA is enabled (by setting this to 2+), the ImGui fringe-based anti-aliasing will be disabled (see where g_msaaEnabled is read).
-    // However, the ImGui anti-aliasing looks better than MSAA for the most part. So support for this is only here in case this needs to be
-    // revisited later. ImGui fringe-based anti-aliasing will draw 6 additional triangles per triangle to create a smooth edge.
+    // However, the ImGui anti-aliasing looks better than MSAA 8x for the most part. So support for this is only here in case this needs to
+    // be revisited later. ImGui fringe-based anti-aliasing will draw 6 additional triangles per triangle to create a smooth edge.
     sd.SampleDesc.Count = 1;
     sd.SampleDesc.Quality = 0;
 
