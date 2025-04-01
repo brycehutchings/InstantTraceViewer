@@ -1,7 +1,7 @@
 ﻿/*
  * --- MVP
- * 0. Show startWindow/endWindow range in graph.
- * 1. Fix stack popping with name matching.
+ * 0. Fix stack popping with name matching.
+ * 1. Fix overlapping events showing as a single event in the tooltip. Instead just show a count or some other kind of aggregate information.
  * --- FUTURE
  * 0. Show indication in hover tooltip if there are multiple events under the mouse.
  * 1. Click-drag to select time range and show duration. Allow zoom to it.
@@ -37,10 +37,14 @@ namespace InstantTraceViewerUI
             public DateTime Stop;
             public int Depth;
             public string Name;
-            public int VisibleRowIndex; // For start event.
             public uint Color;
 
             public TimeSpan Duration => Stop - Start;
+
+            // Some of the information in this struct like Level, Depth and Color could be determined by looking up the event in the table with this row index
+            // but it would be slower so we cache the information that is needed for per-frame rendering above and use this for tooltips and other things that are not per-frame.
+            // This points to the Start event (not the Stop event).
+            public int VisibleRowIndex;
         }
 
         public struct InstantEvent
@@ -48,9 +52,11 @@ namespace InstantTraceViewerUI
             public DateTime Timestamp;
             public int Depth;
             public UnifiedLevel Level;
-            public string Name;
-            public int VisibleRowIndex;
             public uint Color;
+
+            // Some of the information in this struct like Level, Depth and Color could be determined by looking up the event in the table with this row index
+            // but it would be slower so we cache the information that is needed for per-frame rendering above and use this for tooltips and other things that are not per-frame.
+            public int VisibleRowIndex;
         }
 
         class Track
@@ -528,29 +534,51 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                foreach (var instantEvent in track.InstantEvents)
+                Func<DateTime, int, Vector2> getTickTop = (timestamp, depth) =>
                 {
+                    long relativeTicks = timestamp.Ticks - startRange.Ticks;
+                    Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), depth * barHeight) + trackBarsTopLeft;
+                    tickTop.X += 0.5f; // Move half a pixel so that the a single pixel of the top tip is inside the triangle. Otherwise the top tip is 2 pixels wide.
+                    return tickTop;
+                };
+
+                // When multiple instant events are on the same pixel, we aggregate them into one tick where the intensity of the shade of gray is based on the number of events.
+                // We also will need to remember the most severe level of the events that are on the same pixel so we can draw the most important level marker.
+                int overlapsPreviousEventCounter = 0;
+                UnifiedLevel mostSevereTickLevel = UnifiedLevel.Verbose;
+
+                for (int i = 0; i < track.InstantEvents.Count; i++)
+                {
+                    var instantEvent = track.InstantEvents[i];
+
                     if (instantEvent.Timestamp.Ticks < startRange.Ticks || instantEvent.Timestamp.Ticks > endRange.Ticks)
                     {
                         continue; // Skip if the event is outside the range.
                     }
 
-                    long relativeTicks = instantEvent.Timestamp.Ticks - startRange.Ticks;
-
-                    Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), instantEvent.Depth * barHeight) + trackBarsTopLeft;
-                    tickTop.X += 0.5f; // Move half a pixel so that the top tip is inside the triangle and thus rendered as a single pixel.
+                    Vector2 tickTop = getTickTop(instantEvent.Timestamp, instantEvent.Depth);
                     Vector2 tickBottomLeft = tickTop + new Vector2(-tickHalfWidth, tickHeight);
                     Vector2 tickBottomRight = tickTop + new Vector2(tickHalfWidth, tickHeight);
-                    // This '+ 0.01f' is mysterious to me, but it results in the left and right edges of the triangle being symmetrical.
+                    // This '+ 0.01f' results in the left and right edges of the triangle being symmetrical.
                     // I think because D3D uses the "Top-Left" rule, this results in the right edge being biased to match the left edge.
+                    // See the += 0.5f in getTickTop which is another nudge to the rasterizer to render things optimally.
                     tickBottomRight.X += 0.01f;
 
+                    mostSevereTickLevel = (UnifiedLevel)Math.Max((int)mostSevereTickLevel, (int)instantEvent.Level);
+
+                    if (i < track.InstantEvents.Count - 1 && getTickTop(track.InstantEvents[i + 1].Timestamp, track.InstantEvents[i + 1].Depth) == tickTop)
+                    {
+                        overlapsPreviousEventCounter++;
+                        continue;
+                    }
+
                     bool isHovered = mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X;
-                    uint tickColor = isHovered ? DarkenColor(instantEvent.Color) : instantEvent.Color;
+                    uint color = overlapsPreviousEventCounter > 0 ? CalcOverlappingEventColor(overlapsPreviousEventCounter): instantEvent.Color;
+                    uint tickColor = isHovered ? DarkenColor(color) : color;
 
                     drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomLeft, tickColor);
 
-                    Vector4? levelMarkerColor = instantEvent.Level switch
+                    Vector4? levelMarkerColor = mostSevereTickLevel switch
                     {
                         UnifiedLevel.Fatal => AppTheme.FatalColor,
                         UnifiedLevel.Error => AppTheme.ErrorColor,
@@ -573,6 +601,9 @@ namespace InstantTraceViewerUI
                             nearestEventOffset = mouseTimeDelta;
                         }
                     }
+
+                    overlapsPreviousEventCounter = 0;
+                    mostSevereTickLevel = UnifiedLevel.Verbose;
                 }
 
                 hoveredEvent ??= nearestEvent;
@@ -684,12 +715,12 @@ namespace InstantTraceViewerUI
                     // Pop until we find a match, or leave alone if no match.
                     if (track.StartEvents.TryPop(out Track.StartEvent startEvent))
                     {
-                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(name) });
+                        track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name, Color = GenerateColorFromName(name), VisibleRowIndex = startEvent.VisibleRowIndex });
                     }
                 }
                 else
                 {
-                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Name = name, VisibleRowIndex = i, Color = PickColor(name) });
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = i });
                 }
             }
 
@@ -699,7 +730,7 @@ namespace InstantTraceViewerUI
                 DateTime endTraceTable = traceTable.GetTimestamp(traceTable.RowCount - 1);
                 while (trackKeyValue.Value.StartEvents.TryPop(out Track.StartEvent startEvent))
                 {
-                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endTraceTable, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, VisibleRowIndex = startEvent.VisibleRowIndex, Color = PickColor(startEvent.Name) });
+                    trackKeyValue.Value.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = endTraceTable, Depth = trackKeyValue.Value.StartEvents.Count, Name = startEvent.Name, Color = GenerateColorFromName(startEvent.Name), VisibleRowIndex = startEvent.VisibleRowIndex });
                 }
             }
 
@@ -746,7 +777,21 @@ namespace InstantTraceViewerUI
             return ImGui.ColorConvertFloat4ToU32(new Vector4(r, g, b, originalColorVec.W));
         }
 
-        private static uint PickColor(string name)
+        // Calculate a color where intensity is related to the number of events.
+        private static unsafe uint CalcOverlappingEventColor(int eventCount)
+        {
+            // This converts the number of events that collide on a single pixel to the log2 and then makes it a percentage (0.0 to 1.0)
+            // So 2 events = 20%, 4 events = 40%, 8 events = 60%, 16 events = 80% and 32 events = 100%
+            float MaxLogEventCount = 5; // 2^5 = 32
+            float t = Math.Min((float)Math.Log2(eventCount), MaxLogEventCount /* cap at 32 or more events */) / MaxLogEventCount;
+
+            // Lerp between the two colors starting at ~30% and going up to 100%. We don't want to go too low where the color would be hard to see (blend in with the background).
+            return ImGui.GetColorU32(
+                Vector4.Lerp(*ImGui.GetStyleColorVec4(ImGuiCol.WindowBg), *ImGui.GetStyleColorVec4(ImGuiCol.Text), t * 0.7f + 0.3f));
+        }
+
+        // Use a deterministic hash to generate a color from a name avoiding too little saturation and a bright (but not too bright!) value.
+        private static uint GenerateColorFromName(string name)
         {
             uint hash = XxHash32.HashToUInt32(System.Text.Encoding.UTF8.GetBytes(name));
 
