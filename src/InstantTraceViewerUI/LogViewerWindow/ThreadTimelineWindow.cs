@@ -1,12 +1,12 @@
 ﻿/*
  * --- MVP
  * 0. Fix stack popping with name matching.
- * 1. Fix overlapping events showing as a single event in the tooltip. Instead just show a count or some other kind of aggregate information.
  * --- FUTURE
  * 0. Show indication in hover tooltip if there are multiple events under the mouse.
  * 1. Click-drag to select time range and show duration. Allow zoom to it.
  * 2. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
  * 3. Option to aggregate by Provider instead of Pid/Tid?
+ * 4. Outline or otherwise make apparent the bar/instant event(s) in timeline that are selected in the log viewer.
  */
 using ImGuiNET;
 using System;
@@ -240,10 +240,10 @@ namespace InstantTraceViewerUI
 
                 DrawTimeline(drawList, _startZoomRange, _endZoomRange, startWindow, endWindow);
 
-                object hoveredEvent = null; // Either 'Bar' or 'InstantEvent'
+                List<object> hoveredEvents = new(); // Contains 0 or more 'Bar' and 'InstantEvent' objects.
                 foreach (var track in pinnedTracks)
                 {
-                    DrawTrack(track, drawList, _startZoomRange, _endZoomRange, isPinned: true, ref hoveredEvent);
+                    DrawTrack(track, drawList, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
                 }
 
                 if (pinnedTracks.Any())
@@ -295,7 +295,7 @@ namespace InstantTraceViewerUI
                         continue;
                     }
 
-                    DrawTrack(track, drawList, _startZoomRange, _endZoomRange, isPinned, ref hoveredEvent);
+                    DrawTrack(track, drawList, _startZoomRange, _endZoomRange, isPinned, hoveredEvents);
                 }
 
                 drawList.PopClipRect();
@@ -309,7 +309,7 @@ namespace InstantTraceViewerUI
 
                 _isMouseHoveringTable = ImGui.IsMouseHoveringRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax());
 
-                if (hoveredEvent != null)
+                if (hoveredEvents.Count > 0)
                 {
                     bool clickable = false;
                     if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
@@ -320,23 +320,7 @@ namespace InstantTraceViewerUI
 
                     if (ImGui.BeginTooltip())
                     {
-                        if (hoveredEvent is Bar bar)
-                        {
-                            if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                            {
-                                ClickedVisibleRowIndex = bar.VisibleRowIndex;
-                            }
-                            ImGui.Text($"{bar.Name} ({FriendlyStringify.ToString(bar.Duration)})");
-                        }
-                        else if (hoveredEvent is InstantEvent instantEvent)
-                        {
-                            if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
-                            {
-                                ClickedVisibleRowIndex = instantEvent.VisibleRowIndex;
-                            }
-
-                            DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex);
-                        }
+                        DrawHoveredEventTooltipContent(hoveredEvents, clickable);
                         ImGui.EndTooltip();
                     }
                 }
@@ -354,7 +338,56 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private static void DrawEventDetails(ITraceTableSnapshot traceTable, int visibleRowIndex)
+        private void DrawHoveredEventTooltipContent(List<object> hoveredEvents, bool clickable)
+        {
+            if (hoveredEvents.Count > 1)
+            {
+                var eventNames = hoveredEvents.Select(e => e switch
+                {
+                    Bar bar => _latestComputedTracks.TraceTableSnapshot.GetName(bar.VisibleRowIndex),
+                    InstantEvent instantEvent => _latestComputedTracks.TraceTableSnapshot.GetName(instantEvent.VisibleRowIndex),
+                    _ => throw new InvalidOperationException("Unexpected event type.")
+                });
+
+                // Order by count ascending because we want the least common events (more likely to be interesting) to be shown at the top.
+                ImGui.SeparatorText("Multiple events");
+                var groupedEvents = eventNames.GroupBy(n => n).Where(g => !string.IsNullOrEmpty(g.Key)).OrderBy(n => n.Count()).ToList();
+                foreach (var group in groupedEvents)
+                {
+                    ImGui.Text($"{group.Key} ({group.Count()})");
+                }
+
+                if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    ClickedVisibleRowIndex = hoveredEvents.First() switch
+                    {
+                        Bar bar => bar.VisibleRowIndex,
+                        InstantEvent instantEvent => instantEvent.VisibleRowIndex,
+                        _ => throw new InvalidOperationException("Unexpected event type.")
+                    };
+                }
+            }
+            else if (hoveredEvents.SingleOrDefault() is Bar bar)
+            {
+                if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    ClickedVisibleRowIndex = bar.VisibleRowIndex;
+                }
+
+                DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, bar.VisibleRowIndex, bar.Duration);
+            }
+            else if (hoveredEvents.SingleOrDefault() is InstantEvent instantEvent)
+            {
+                if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+                {
+                    ClickedVisibleRowIndex = instantEvent.VisibleRowIndex;
+                }
+
+                DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex);
+            }
+        }
+
+        private static void DrawEventDetails(ITraceTableSnapshot traceTable, int visibleRowIndex, TimeSpan? duration = null)
         {
             Action<TraceSourceSchemaColumn> renderColumn = (TraceSourceSchemaColumn column) =>
             {
@@ -375,6 +408,11 @@ namespace InstantTraceViewerUI
 
             // Name column is most important and should go first, regardless of the order used for the log viewer table.
             renderColumn(traceTable.Schema.NameColumn);
+
+            if (duration.HasValue)
+            {
+                ImGui.Text($"Duration: {FriendlyStringify.ToString(duration.Value)}");
+            }
 
             foreach (var col in traceTable.Schema.Columns)
             {
@@ -439,11 +477,11 @@ namespace InstantTraceViewerUI
                 Vector2 min = new Vector2(startRelativeTicks * tickToPixel, 0) + trackBarsTopLeft;
                 Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, float.MaxValue) + trackBarsTopLeft;
 
-                drawList.AddRectFilled(min, max, ImGui.GetColorU32(ImGuiCol.Border));
+                drawList.AddRectFilled(min, max, ImGui.GetColorU32(ImGuiCol.TableHeaderBg));
             }
         }
 
-        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned, ref object hoveredEvent)
+        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned, List<object> hoveredEvents)
         {
             TimeSpan rangeDuration = endRange - startRange;
 
@@ -492,8 +530,6 @@ namespace InstantTraceViewerUI
                 Vector2 mousePos = ImGui.GetMousePos();
 
                 DateTime mouseTimestamp = new DateTime(Math.Max((long)((mousePos.X - trackBarsTopLeft.X) * (1 / tickToPixel)), DateTime.MinValue.Ticks));
-                TimeSpan nearestEventOffset = TimeSpan.MaxValue;
-                object? nearestEvent = null;
 
                 float minTextRenderLengthPixels = textLineHeight * 0.2f;
                 foreach (var bar in track.Bars)
@@ -529,8 +565,7 @@ namespace InstantTraceViewerUI
 
                     if (isHovered)
                     {
-                        nearestEvent = bar;
-                        nearestEventOffset = TimeSpan.Zero;
+                        hoveredEvents.Add(bar);
                     }
                 }
 
@@ -566,13 +601,19 @@ namespace InstantTraceViewerUI
 
                     mostSevereTickLevel = (UnifiedLevel)Math.Max((int)mostSevereTickLevel, (int)instantEvent.Level);
 
+                    bool isHovered = mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X;
+
+                    if (isHovered)
+                    {
+                        hoveredEvents.Add(instantEvent);
+                    }
+
                     if (i < track.InstantEvents.Count - 1 && getTickTop(track.InstantEvents[i + 1].Timestamp, track.InstantEvents[i + 1].Depth) == tickTop)
                     {
                         overlapsPreviousEventCounter++;
-                        continue;
+                        continue; // The last event on this same pixel will draw the aggregated tick.
                     }
 
-                    bool isHovered = mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X;
                     uint color = overlapsPreviousEventCounter > 0 ? CalcOverlappingEventColor(overlapsPreviousEventCounter): instantEvent.Color;
                     uint tickColor = isHovered ? DarkenColor(color) : color;
 
@@ -592,21 +633,10 @@ namespace InstantTraceViewerUI
                         drawList.AddRectFilled(tickBottomLeft, levelMarkerBottomRight, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
                     }
 
-                    if (isHovered)
-                    {
-                        TimeSpan mouseTimeDelta = (instantEvent.Timestamp - mouseTimestamp).Duration();
-                        if (mouseTimeDelta < nearestEventOffset)
-                        {
-                            nearestEvent = instantEvent;
-                            nearestEventOffset = mouseTimeDelta;
-                        }
-                    }
-
                     overlapsPreviousEventCounter = 0;
                     mostSevereTickLevel = UnifiedLevel.Verbose;
                 }
 
-                hoveredEvent ??= nearestEvent;
             }
 
             ImGui.PopID();
