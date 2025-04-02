@@ -1,12 +1,11 @@
 ﻿/*
- * --- MVP
+ * --- FUTURE WORK/IDEAS
  * 0. Fix stack popping with name matching.
- * --- FUTURE
- * 0. Show indication in hover tooltip if there are multiple events under the mouse.
- * 1. Click-drag to select time range and show duration. Allow zoom to it.
- * 2. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
- * 3. Option to aggregate by Provider instead of Pid/Tid?
- * 4. Outline or otherwise make apparent the bar/instant event(s) in timeline that are selected in the log viewer.
+ * 1. Show indication in hover tooltip if there are multiple events under the mouse.
+ * 2. Click-drag to select time range and show duration. Allow zoom to it.
+ * 3. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
+ * 4. Option to aggregate by Provider instead of Pid/Tid?
+ * 5. Outline or otherwise make apparent the bar/instant event(s) in timeline that are selected in the log viewer.
  */
 using ImGuiNET;
 using System;
