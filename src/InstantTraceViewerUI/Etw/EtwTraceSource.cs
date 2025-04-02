@@ -38,6 +38,7 @@ namespace InstantTraceViewerUI.Etw
             Columns = [ColumnProcess, ColumnThread, ColumnProvider, ColumnOpCode, ColumnKeywords, ColumnName, ColumnLevel, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime,
             UnifiedLevelColumn = ColumnLevel,
+            UnifiedOpcodeColumn = ColumnOpCode,
             ProcessIdColumn = ColumnProcess,
             ThreadIdColumn = ColumnThread,
             ProviderColumn = ColumnProvider,

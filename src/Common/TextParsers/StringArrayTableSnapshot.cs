@@ -51,5 +51,10 @@
         {
             throw new NotImplementedException();
         }
+
+        public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -81,10 +81,7 @@ namespace InstantTraceViewerUI
             }
             ImGui.EndDisabled();
             ImGui.SameLine();
-            ImGui.TextUnformatted("\uF059");
-            if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal))
-            {
-                ImGui.SetTooltip(@"Include and exclude filter rules allow noisy trace logs to be refined to show only the information you find relevant.
+            ImGuiWidgets.HelpIconToolip(@"Include and exclude filter rules allow noisy trace logs to be refined to show only the information you find relevant.
 Filters are not permanent and can be reverted or changed. Changes are reflected immediately.
 If there are any include rules, unmatched rows will be excluded, otherwise unmatched rows are included.
 The rule editor intellisense will guide you to ensure your rule is valid.
@@ -128,7 +125,6 @@ Examples:
 (@Provider == ""Foo.Bar"" and @Level >= Info) or @Message contains ""Baz""
 @Name in_cs [""foo"", ""bar"", ""baz""]
 @Timestamp > ""2023-01-01 00:00:00.000""");
-            }
 
             RenderParsingError(addRuleId, _addRuleInputText, _addRuleLastParseResult, inputScreenPos);
 

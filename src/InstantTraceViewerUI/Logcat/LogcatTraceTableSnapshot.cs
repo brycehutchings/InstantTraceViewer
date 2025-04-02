@@ -36,7 +36,7 @@ namespace InstantTraceViewerUI.Logcat
             }
             else if (column == LogcatTraceSource.ColumnTime)
             {
-                return traceRecord.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+                return FriendlyStringify.ToString(traceRecord.Timestamp);
             }
             else if (column == LogcatTraceSource.ColumnBufferId)
             {
@@ -71,6 +71,9 @@ namespace InstantTraceViewerUI.Logcat
         public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnPriority ? ConvertPriority(RecordSnapshot[rowIndex].Priority) :
                throw new NotSupportedException();
+
+        public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
+            => throw new NotSupportedException();
 
         private UnifiedLevel ConvertPriority(Priority priority)
             => priority == Priority.Fatal ? UnifiedLevel.Fatal :

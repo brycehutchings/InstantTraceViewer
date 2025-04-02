@@ -40,7 +40,7 @@ namespace InstantTraceViewerUI
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
 
-        private TimelineWindow _timelineInline = null;
+        private ThreadTimelineWindow _threadTimelineWindow = null;
         private FiltersEditorWindow _filtersEditorWindow = null;
         private SpamFilterWindow _spamFilterWindow = null;
 
@@ -108,6 +108,19 @@ namespace InstantTraceViewerUI
                 }
             }
 
+            if (_threadTimelineWindow != null)
+            {
+                // The topmost/bottommost row index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
+                DateTime? startWindow = _topmostRenderedVisibleRowIndex.HasValue && _topmostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
+                    visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
+                DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
+                    visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
+                if (!_threadTimelineWindow.DrawWindow(uiCommands, visibleTraceTable, startWindow, endWindow))
+                {
+                    _threadTimelineWindow = null;
+                }
+            }
+
             if (!opened)
             {
                 Dispose();
@@ -121,6 +134,18 @@ namespace InstantTraceViewerUI
 
             DrawToolStrip(uiCommands, visibleTraceTable, ref setScrollIndex);
 
+            if (setScrollIndex == null && _threadTimelineWindow?.ClickedVisibleRowIndex != null)
+            {
+                // If the user clicked on a row in the timeline window, then scroll to that row.
+                _lastSelectedVisibleRowIndex = _threadTimelineWindow.ClickedVisibleRowIndex;
+                _selectedFullTableRowIndices.Clear();
+                _selectedFullTableRowIndices.Add(visibleTraceTable.GetFullTableRowIndex(_lastSelectedVisibleRowIndex.Value));
+
+                setScrollIndex = _lastSelectedVisibleRowIndex;
+            }
+
+            // TODO: For inline thread timeline
+            /*
             if (_timelineInline != null)
             {
                 // The topmost/bottommost row index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
@@ -130,6 +155,7 @@ namespace InstantTraceViewerUI
                     visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
                 _timelineInline.DrawTimelineGraph(visibleTraceTable, startWindow, endWindow);
             }
+            */
 
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
@@ -684,12 +710,13 @@ namespace InstantTraceViewerUI
             }
             if (ImGui.BeginPopup("Visualizations"))
             {
-                ImGui.BeginDisabled(visibleTraceTable.Schema.TimestampColumn == null);
-                if (ImGui.MenuItem("Inline timeline", "", _timelineInline != null))
+                ImGui.BeginDisabled(!ThreadTimelineWindow.IsSupported(visibleTraceTable.Schema));
+                if (ImGui.MenuItem("Thread timeline", "", _threadTimelineWindow != null))
                 {
-                    _timelineInline = (_timelineInline == null) ? new TimelineWindow(_traceSource.TraceSource.DisplayName, _windowIdString) : null;
+                    _threadTimelineWindow = (_threadTimelineWindow == null) ? new ThreadTimelineWindow(_traceSource.TraceSource.DisplayName, _windowIdString) : null;
                 }
                 ImGui.EndDisabled();
+
                 ImGui.EndPopup();
             }
 

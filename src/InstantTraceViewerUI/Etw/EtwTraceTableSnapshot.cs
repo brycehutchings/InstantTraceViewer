@@ -45,7 +45,7 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (column == EtwTraceSource.ColumnTime)
             {
-                return traceRecord.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+                return FriendlyStringify.ToString(traceRecord.Timestamp);
             }
             else if (column == EtwTraceSource.ColumnOpCode)
             {
@@ -132,10 +132,20 @@ namespace InstantTraceViewerUI.Etw
             => column == EtwTraceSource.ColumnLevel ? ConvertLevel(RecordSnapshot[rowIndex].Level) :
                throw new NotSupportedException();
 
+        public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
+            => column == EtwTraceSource.ColumnOpCode ? ConvertOpcode(RecordSnapshot[rowIndex].OpCode) :
+               throw new NotSupportedException();
+
         private UnifiedLevel ConvertLevel(TraceEventLevel level)
             => level == TraceEventLevel.Critical ? UnifiedLevel.Fatal :
                level == TraceEventLevel.Error ? UnifiedLevel.Error :
                level == TraceEventLevel.Warning ? UnifiedLevel.Warning :
                level == TraceEventLevel.Verbose ? UnifiedLevel.Verbose : UnifiedLevel.Info;
+
+        public UnifiedOpcode ConvertOpcode(int opCode)
+            => opCode == (int)TraceEventOpcode.Start ? UnifiedOpcode.Start :
+               opCode == (int)TraceEventOpcode.DataCollectionStart ? UnifiedOpcode.Start :
+               opCode == (int)TraceEventOpcode.Stop ? UnifiedOpcode.Stop :
+               opCode == (int)TraceEventOpcode.DataCollectionStop ? UnifiedOpcode.Stop : UnifiedOpcode.None;
     }
 }

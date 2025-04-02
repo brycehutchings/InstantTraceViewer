@@ -102,6 +102,9 @@ namespace InstantTraceViewerUI
         public UnifiedLevel GetColumnValueUnifiedLevel(int filteredRowIndex, TraceSourceSchemaColumn column)
             => FullTable.GetColumnValueUnifiedLevel(GetFullTableRowIndex(filteredRowIndex), column);
 
+        public UnifiedOpcode GetColumnValueUnifiedOpcode(int filteredRowIndex, TraceSourceSchemaColumn column)
+            => FullTable.GetColumnValueUnifiedOpcode(GetFullTableRowIndex(filteredRowIndex), column);
+
         public TraceTableSchema Schema => FullTable.Schema;
 
         public int RowCount => _visibleRowIndiciesSnapshot.Count;
