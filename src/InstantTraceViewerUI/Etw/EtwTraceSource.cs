@@ -146,27 +146,32 @@ namespace InstantTraceViewerUI.Etw
             {
                 bool kernelProcessThreadProviderEnabled = false;
 
-#if true
-                if (profile.KernelKeywords != KernelTraceEventParser.Keywords.None)
+                // NonOSKeywords is taken from perflib's Microsoft.Diagnostics.Tracing library which disallows use of certain
+                // kernel keywords (PMCProfile ReferenceSet ThreadPriority IOQueue Handle) unless the session name is exactly "NT Kernel Logger" (KernelTraceEventParser.KernelSessionName)
+                // but then this disallows non-kernel providers being enabled. To avoid the problem we simply remove these special keywords.
+                // Oddly WPR can enable these keywords along with non-kernel providers, so the Microsoft.Diagnostics.Tracing library restrictions may be out of date?
+                KernelTraceEventParser.Keywords NonOSKeywords = (KernelTraceEventParser.Keywords)unchecked((int)0xf84c0000);
+                KernelTraceEventParser.Keywords allowedKernelKeywords = profile.KernelKeywords & ~NonOSKeywords;
+                if (allowedKernelKeywords != KernelTraceEventParser.Keywords.None)
                 {
                     // EnableKernelProvider will always enable Process and Thread events.
                     kernelProcessThreadProviderEnabled = true;
-                    etwSession.EnableKernelProvider(profile.KernelKeywords);
+                    etwSession.EnableKernelProvider(allowedKernelKeywords);
                 }
 
                 foreach (var provider in profile.Providers)
                 {
                     etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
                 }
-#else
-                TraceEventSession etwSession = new(KernelTraceEventParser.KernelSessionName); //new($"{SessionNamePrefix}{sessionNum}");
 
-                kernelProcessThreadProviderEnabled = true;
-                etwSession.EnableKernelProvider(KernelTraceEventParser.Keywords.PMCProfile | KernelTraceEventParser.Keywords.Process);
-                var profileSources = TraceEventProfileSources.GetInfo();
+                // Example of enabling processor CPU counter support. Not investigated yet. Search perfview codebase for examples of use.
+                // Perhaps this is related to the following: https://learn.microsoft.com/en-us/windows-hardware/test/wpt/recording-pmu-events for WPR support (which we'd want to parse too).
+                // TraceEventSession etwSession = new(KernelTraceEventParser.KernelSessionName);
+                // kernelProcessThreadProviderEnabled = true;
+                // etwSession.EnableKernelProvider(KernelTraceEventParser.Keywords.PMCProfile | KernelTraceEventParser.Keywords.Process);
+                // var profileSources = TraceEventProfileSources.GetInfo();
+                // TraceEventProfileSources.Set(profileSources["Timer"].ID, profileSources["Timer"].Interval);
 
-                TraceEventProfileSources.Set(profileSources["Timer"].ID, profileSources["Timer"].Interval);
-#endif
                 return new EtwTraceSource(etwSession, kernelProcessThreadProviderEnabled, profile.DisplayName, sessionNum);
             }
             catch
