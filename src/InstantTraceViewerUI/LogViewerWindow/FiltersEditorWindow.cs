@@ -215,15 +215,19 @@ Examples:
                         }
 
                         ImGui.SameLine();
-                        if (i > 0 && ImGuiWidgets.UndecoratedButton("\uf062", "Move up"))
+                        ImGui.BeginDisabled(i == 0);
+                        if (ImGuiWidgets.UndecoratedButton("\uf062", "Move up"))
                         {
                             rules.MoveRule(i, i - 1);
                         }
+                        ImGui.EndDisabled();
                         ImGui.SameLine();
-                        if (i < rules.Rules.Count - 1 && ImGuiWidgets.UndecoratedButton("\uf063", "Move down"))
+                        ImGui.BeginDisabled(i == rules.Rules.Count - 1);
+                        if (ImGuiWidgets.UndecoratedButton("\uf063", "Move down"))
                         {
                             rules.MoveRule(i, i + 1);
                         }
+                        ImGui.EndDisabled();
                         ImGui.SameLine();
                         if (ImGuiWidgets.UndecoratedButton("\uf2ed", "Delete rule"))
                         {
