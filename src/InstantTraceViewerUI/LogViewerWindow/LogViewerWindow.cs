@@ -690,13 +690,27 @@ namespace InstantTraceViewerUI
                 if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
                 {
                     ImGui.Separator();
-                    if (ImGui.MenuItem("Find previous error", "Alt+,"))
+                    if (ImGui.MenuItem("Go to previous error", "Alt+,"))
                     {
                         setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: false);
                     }
-                    if (ImGui.MenuItem("Find next error", "Alt+."))
+                    if (ImGui.MenuItem("Go to next error", "Alt+."))
                     {
                         setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: true);
+                    }
+                }
+
+                if (visibleTraceTable.Schema.ThreadIdColumn != null && _lastSelectedVisibleRowIndex.HasValue)
+                {
+                    int lastSelectedRowThreadId = visibleTraceTable.GetThreadId(_lastSelectedVisibleRowIndex.Value);
+                    ImGui.Separator();
+                    if (ImGui.MenuItem($"Go to previous row for thread {lastSelectedRowThreadId}", "Alt+["))
+                    {
+                        setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: false);
+                    }
+                    if (ImGui.MenuItem($"Go to next row for thread {lastSelectedRowThreadId}", "Alt+]"))
+                    {
+                        setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: true);
                     }
                 }
 
@@ -817,14 +831,27 @@ namespace InstantTraceViewerUI
 
             if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
             {
-                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Comma))
+                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Comma, ImGuiInputFlags.Repeat))
                 {
                     setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: false);
                 }
 
-                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Period))
+                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Period, ImGuiInputFlags.Repeat))
                 {
                     setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: true);
+                }
+            }
+
+            if (visibleTraceTable.Schema.ThreadIdColumn != null && _lastSelectedVisibleRowIndex.HasValue)
+            {
+                int lastSelectedRowThreadId = visibleTraceTable.GetThreadId(_lastSelectedVisibleRowIndex.Value);
+                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.LeftBracket, ImGuiInputFlags.Repeat))
+                {
+                    setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: false);
+                }
+                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.RightBracket, ImGuiInputFlags.Repeat))
+                {
+                    setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: true);
                 }
             }
         }
@@ -871,31 +898,26 @@ namespace InstantTraceViewerUI
         }
 
         private int? FindText(FilteredTraceTableSnapshot visibleTraceTable, string text, bool findForward)
-        {
-            int visibleRowIndex =
-                findForward ?
-                   (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value + 1 : 0) :
-                   (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : visibleTraceTable.RowCount - 1);
-            while (visibleRowIndex >= 0 && visibleRowIndex < visibleTraceTable.RowCount)
-            {
-                foreach (var column in visibleTraceTable.Schema.Columns)
+            => FindNextRow(visibleTraceTable, (visibleTraceTable, i) =>
                 {
-                    string displayText = visibleTraceTable.GetColumnValueString(visibleRowIndex, column, allowMultiline: false);
-                    if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
+                    foreach (var column in visibleTraceTable.Schema.Columns)
                     {
-                        _lastSelectedVisibleRowIndex = visibleRowIndex;
-                        _selectedFullTableRowIndices.Clear();
-                        _selectedFullTableRowIndices.Add(visibleTraceTable.GetFullTableRowIndex(visibleRowIndex));
-                        return visibleRowIndex;
+                        string displayText = visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false);
+                        if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            return true;
+                        }
                     }
-                }
+                    return false;
+                }, findForward);
 
-                visibleRowIndex = (findForward ? visibleRowIndex + 1 : visibleRowIndex - 1);
-            }
-            return null;
-        }
+        private int? FindNextThreadRow(FilteredTraceTableSnapshot visibleTraceTable, int threadId, bool findForward)
+            => FindNextRow(visibleTraceTable, (visibleTraceTable, i) => visibleTraceTable.GetThreadId(i) == threadId, findForward);
 
         private int? FindNextError(FilteredTraceTableSnapshot visibleTraceTable, string text, bool findForward)
+            => FindNextRow(visibleTraceTable, (visibleTraceTable, i) => visibleTraceTable.GetUnifiedLevel(i) >= UnifiedLevel.Error, findForward);
+
+        private int? FindNextRow(FilteredTraceTableSnapshot visibleTraceTable, Func<FilteredTraceTableSnapshot, int, bool> predicate, bool findForward)
         {
             int visibleRowIndex =
                 findForward ?
@@ -903,7 +925,7 @@ namespace InstantTraceViewerUI
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : visibleTraceTable.RowCount - 1);
             while (visibleRowIndex >= 0 && visibleRowIndex < visibleTraceTable.RowCount)
             {
-                if (visibleTraceTable.GetUnifiedLevel(visibleRowIndex) >= UnifiedLevel.Error)
+                if (predicate(visibleTraceTable, visibleRowIndex))
                 {
                     _lastSelectedVisibleRowIndex = visibleRowIndex;
                     _selectedFullTableRowIndices.Clear();
