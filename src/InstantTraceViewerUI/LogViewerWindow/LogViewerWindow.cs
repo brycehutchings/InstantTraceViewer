@@ -115,7 +115,7 @@ namespace InstantTraceViewerUI
                     visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
                 DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
                     visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
-                if (!_threadTimelineWindow.DrawWindow(uiCommands, visibleTraceTable, startWindow, endWindow))
+                if (!_threadTimelineWindow.DrawWindow(uiCommands, visibleTraceTable, _viewerRules, startWindow, endWindow))
                 {
                     _threadTimelineWindow = null;
                 }
@@ -129,6 +129,13 @@ namespace InstantTraceViewerUI
 
         private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceTableSnapshot visibleTraceTable, bool filteredViewRebuilt)
         {
+            if (_lastSelectedVisibleRowIndex >= visibleTraceTable.RowCount)
+            {
+                // The last selected row is no longer visible, so clear it to avoid later code potentially going out of bounds.
+                _lastSelectedVisibleRowIndex = null;
+                _lastSelectedFullTableRowIndex = null;
+            }
+
             // Row index to scroll to (it will be the topmost row that is visible).
             int? setScrollIndex = null;
 
@@ -509,7 +516,7 @@ namespace InstantTraceViewerUI
             }
             else if (column == visibleTraceTable.Schema.TimestampColumn)
             {
-                var timeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnValueDateTime(i, column).ToString("o"));
+                var timeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(visibleTraceTable.GetColumnValueDateTime(i, column));
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, timeStr]);
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, timeStr]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOperatorName, timeStr]);

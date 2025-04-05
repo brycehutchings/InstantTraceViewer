@@ -125,9 +125,10 @@ namespace InstantTraceViewer
         }
 
         public static string CreateEscapedStringLiteral(string text)
-        {
-            return '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
-        }
+            => '"' + text.Replace("\\", "\\\\").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\"", "\\\"") + '"';
+
+        public static string CreateEscapedStringLiteral(DateTime dateTime)
+            => $"\"{FriendlyStringify.ToString(dateTime)}\"";
 
         private static string UnescapeStringLiteral(string text)
         {
