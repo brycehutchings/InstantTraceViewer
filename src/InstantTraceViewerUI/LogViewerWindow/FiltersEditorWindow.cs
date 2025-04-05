@@ -128,7 +128,7 @@ Examples:
 
             RenderParsingError(addRuleId, _addRuleInputText, _addRuleLastParseResult, inputScreenPos);
 
-            if (rules.ApplyFiltering)
+            if (!rules.ApplyFiltering)
             {
                 ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.WarningColor));
                 ImGui.TextUnformatted("\uF06A");
