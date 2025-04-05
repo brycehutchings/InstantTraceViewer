@@ -153,9 +153,13 @@ namespace InstantTraceViewerUI
                 {
                     if (ImGui.BeginMenu("Settings"))
                     {
-                        if (ImGui.MenuItem("Associate with .etl extension"))
+                        // AppxManifest for MSIX will handle associating the app with all supported file extensions.
+                        if (!Win32Native.IsPackaged)
                         {
-                            Settings.AssociateWithEtlExtensions();
+                            if (ImGui.MenuItem("Associate with .etl extension"))
+                            {
+                                Settings.AssociateWithEtlExtensions();
+                            }
                         }
 
                         ImGuiTheme theme = Settings.Theme;
