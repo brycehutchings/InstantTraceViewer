@@ -2,7 +2,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Xml.Linq;
@@ -112,61 +111,60 @@ namespace InstantTraceViewerUI.Etw
 
     internal class WprpProfile
     {
-        // Some of these combinations seem nonsensical but I believe certain combinations are used for new meaning to avoid exceeding 64bit limit.
-        // Example: SpinLock = Keywords.NetworkTCPIP | Keywords.ThreadPriority
+        // Some of these WPRP kernel keywords do not seem to be supported by the Microsoft.Diagnostics.Tracing library.
         private readonly static Dictionary<string, KernelTraceEventParser.Keywords> KernelKeywordMap = new Dictionary<string, KernelTraceEventParser.Keywords> {
-            { "AllFaults", KernelTraceEventParser.Keywords.Memory },
+            // { "AllFaults", ??? },
             { "Alpc", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls },
-            { "AntiStarvation", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ReferenceSet },
-            { "CompactCSwitch", KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "ContiguousMemorygeneration", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "CpuConfig", KernelTraceEventParser.Keywords.NetworkTCPIP | KernelTraceEventParser.Keywords.ReferenceSet },
+            // { "AntiStarvation", ??? },
+            // { "CompactCSwitch", ??? },
+            // { "ContiguousMemorygeneration", ??? },
+            // { "CpuConfig", ??? },
             { "CSwitch", KernelTraceEventParser.Keywords.ContextSwitch },
-            { "CSwitch_Internal", KernelTraceEventParser.Keywords.ImageLoad | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "DiskIO", KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.DiskFileIO },
+            // { "CSwitch_Internal", ??? },
+            { "DiskIO", KernelTraceEventParser.Keywords.DiskIO },
             { "DiskIOInit", KernelTraceEventParser.Keywords.DiskIOInit },
             { "Dpc", KernelTraceEventParser.Keywords.DeferedProcedureCalls },
-            { "Dpc_Internal", KernelTraceEventParser.Keywords.SystemCall | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "Dpc_Internal", ??? },
             { "Drivers", KernelTraceEventParser.Keywords.Driver },
-            { "Drivers_Internal", KernelTraceEventParser.Keywords.ContextSwitch | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "Drivers_Internal", ??? },
             { "FileIO", KernelTraceEventParser.Keywords.FileIO },
             { "FileIOInit", KernelTraceEventParser.Keywords.FileIOInit },
             { "Filename", KernelTraceEventParser.Keywords.DiskFileIO },
-            { "FootPrint", KernelTraceEventParser.Keywords.ProcessCounters | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "KeClock", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls | KernelTraceEventParser.Keywords.ReferenceSet },
+            // { "FootPrint", ??? },
+            // { "KeClock", ??? },
             { "HardFaults", KernelTraceEventParser.Keywords.MemoryHardFaults },
-            { "IdleStates", KernelTraceEventParser.Keywords.VAMap | KernelTraceEventParser.Keywords.ReferenceSet },
-            { "InterProcessorInterrupt", KernelTraceEventParser.Keywords.Handle | KernelTraceEventParser.Keywords.ReferenceSet },
+            // { "IdleStates", ??? },
+            // { "InterProcessorInterrupt", ??? },
             { "Interrupt", KernelTraceEventParser.Keywords.Interrupt },
-            { "Interrupt_Internal", KernelTraceEventParser.Keywords.VirtualAlloc | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "KernelQueue", KernelTraceEventParser.Keywords.Profile | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "Interrupt_Internal", ??? },
+            // { "KernelQueue", ??? },
             { "Loader", KernelTraceEventParser.Keywords.ImageLoad },
-            { "Memory", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "MemoryInfoWS", KernelTraceEventParser.Keywords.Driver | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "Memory", ??? },
+            // { "MemoryInfoWS", ??? },
             { "NetworkTrace", KernelTraceEventParser.Keywords.NetworkTCPIP },
-            { "PmcProfile", KernelTraceEventParser.Keywords.DiskIOInit | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "Pool", KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.ThreadPriority },
+            { "PmcProfile", KernelTraceEventParser.Keywords.PMCProfile },
+            // { "Pool", ??? },
             { "ProcessCounter", KernelTraceEventParser.Keywords.ProcessCounters },
             { "ProcessThread", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread },
-            { "ProcessFreeze", KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ReferenceSet },
+            // { "ProcessFreeze", ??? },
             { "ReadyThread", KernelTraceEventParser.Keywords.Dispatcher },
-            { "ReadyThread_Internal", KernelTraceEventParser.Keywords.DiskFileIO | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "ReferenceSet", KernelTraceEventParser.Keywords.DeferedProcedureCalls | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "ReadyThread_Internal", ??? },
+            // { "ReferenceSet", ??? },
             { "Registry", KernelTraceEventParser.Keywords.Registry },
-            { "RegistryHive", KernelTraceEventParser.Keywords.Profile | KernelTraceEventParser.Keywords.ReferenceSet },
-            { "RegistryNotify", KernelTraceEventParser.Keywords.FileIO | KernelTraceEventParser.Keywords.ReferenceSet },
+            // { "RegistryHive", ??? },
+            // { "RegistryNotify", ??? },
             { "SampledProfile", KernelTraceEventParser.Keywords.Profile },
-            { "SampledProfile_Internal", KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "Session", KernelTraceEventParser.Keywords.Handle | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "SpinLock", KernelTraceEventParser.Keywords.NetworkTCPIP | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "SampledProfile_Internal", ??? },
+            // { "Session", ??? },
+            // { "SpinLock", ??? },
             { "SplitIO", KernelTraceEventParser.Keywords.SplitIO },
-            { "SynchronizationObjects", KernelTraceEventParser.Keywords.Registry | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "SynchronizationObjects", ??? },
             { "SystemCall", KernelTraceEventParser.Keywords.SystemCall },
-            { "SystemCall_Internal", KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.ReferenceSet },
-            { "ThreadPriority", KernelTraceEventParser.Keywords.MemoryHardFaults | KernelTraceEventParser.Keywords.ThreadPriority },
-            { "Timer", KernelTraceEventParser.Keywords.Registry | KernelTraceEventParser.Keywords.ReferenceSet },
+            // { "SystemCall_Internal", ??? },
+            { "ThreadPriority", KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "Timer", ??? },
             { "VirtualAllocation", KernelTraceEventParser.Keywords.VirtualAlloc },
-            { "VirtualAllocation_Internal", KernelTraceEventParser.Keywords.VAMap | KernelTraceEventParser.Keywords.ThreadPriority },
+            // { "VirtualAllocation_Internal", ??? },
             { "VAMap", KernelTraceEventParser.Keywords.VAMap }
         };
 
@@ -199,7 +197,7 @@ namespace InstantTraceViewerUI.Etw
                 }
                 else
                 {
-                    Debug.WriteLine("Unknown system/kernel keyword: " + keyword);
+                    Trace.WriteLine("Unknown system/kernel keyword: " + keyword);
                 }
             }
 
