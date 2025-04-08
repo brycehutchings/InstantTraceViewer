@@ -1,10 +1,9 @@
 ﻿/*
  * --- FUTURE WORK/IDEAS
- * 0. Click-drag to select time range and show duration. Allow zoom to it.
+ * 0. Highlight thread row (or process row if collapsed) of last selected event to make it easier to find.
  * 1. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
- * 2. Option to aggregate by Provider instead of Pid/Tid?
- * 3. Make instant event(s) that are selected more obvious besides the vertical line for the most recently selected one.
- *    Draw a box around them? Outline them?
+ * 2. Click-drag to select time range and show duration. Allow zoom to it.
+ * 3. Option to aggregate by Provider instead of Pid/Tid?
  */
 using ImGuiNET;
 using System;
@@ -243,8 +242,6 @@ namespace InstantTraceViewerUI
             _trackAreaLeftScreenPos = null;
             _trackAreaWidth = null;
 
-            ImDrawListPtr drawList = ImGui.GetWindowDrawList();
-
             // 'ScrollY' required for freezing rows (for pinning/timeline header).
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
@@ -255,18 +252,16 @@ namespace InstantTraceViewerUI
 
                 float dpiBase = ImGui.GetFontSize();
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
-
-                // We do our own clipping (both with PushClipRect and with Min/Max), so we can have ImGui draw everything in this column in one draw call by setting NoClip.
-                ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch | ImGuiTableColumnFlags.NoClip, 1.0f);
+                ImGui.TableSetupColumn("Track", ImGuiTableColumnFlags.WidthStretch, 1.0f);
 
                 // ImGui.TableHeadersRow(); // We don't actually want the header shown
 
-                DrawTimeline(drawList, _startZoomRange, _endZoomRange, startWindow, endWindow, lastSelectedVisibleRowIndex);
+                DrawTimeline(_startZoomRange, _endZoomRange, startWindow, endWindow, lastSelectedVisibleRowIndex);
 
                 List<object> hoveredEvents = new(); // Contains 0 or more 'Bar' and 'InstantEvent' objects.
                 foreach (var track in pinnedTracks)
                 {
-                    DrawTrack(track, drawList, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
+                    DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
                 }
 
                 if (pinnedTracks.Any())
@@ -275,14 +270,9 @@ namespace InstantTraceViewerUI
                     // If this is removed, the ScrollFreeze math needs to change too.
                     ImGui.TableNextRow();
                     ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(ImGuiCol.TableBorderLight));
-                    ImGui.TableNextColumn(); // Track name (none for timeline)
+                    ImGui.TableNextColumn(); // Track name
                     ImGui.TableNextColumn(); // Track graph area
                 }
-
-                // Ensure custom drawing doesn't scroll up into the frozen track area.
-                // 1,000,000 is a "very large size" to include everything below this point (float.MaxValue doesn't work).
-                Vector2 startClip = ImGui.GetCursorScreenPos();
-                drawList.PushClipRect(startClip, new Vector2(startClip.X + 1000000, 1000000), false);
 
                 string? previousProcessName = null;
                 bool isOpen = false;
@@ -319,10 +309,8 @@ namespace InstantTraceViewerUI
                         continue;
                     }
 
-                    DrawTrack(track, drawList, _startZoomRange, _endZoomRange, isPinned, hoveredEvents);
+                    DrawTrack(track, _startZoomRange, _endZoomRange, isPinned, hoveredEvents);
                 }
-
-                drawList.PopClipRect();
 
                 if (isOpen)
                 {
@@ -449,11 +437,13 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTimeline(ImDrawListPtr drawList, DateTime startRange, DateTime endRange, DateTime? startWindow, DateTime? endWindow, int? lastSelectedVisibleRowIndex)
+        private void DrawTimeline(DateTime startRange, DateTime endRange, DateTime? startWindow, DateTime? endWindow, int? lastSelectedVisibleRowIndex)
         {
             ImGui.TableNextRow();
             ImGui.TableNextColumn(); // Track name (none for timeline)
             ImGui.TableNextColumn(); // Track graph area
+
+            ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
             float trackRegionAvailableWidth = ImGui.GetContentRegionAvail().X;
             Vector2 timelineTopLeft = ImGui.GetCursorScreenPos();
@@ -527,7 +517,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTrack(ComputedTrack track, ImDrawListPtr drawList, DateTime startRange, DateTime endRange, bool isPinned, List<object> hoveredEvents)
+        private void DrawTrack(ComputedTrack track, DateTime startRange, DateTime endRange, bool isPinned, List<object> hoveredEvents)
         {
             TimeSpan rangeDuration = endRange - startRange;
 
@@ -562,6 +552,8 @@ namespace InstantTraceViewerUI
             ImGui.TextUnformatted(track.ThreadName);
 
             ImGui.TableNextColumn();
+
+            ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
             float trackRegionAvailableWidth = ImGui.GetContentRegionAvail().X;
             Vector2 trackTopLeft = ImGui.GetCursorScreenPos();
