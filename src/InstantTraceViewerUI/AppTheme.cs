@@ -44,7 +44,6 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(1, 1, 1, 0.03f);
 
                 ThreadTimelineLogViewRegionColor = 0xFF404040;
-                ThreadTimelineSelectedRowColor = 0xFF808080;
             }
             else
             {
@@ -52,7 +51,6 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(0.3f, 0.3f, 0.3f, 0.045f);
 
                 ThreadTimelineLogViewRegionColor = 0xFFC0C0C0;
-                ThreadTimelineSelectedRowColor = 0xFF808080;
             }
 
             InfoColor = ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
@@ -78,6 +76,5 @@ namespace InstantTraceViewerUI
         }
 
         public static uint ThreadTimelineLogViewRegionColor;
-        public static uint ThreadTimelineSelectedRowColor;
     }
 }

@@ -510,6 +510,9 @@ namespace InstantTraceViewerUI
                 DateTime timestamp = _latestComputedTracks.TraceTableSnapshot.GetTimestamp(lastSelectedVisibleRowIndex.Value);
                 if (timestamp >= _startZoomRange && timestamp <= _endZoomRange)
                 {
+                    // Give the vertical line the same color as the bar/tick.
+                    uint color = GenerateColorFromName(_latestComputedTracks.TraceTableSnapshot.GetName(lastSelectedVisibleRowIndex.Value));
+
                     float xPos = (float)Math.Round((timestamp.Ticks - _startZoomRange.Ticks) * tickToPixel);
 
                     // AddQuadFilled is used instead of AddRectFilled because it can be used to get antialiasing so that instead of the width being 3 pixels
@@ -519,7 +522,7 @@ namespace InstantTraceViewerUI
                         new Vector2(xPos + 1.5f + _trackAreaLeftScreenPos.Value, timelineTopLeft.Y),
                         new Vector2(xPos + 1.5f + _trackAreaLeftScreenPos.Value, 1000000),
                         new Vector2(xPos - 0.5f + _trackAreaLeftScreenPos.Value, 1000000),
-                        AppTheme.ThreadTimelineSelectedRowColor);
+                        color);
                 }
             }
         }
