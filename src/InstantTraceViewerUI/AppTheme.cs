@@ -42,11 +42,17 @@ namespace InstantTraceViewerUI
 
                 // Make alternate row color have less contrast. Goes from 6% to 3% alpha tint.
                 ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(1, 1, 1, 0.03f);
+
+                ThreadTimelineLogViewRegionColor = 0xFF404040;
+                ThreadTimelineSelectedRowColor = 0xFF808080;
             }
             else
             {
                 // Make alternate row color have less contrast. Goes from 9% to 4.5% alpha tint.
                 ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(0.3f, 0.3f, 0.3f, 0.045f);
+
+                ThreadTimelineLogViewRegionColor = 0xFFC0C0C0;
+                ThreadTimelineSelectedRowColor = 0xFF808080;
             }
 
             InfoColor = ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
@@ -70,5 +76,8 @@ namespace InstantTraceViewerUI
             Vector4 colorVec = ImGui.GetStyle().Colors[(int)color];
             return new Vector4(colorVec.X, colorVec.Y, colorVec.Z, Math.Clamp(colorVec.W * alphaScale, 0.0f, 1.0f));
         }
+
+        public static uint ThreadTimelineLogViewRegionColor;
+        public static uint ThreadTimelineSelectedRowColor;
     }
 }

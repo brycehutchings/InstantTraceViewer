@@ -115,7 +115,7 @@ namespace InstantTraceViewerUI
                     visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
                 DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
                     visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
-                if (!_threadTimelineWindow.DrawWindow(uiCommands, visibleTraceTable, _viewerRules, startWindow, endWindow))
+                if (!_threadTimelineWindow.DrawWindow(uiCommands, visibleTraceTable, _lastSelectedVisibleRowIndex, _viewerRules, startWindow, endWindow))
                 {
                     _threadTimelineWindow = null;
                 }

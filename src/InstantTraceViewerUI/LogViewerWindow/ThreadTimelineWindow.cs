@@ -1,9 +1,10 @@
 ﻿/*
  * --- FUTURE WORK/IDEAS
- * 0. Outline or otherwise make apparent the bar/instant event(s) in timeline that are selected in the log viewer.
- * 1. Click-drag to select time range and show duration. Allow zoom to it.
- * 2. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
- * 3. Option to aggregate by Provider instead of Pid/Tid?
+ * 0. Click-drag to select time range and show duration. Allow zoom to it.
+ * 1. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
+ * 2. Option to aggregate by Provider instead of Pid/Tid?
+ * 3. Make instant event(s) that are selected more obvious besides the vertical line for the most recently selected one.
+ *    Draw a box around them? Outline them?
  */
 using ImGuiNET;
 using System;
@@ -14,7 +15,6 @@ using System.Linq;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.IO.Hashing;
-using System.Data.Common;
 
 namespace InstantTraceViewerUI
 {
@@ -130,7 +130,7 @@ namespace InstantTraceViewerUI
         // This is reset every frame and only set if a click happens on an event.
         public int? ClickedVisibleRowIndex { get; set; }
 
-        public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
+        public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(600, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -141,7 +141,7 @@ namespace InstantTraceViewerUI
             ImGuiWindowFlags flags = _isMouseHoveringTable ? ImGuiWindowFlags.NoMove : ImGuiWindowFlags.None;
             if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open, flags))
             {
-                DrawTimelineGraph(traceTable, viewerRules, startWindow, endWindow);
+                DrawTimelineGraph(traceTable, lastSelectedVisibleRowIndex, viewerRules, startWindow, endWindow);
             }
 
             ImGui.End();
@@ -152,7 +152,7 @@ namespace InstantTraceViewerUI
         public static bool IsSupported(TraceTableSchema schema)
             => schema.TimestampColumn != null && schema.NameColumn != null && schema.ProcessIdColumn != null && schema.ThreadIdColumn != null;
 
-        private void DrawTimelineGraph(ITraceTableSnapshot traceTable, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
+        private void DrawTimelineGraph(ITraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
         {
             Trace.Assert(IsSupported(traceTable.Schema));
 
@@ -215,7 +215,7 @@ namespace InstantTraceViewerUI
 
             if (_latestComputedTracks != null)
             {
-                DrawTrackGraph(startWindow, endWindow, expandCollapse);
+                DrawTrackGraph(lastSelectedVisibleRowIndex, startWindow, endWindow, expandCollapse);
             }
             else
             {
@@ -224,7 +224,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTrackGraph(DateTime? startWindow, DateTime? endWindow, bool? expandCollapse)
+        private void DrawTrackGraph(int? lastSelectedVisibleRowIndex, DateTime? startWindow, DateTime? endWindow, bool? expandCollapse)
         {
             ClickedVisibleRowIndex = null;
 
@@ -249,7 +249,9 @@ namespace InstantTraceViewerUI
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
                 var pinnedTracks = _latestComputedTracks.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
-                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count + 1); // Pinned tracks are always visible. Plus one because we also want to pin the timeline.
+
+                // Freeze pinned tracks so they are always visible. Plus one because we also want to pin the timeline. Plus one more if we have pinned tracks because that is the separator row.
+                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count + 1 + (pinnedTracks.Any() ? 1 : 0));
 
                 float dpiBase = ImGui.GetFontSize();
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
@@ -259,7 +261,7 @@ namespace InstantTraceViewerUI
 
                 // ImGui.TableHeadersRow(); // We don't actually want the header shown
 
-                DrawTimeline(drawList, _startZoomRange, _endZoomRange, startWindow, endWindow);
+                DrawTimeline(drawList, _startZoomRange, _endZoomRange, startWindow, endWindow, lastSelectedVisibleRowIndex);
 
                 List<object> hoveredEvents = new(); // Contains 0 or more 'Bar' and 'InstantEvent' objects.
                 foreach (var track in pinnedTracks)
@@ -270,6 +272,7 @@ namespace InstantTraceViewerUI
                 if (pinnedTracks.Any())
                 {
                     // Blank row to separate pinned tracks from the rest. Fill color matches border color so it looks like a solid thick separator.
+                    // If this is removed, the ScrollFreeze math needs to change too.
                     ImGui.TableNextRow();
                     ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, ImGui.GetColorU32(ImGuiCol.TableBorderLight));
                     ImGui.TableNextColumn(); // Track name (none for timeline)
@@ -446,19 +449,19 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTimeline(ImDrawListPtr drawList, DateTime startRange, DateTime endRange, DateTime? startWindow, DateTime? endWindow)
+        private void DrawTimeline(ImDrawListPtr drawList, DateTime startRange, DateTime endRange, DateTime? startWindow, DateTime? endWindow, int? lastSelectedVisibleRowIndex)
         {
             ImGui.TableNextRow();
             ImGui.TableNextColumn(); // Track name (none for timeline)
             ImGui.TableNextColumn(); // Track graph area
 
             float trackRegionAvailableWidth = ImGui.GetContentRegionAvail().X;
-            Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
+            Vector2 timelineTopLeft = ImGui.GetCursorScreenPos();
 
             // We need to remember the starting X and width to do zooming centered on the mouse X coord.
             if (_trackAreaLeftScreenPos == null && _trackAreaWidth == null)
             {
-                _trackAreaLeftScreenPos = trackBarsTopLeft.X;
+                _trackAreaLeftScreenPos = timelineTopLeft.X;
                 _trackAreaWidth = trackRegionAvailableWidth;
             }
 
@@ -469,13 +472,13 @@ namespace InstantTraceViewerUI
             if (ImGui.IsItemVisible())
             {
                 float lineHeight = ImGui.GetTextLineHeight();
-                Vector4 clipRect = new(trackBarsTopLeft.X, trackBarsTopLeft.Y, trackBarsTopLeft.X + trackRegionAvailableWidth, trackBarsTopLeft.Y + timelineHeight);
+                Vector4 clipRect = new(timelineTopLeft.X, timelineTopLeft.Y, timelineTopLeft.X + trackRegionAvailableWidth, timelineTopLeft.Y + timelineHeight);
                 var drawAligned = (string text, float xPercent, float y) =>
                 {
                     float textLength = ImGui.CalcTextSize(text).X;
                     float x = xPercent * (trackRegionAvailableWidth - textLength);
                     drawList.AddText(null /* default font  */, 0.0f /* default font size */,
-                        trackBarsTopLeft + new Vector2(x, y), ImGui.GetColorU32(ImGuiCol.Text), text, 0.0f /* no text wrap */,
+                        timelineTopLeft + new Vector2(x, y), ImGui.GetColorU32(ImGuiCol.Text), text, 0.0f /* no text wrap */,
                         ref clipRect);
                 };
 
@@ -495,10 +498,29 @@ namespace InstantTraceViewerUI
                 startRelativeTicks = Math.Max(startRelativeTicks, 0);
                 stopRelativeTicks = Math.Min(stopRelativeTicks, endRange.Ticks - startRange.Ticks);
 
-                Vector2 min = new Vector2(startRelativeTicks * tickToPixel, 0) + trackBarsTopLeft;
-                Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, float.MaxValue) + trackBarsTopLeft;
+                Vector2 min = new Vector2((float)Math.Floor(startRelativeTicks * tickToPixel), 0) + timelineTopLeft;
+                Vector2 max = new Vector2((float)Math.Ceiling(stopRelativeTicks * tickToPixel), float.MaxValue) + timelineTopLeft;
+                drawList.AddRectFilled(min, max, AppTheme.ThreadTimelineLogViewRegionColor);
+            }
 
-                drawList.AddRectFilled(min, max, ImGui.GetColorU32(ImGuiCol.DockingPreview));
+            // We want the vertical line for the selected row to be draw over the visible region (previous block of code) but under all of the track bars/ticks
+            // so this is where we have to add the draw call.
+            if (lastSelectedVisibleRowIndex.HasValue && _trackAreaWidth.HasValue && _trackAreaLeftScreenPos.HasValue)
+            {
+                DateTime timestamp = _latestComputedTracks.TraceTableSnapshot.GetTimestamp(lastSelectedVisibleRowIndex.Value);
+                if (timestamp >= _startZoomRange && timestamp <= _endZoomRange)
+                {
+                    float xPos = (float)Math.Round((timestamp.Ticks - _startZoomRange.Ticks) * tickToPixel);
+
+                    // AddQuadFilled is used instead of AddRectFilled because it can be used to get antialiasing so that instead of the width being 3 pixels
+                    // of a solid color (which looks too strong), it is 1 pixel solid with 1 pixel on each side of antialiasing which looks good.
+                    drawList.AddQuadFilled(
+                        new Vector2(xPos - 0.5f + _trackAreaLeftScreenPos.Value, timelineTopLeft.Y),
+                        new Vector2(xPos + 1.5f + _trackAreaLeftScreenPos.Value, timelineTopLeft.Y),
+                        new Vector2(xPos + 1.5f + _trackAreaLeftScreenPos.Value, 1000000),
+                        new Vector2(xPos - 0.5f + _trackAreaLeftScreenPos.Value, 1000000),
+                        AppTheme.ThreadTimelineSelectedRowColor);
+                }
             }
         }
 
@@ -539,7 +561,7 @@ namespace InstantTraceViewerUI
             ImGui.TableNextColumn();
 
             float trackRegionAvailableWidth = ImGui.GetContentRegionAvail().X;
-            Vector2 trackBarsTopLeft = ImGui.GetCursorScreenPos();
+            Vector2 trackTopLeft = ImGui.GetCursorScreenPos();
 
             float tickToPixel = trackRegionAvailableWidth / rangeDuration.Ticks;
 
@@ -550,7 +572,7 @@ namespace InstantTraceViewerUI
             {
                 Vector2 mousePos = ImGui.GetMousePos();
 
-                DateTime mouseTimestamp = new DateTime(Math.Max((long)((mousePos.X - trackBarsTopLeft.X) * (1 / tickToPixel)), DateTime.MinValue.Ticks));
+                DateTime mouseTimestamp = new DateTime(Math.Max((long)((mousePos.X - trackTopLeft.X) * (1 / tickToPixel)), DateTime.MinValue.Ticks));
 
                 float minTextRenderLengthPixels = textLineHeight * 0.2f;
                 foreach (var bar in track.Bars)
@@ -567,8 +589,8 @@ namespace InstantTraceViewerUI
                     startRelativeTicks = Math.Max(startRelativeTicks, 0);
                     stopRelativeTicks = Math.Min(stopRelativeTicks, endRange.Ticks - startRange.Ticks);
 
-                    Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackBarsTopLeft;
-                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackBarsTopLeft;
+                    Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackTopLeft;
+                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackTopLeft;
 
                     bool isHovered = mousePos.Y >= min.Y && mousePos.Y < max.Y && mousePos.X >= min.X && mousePos.X < max.X;
                     uint barColor = isHovered ? DarkenColor(bar.Color) : bar.Color;
@@ -593,7 +615,7 @@ namespace InstantTraceViewerUI
                 Func<DateTime, int, Vector2> getTickTop = (timestamp, depth) =>
                 {
                     long relativeTicks = timestamp.Ticks - startRange.Ticks;
-                    Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), depth * barHeight) + trackBarsTopLeft;
+                    Vector2 tickTop = new Vector2((float)Math.Round(relativeTicks * tickToPixel), depth * barHeight) + trackTopLeft;
                     tickTop.X += 0.5f; // Move half a pixel so that the a single pixel of the top tip is inside the triangle. Otherwise the top tip is 2 pixels wide.
                     return tickTop;
                 };
@@ -854,13 +876,12 @@ namespace InstantTraceViewerUI
         private static unsafe uint CalcOverlappingEventColor(int eventCount)
         {
             // This converts the number of events that collide on a single pixel to the log2 and then makes it a percentage (0.0 to 1.0)
-            // So 2 events = 20%, 4 events = 40%, 8 events = 60%, 16 events = 80% and 32 events = 100%
-            float MaxLogEventCount = 5; // 2^5 = 32
-            float t = Math.Min((float)Math.Log2(eventCount), MaxLogEventCount /* cap at 32 or more events */) / MaxLogEventCount;
+            // So 2 events = 16%, 4 events = 33%, 8 events = 50%, ..., and 64 events = 100%
+            float MaxLogEventCount = 6; // 2^6 = 64
+            float t = Math.Min((float)Math.Log2(eventCount), MaxLogEventCount /* cap at 64 or more events */) / MaxLogEventCount;
 
-            // Lerp between the two colors starting at ~30% and going up to 100%. We don't want to go too low where the color would be hard to see (blend in with the background).
-            return ImGui.GetColorU32(
-                Vector4.Lerp(*ImGui.GetStyleColorVec4(ImGuiCol.WindowBg), *ImGui.GetStyleColorVec4(ImGuiCol.Text), t * 0.7f + 0.3f));
+            // Lerp between dark and light gray. We don't want to go too bright or dark where the color would be hard to see (blend in with the background) depending on user's color theme.
+            return ImGui.GetColorU32(Vector4.Lerp(new Vector4(0.4f, 0.4f, 0.4f, 1.0f), new Vector4(0.7f, 0.7f, 0.7f, 1.0f), t));
         }
 
         // Use a deterministic hash to generate a color from a name avoiding too little saturation and a bright (but not too bright!) value.
