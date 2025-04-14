@@ -49,6 +49,8 @@
 
   <ItemGroup>
     <PackageReference Include="AdvancedSharpAdbClient" Version="3.3.13" />
+    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <PackageReference Include="Google.Protobuf.Tools" Version="3.30.2" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
     <PackageReference Include="System.IO.Hashing" Version="9.0.3" />

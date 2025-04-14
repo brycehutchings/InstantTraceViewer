@@ -810,7 +810,8 @@ namespace InstantTraceViewerUI
                 }
                 else
                 {
-                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = traceTable.GetUnifiedLevel(i), Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = i });
+                    UnifiedLevel level = traceTable.Schema.UnifiedLevelColumn == null ? UnifiedLevel.Info : traceTable.GetUnifiedLevel(i);
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = level, Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = i });
                 }
             }
 

@@ -62,6 +62,12 @@ namespace InstantTraceViewerUI
                     var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
                     _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
                 }
+                // TODO: Does Perfetto have a standard file extension?
+                else if (string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase))
+                {
+                    var perfettoTableSource = new PerfettoTraceSource(args[0]);
+                    _logViewerWindows.Add(new LogViewerWindow(perfettoTableSource));
+                }
             }
         }
 
@@ -122,7 +128,7 @@ namespace InstantTraceViewerUI
                 ImGui.NewLine();
 
                 // "OK" results in an awkardly small button, so make it wider by increasing padding.
-                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,new Vector2(32, ImGui.GetStyle().FramePadding.Y));
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(32, ImGui.GetStyle().FramePadding.Y));
                 if (ImGui.Button("OK"))
                 {
                     ImGui.CloseCurrentPopup();
@@ -473,6 +479,32 @@ namespace InstantTraceViewerUI
                     {
                         _adbDevices = null;
                         _adbDevicesException = null;
+                    }
+
+                    ImGui.EndMenu();
+                }
+
+                ImGui.SetNextItemShortcut(ImGuiKey.P | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                if (ImGui.BeginMenu("Perfetto"))
+                {
+                    if (ImGui.MenuItem($"Open Perfetto capture..."))
+                    {
+                        // TODO: This blocks the render thread
+                        string file = FileDialog.OpenFile("Perfetto capture file (*.*)|*.*",
+                            Settings.PerfettoOpenLocation,
+                            (s) => Settings.PerfettoOpenLocation = s);
+                        if (!string.IsNullOrEmpty(file))
+                        {
+                            try
+                            {
+                                var tsvTableSource = new PerfettoTraceSource(file);
+                                _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                            }
+                            catch (Exception ex)
+                            {
+                                ShowMessageBox($"Failed to open perfetto capture file.\n\n{ex.Message}", "Error", isError: true);
+                            }
+                        }
                     }
 
                     ImGui.EndMenu();
