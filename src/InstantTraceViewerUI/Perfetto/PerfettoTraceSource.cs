@@ -1,16 +1,19 @@
-﻿using System;
+﻿/*
+ * TODO:
+ * * Figure out how to use TrackDescriptorManager with FTrace to get process and thread names.
+ *   We are currently processing FTrace events in timestamp-sorted order which differs from how TrackDescriptorManager works which needs to run incrementally in packet order.
+ */
+using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Linq;
 using System.Collections.Generic;
-using Perfetto.Protos;
 using InstantTraceViewer;
-using InstantTraceViewerUI.Perfetto;
-using Tabnalysis;
-using Windows.System.Threading;
+using Google.Protobuf;
+using Perfetto.Protos;
 
-namespace InstantTraceViewerUI
+namespace InstantTraceViewerUI.Perfetto
 {
     internal class PerfettoTraceSource : ITraceSource
     {
@@ -47,6 +50,7 @@ namespace InstantTraceViewerUI
         private readonly ConcurrentDictionary<int, string> _processNames = new ConcurrentDictionary<int, string>();
         private Dictionary<uint, Stack<string>> _sliceBeginNames = new Dictionary<uint, Stack<string>>();
 
+        private static readonly JsonFormatter JsonFormatter = new JsonFormatter(JsonFormatter.Settings.Default.WithIndentation());
 
         public PerfettoTraceSource(string perfettoPath)
         {
@@ -88,7 +92,7 @@ namespace InstantTraceViewerUI
             _tokenSource.Cancel();
         }
 
-        Dictionary<(uint pid, int tid), Stack<string>> _ftracePrintStacks = new();
+        ulong _prevTimestamp;
 
         private async void ReadThread()
         {
@@ -101,13 +105,14 @@ namespace InstantTraceViewerUI
                 var trackDescriptorManager = new TrackDescriptorManager();
                 var clockSync = new PerfettoClockConverter(trace);
 
-                // First pass: Preprocess packets for interned strings and track descriptors.
+                // First pass: Preprocess packets for track descriptors.
                 foreach (var packet in trace.Packet)
                 {
                     _tokenSource.Token.ThrowIfCancellationRequested();
                     trackDescriptorManager.ProcessPacket(packet);
                 }
 
+                Dictionary<uint, ulong> ftraceTimestamps = new();
                 var internedStringManager = new InternedStringManager();
                 foreach (var packet in trace.Packet)
                 {
@@ -121,7 +126,7 @@ namespace InstantTraceViewerUI
                         record.Source = Source.SystemInfo;
                         record.Name = "SystemInfo";
                         record.Priority = Priority.Info;
-                        record.NamedValues = [new NamedValue(null, "TODO" /*packet.SystemInfo.ToString()*/)]; // TODO: Do a \n for each item.
+                        record.NamedValues = [new NamedValue { Name = null, Value = JsonFormatter.Format(packet.SystemInfo) }];
                         record.Timestamp = clockSync.GetPacketRealtimeTimestamp(packet);
                         records.Add(record);
                     }
@@ -131,7 +136,7 @@ namespace InstantTraceViewerUI
                         record.Source = Source.TraceConfig;
                         record.Name = "TraceConfig";
                         record.Priority = Priority.Info;
-                        record.NamedValues = [new NamedValue(null, "TODO" /*packet.TraceConfig.ToString()*/ )];
+                        record.NamedValues = [new NamedValue { Name = null, Value = JsonFormatter.Format(packet.TraceConfig) }];
                         record.Timestamp = clockSync.GetPacketRealtimeTimestamp(packet);
                         records.Add(record);
                     }
@@ -145,91 +150,27 @@ namespace InstantTraceViewerUI
                     }
                     else if (packet.FtraceEvents != null)
                     {
-                        // Must be processed later...
+                        // Must be processed later to reorder things...
                     }
                     else if (packet.PerfSample != null)
                     {
                         // Stack sampling ignored. Too noisy and not intended for a log viewer.
                     }
-                }
 
-                // FTrace events may be out of order so they must be sorted first in order to process the Begin/End print messages correctly...
-                // See ParseSystraceTracePoint in Perfetto's trace_processor.
-                foreach (var e in trace.Packet
-                    .Where(p => p.FtraceEvents != null)
-                    .SelectMany(p => p.FtraceEvents.Event)
-                    .Where(e => e.EventCase == FtraceEvent.EventOneofCase.Print && e.Print.HasBuf && e.HasPid && e.HasTimestamp)
-                    .OrderBy(e => e.Timestamp))
-                {
-                    string buf = e.Print.Buf.TrimEnd('\n');
-                    if (buf.StartsWith("B|")) // Begin
+                    if (packet.SynchronizationMarker != null)
                     {
-                        int nameIndex = buf.IndexOf('|', 2);
-                        if (nameIndex != -1 && nameIndex < buf.Length - 1 && int.TryParse(buf[2..nameIndex], out int pid))
-                        {
-                            string name = buf[(nameIndex + 1)..];
-
-                            Stack<string> printStack;
-                            if (!_ftracePrintStacks.TryGetValue((e.Pid, pid), out printStack))
-                            {
-                                printStack = new Stack<string>();
-                                _ftracePrintStacks.Add((e.Pid, pid), printStack);
-                            }
-
-                            printStack.Push(name);
-
-                            PerfettoRecord record = new();
-                            record.Source = Source.FTrace;
-                            record.Name = name;
-                            record.Pid = pid;
-                            record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
-                            record.Category = Category.Begin;
-                            record.Priority = Priority.Info;
-                            record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
-                            records.Add(record);
-
-                        }
-                    }
-                    else if (buf.StartsWith("E|")) // End
-                    {
-                        if (int.TryParse(buf[2..], out int pid) && _ftracePrintStacks[(e.Pid, pid)].TryPop(out string name))
-                        {
-                            PerfettoRecord record = new();
-                            record.Source = Source.FTrace;
-                            record.Name = name;
-                            record.Pid = pid;
-                            record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
-                            record.Category = Category.End;
-                            record.Priority = Priority.Info;
-                            record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
-                            records.Add(record);
-                        }
-                    }
-                    else if (buf.StartsWith("I")) // Instant
-                    {
-                        int nameIndex = buf.IndexOf('|', 2);
-                        if (nameIndex != -1 && nameIndex < buf.Length - 1 && int.TryParse(buf[2..nameIndex], out int pid))
-                        {
-                            string name = buf[(nameIndex + 1)..];
-
-                            PerfettoRecord record = new();
-                            record.Source = Source.FTrace;
-                            record.Name = name;
-                            record.Pid = pid;
-                            record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
-                            record.Priority = Priority.Info;
-                            record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
-                            records.Add(record);
-                        }
+                        // TODO: Can this be used to incrementally load in data? Docs say:
+                        // > This is used to be able to efficiently partition long traces without having to fully parse them.
+                        // But I am seeing FTrace events that come out of sequence across synchronization markers.
                     }
                 }
 
-                // TODO: Is it possible to hit checkpoints when reading the Perfetto that we can be
-                // guaranteed nothing after it will be before it? Then we can stream data in rather
-                // than only providing the events at the very end.
+                ProcessFTrace(records, trace, clockSync);
+
+                // All events have been added and now they can be sorted.
                 records.Sort((left, right) =>
-                (left.Timestamp < right.Timestamp) ? -1 :
-                (left.Timestamp > right.Timestamp) ? 1 : 0);
+                    (left.Timestamp < right.Timestamp) ? -1 :
+                    (left.Timestamp > right.Timestamp) ? 1 : 0);
 
                 _traceRecordsLock.EnterWriteLock();
                 try
@@ -243,11 +184,100 @@ namespace InstantTraceViewerUI
                 {
                     _traceRecordsLock.ExitWriteLock();
                 }
-                // TODO: Sort events
             }
             catch (OperationCanceledException)
             {
                 // Trace source is being disposed.
+            }
+        }
+
+        private static void ProcessFTrace(List<PerfettoRecord> records, Trace trace, PerfettoClockConverter clockSync)
+        {
+            // See ParseSystraceTracePoint in Perfetto's trace_processor for the known structure of the 'Buf' field.
+            Dictionary<(uint pid, int tid), Stack<string>> ftracePrintStacks = new();
+
+            // In rare cases an FTrace end packet won't specify the pid so we have to look it up by last observed tid from a begin packet...
+            Dictionary<int /* tid */, int /* pid */> pidTracker = new();
+
+            // FTrace events may be out of order so they must be sorted first in order to process the Begin/End print messages correctly...
+            foreach (var e in trace.Packet
+                .Where(p => p.FtraceEvents != null)
+                .SelectMany(p => p.FtraceEvents.Event)
+                .Where(e => e.EventCase == FtraceEvent.EventOneofCase.Print && e.Print.HasBuf && e.HasPid && e.HasTimestamp)
+                .OrderBy(e => e.Timestamp))
+            {
+                string buf = e.Print.Buf.TrimEnd('\n');
+                if (buf.StartsWith("B|")) // Begin
+                {
+                    int nameIndex = buf.IndexOf('|', 2);
+                    if (nameIndex != -1 && nameIndex < buf.Length - 1 && int.TryParse(buf[2..nameIndex], out int pid))
+                    {
+                        string name = buf[(nameIndex + 1)..];
+
+                        Stack<string> printStack;
+                        if (!ftracePrintStacks.TryGetValue((e.Pid, pid), out printStack))
+                        {
+                            printStack = new Stack<string>();
+                            ftracePrintStacks.Add((e.Pid, pid), printStack);
+                        }
+
+                        printStack.Push(name);
+
+                        PerfettoRecord record = new();
+                        record.Source = Source.FTrace;
+                        record.Name = name;
+                        record.Pid = pid;
+                        record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
+                        record.Category = Category.Begin;
+                        record.Priority = Priority.Info;
+                        record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
+                        records.Add(record);
+
+                        pidTracker[record.Tid] = record.Pid;
+                    }
+                }
+                else if (buf.StartsWith("E|")) // End
+                {
+                    // if tgid == 0 on BEG: context_->process_tracker->GetOrCreateThread(pid)
+                    // if tgid != 0 on BEG: context_->process_tracker->UpdateThread(pid, point.tgid)
+                    // if tgid == 0 on END: auto opt_utid = context_->process_tracker->GetThreadOrNull(pid);
+                    int pid;
+                    if (int.TryParse(buf[2..], out pid) || pidTracker.TryGetValue((int)e.Pid, out pid))
+                    {
+                        // Must protect against getting an End without a matching Begin.
+                        if (ftracePrintStacks.TryGetValue((e.Pid, pid), out Stack<string> printStack) && printStack.TryPop(out string name))
+                        {
+                            PerfettoRecord record = new();
+                            record.Source = Source.FTrace;
+                            record.Name = name;
+                            record.Pid = pid;
+                            record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
+                            record.Category = Category.End;
+                            record.Priority = Priority.Info;
+                            record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
+                            records.Add(record);
+                        }
+                    }
+                }
+                else if (buf.StartsWith("I")) // Instant
+                {
+                    int nameIndex = buf.IndexOf('|', 2);
+                    if (nameIndex != -1 && nameIndex < buf.Length - 1 && int.TryParse(buf[2..nameIndex], out int pid))
+                    {
+                        string name = buf[(nameIndex + 1)..];
+
+                        PerfettoRecord record = new();
+                        record.Source = Source.FTrace;
+                        record.Name = name;
+                        record.Pid = pid;
+                        record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
+                        record.Priority = Priority.Info;
+                        record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
+                        records.Add(record);
+
+                        pidTracker[record.Tid] = record.Pid;
+                    }
+                }
             }
         }
 
@@ -333,9 +363,8 @@ namespace InstantTraceViewerUI
                 _ => Category.None,
             };
             record.Priority = record.Category == Category.None ? Priority.Info : Priority.Verbose;
-            // TODO
-            //    ProcessName = processDescriptor?.ProcessName ?? string.Empty,
-            //    ThreadName = threadDescriptor?.ThreadName ?? string.Empty,
+            record.ProcessName = processDescriptor?.ProcessName;
+            record.ThreadName = threadDescriptor?.ThreadName;
             record.Pid = processDescriptor?.Pid ?? threadDescriptor?.Pid ?? 0;
             record.Tid = threadDescriptor?.Tid ?? 0;
             record.Timestamp = clockConverter.GetPacketRealtimeTimestamp(packet);
@@ -451,7 +480,9 @@ namespace InstantTraceViewerUI
                     AndroidLogPriority.PrioFatal => Priority.Fatal,
                 };
                 record.Pid = processDescriptor?.Pid ?? threadDescriptor?.Pid ?? 0;
+                record.ProcessName = processDescriptor?.ProcessName;
                 record.Tid = threadDescriptor?.Tid ?? 0;
+                record.ThreadName = threadDescriptor?.ThreadName;
 
                 // evt.Timestamp is more accurate than packet.Timestamp. It's already in the Realtime clock domain.
                 record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(evt.Timestamp);

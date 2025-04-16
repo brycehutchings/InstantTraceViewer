@@ -1,10 +1,10 @@
-﻿namespace Tabnalysis
-{
-    using Perfetto.Protos;
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Perfetto.Protos;
 
+namespace InstantTraceViewerUI.Perfetto
+{
     internal class PerfettoClockConverter
     {
         public PerfettoClockConverter(Trace trace)

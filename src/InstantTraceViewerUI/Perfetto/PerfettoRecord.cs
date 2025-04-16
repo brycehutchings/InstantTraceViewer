@@ -40,9 +40,9 @@ namespace InstantTraceViewerUI.Perfetto
     internal struct PerfettoRecord
     {
         public int Pid;
-        //public string ProcessName;
+        public string ProcessName;
         public int Tid;
-        //public string ThreadName;
+        public string ThreadName;
         public string Name;
         public Source Source;
         public Category Category;

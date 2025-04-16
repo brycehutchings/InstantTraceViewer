@@ -63,6 +63,9 @@
               <uap:FileType>.wprp</uap:FileType>
               <uap:FileType>.tsv</uap:FileType>
               <uap:FileType>.csv</uap:FileType>
+              <uap:FileType>.perfetto-trace</uap:FileType>
+              <uap:FileType>.perfetto_trace</uap:FileType>
+              <!-- <uap:FileType>.perfetto_trace.gz</uap:FileType> Disallowed by xsd :-( -->
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>

@@ -62,10 +62,12 @@ namespace InstantTraceViewerUI
                     var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
                     _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
                 }
-                // TODO: Does Perfetto have a standard file extension?
-                else if (string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase))
+                else if (
+                    string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetExtension(args[0]), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetExtension(args[0]), ".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
                 {
-                    var perfettoTableSource = new PerfettoTraceSource(args[0]);
+                    var perfettoTableSource = new Perfetto.PerfettoTraceSource(args[0]);
                     _logViewerWindows.Add(new LogViewerWindow(perfettoTableSource));
                 }
             }
@@ -490,14 +492,14 @@ namespace InstantTraceViewerUI
                     if (ImGui.MenuItem($"Open Perfetto capture..."))
                     {
                         // TODO: This blocks the render thread
-                        string file = FileDialog.OpenFile("Perfetto capture file (*.*)|*.*",
+                        string file = FileDialog.OpenFile("Perfetto capture file (*.perfetto-trace; *.perfetto_trace; *.perfetto_trace.gz)|*.perfetto-trace;*.perfetto_trace;*.perfetto_trace.gz",
                             Settings.PerfettoOpenLocation,
                             (s) => Settings.PerfettoOpenLocation = s);
                         if (!string.IsNullOrEmpty(file))
                         {
                             try
                             {
-                                var tsvTableSource = new PerfettoTraceSource(file);
+                                var tsvTableSource = new Perfetto.PerfettoTraceSource(file);
                                 _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
                             }
                             catch (Exception ex)

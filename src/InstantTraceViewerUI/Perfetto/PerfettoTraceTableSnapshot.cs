@@ -1,7 +1,5 @@
 ﻿using System;
-using AdvancedSharpAdbClient.Logs;
 using InstantTraceViewer;
-using InstantTraceViewerUI.Perfetto;
 
 namespace InstantTraceViewerUI.Perfetto
 {
@@ -22,11 +20,15 @@ namespace InstantTraceViewerUI.Perfetto
 
             if (column == PerfettoTraceSource.ColumnProcess)
             {
-                return traceRecord.Pid.ToString();
+                return
+                    traceRecord.Pid == -1 ? string.Empty :
+                    !string.IsNullOrEmpty(traceRecord.ProcessName) ? $"{traceRecord.Pid} ({traceRecord.ProcessName})" : traceRecord.Pid.ToString();
             }
             else if (column == PerfettoTraceSource.ColumnThread)
             {
-                return traceRecord.Tid.ToString();
+                return
+                    traceRecord.Tid == -1 ? string.Empty :
+                    !string.IsNullOrEmpty(traceRecord.ThreadName) ? $"{traceRecord.Tid} ({traceRecord.ThreadName})" : traceRecord.Tid.ToString();
             }
             else if (column == PerfettoTraceSource.ColumnCategory)
             {
@@ -57,9 +59,9 @@ namespace InstantTraceViewerUI.Perfetto
             throw new NotImplementedException();
         }
         public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
-            => /*column == PerfettoTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
+            => column == PerfettoTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
                column == PerfettoTraceSource.ColumnThread ? null :
-               throw new NotSupportedException();*/ null;
+               throw new NotSupportedException();
 
 
         public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)

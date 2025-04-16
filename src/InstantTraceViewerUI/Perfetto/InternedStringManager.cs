@@ -1,43 +1,23 @@
-﻿// Uncomment to diagnose parsing/lookup problems.
-// #define DEBUG_PARSING
+﻿using System;
+using System.Collections.Generic;
+using Perfetto.Protos;
 
-namespace Tabnalysis
+namespace InstantTraceViewerUI.Perfetto
 {
-    using Perfetto.Protos;
-    using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-
     internal class InternedStringManager
     {
-        private struct InternKey : IEquatable<InternKey>
-        {
-            public InternKey(uint trustedPacketSequenceId, ulong iid)
-            {
-                this.TrustedPacketSequenceId = trustedPacketSequenceId;
-                this.Iid = iid;
-            }
-
-            public uint TrustedPacketSequenceId { get; }
-            public ulong Iid { get; }
-
-            public override bool Equals(object obj) => this.Equals((InternKey)obj);
-            public bool Equals(InternKey other) => this.TrustedPacketSequenceId == other.TrustedPacketSequenceId && this.Iid == other.Iid;
-            public override int GetHashCode() => this.TrustedPacketSequenceId.GetHashCode() ^ this.Iid.GetHashCode();
-        }
-
         class SequenceData
         {
             // Keys are Iid.
-            public Dictionary<ulong, string> InternedEventNames = new Dictionary<ulong, string>();
-            public Dictionary<ulong, string> InternedEventCategories = new Dictionary<ulong, string>();
-            public Dictionary<ulong, string> InternedDebugAnnotationNames = new Dictionary<ulong, string>();
+            public Dictionary<ulong, string> InternedEventNames = new();
+            public Dictionary<ulong, string> InternedEventCategories = new();
+            public Dictionary<ulong, string> InternedDebugAnnotationNames = new();
 
             public void Clear()
             {
-                this.InternedEventNames.Clear();
-                this.InternedEventCategories.Clear();
-                this.InternedDebugAnnotationNames.Clear();
+                InternedEventNames.Clear();
+                InternedEventCategories.Clear();
+                InternedDebugAnnotationNames.Clear();
             }
         }
 
@@ -64,13 +44,14 @@ namespace Tabnalysis
                 sequenceData.Clear();
             }
 
+            // TODO: packet.InternedData.DebugAnnotationStringValues
+            // packet.InternedData.EventCategories[0].
+            // packet.InternedData.LogMessageBody[0].
+
             foreach (var eventName in packet.InternedData.EventNames)
             {
                 if (eventName.HasIid && eventName.HasName)
                 {
-#if DEBUG_PARSING
-                    Debug.Print($"  InternedData EventName Iid={eventName.Iid} Value={eventName.Name}");
-#endif
                     sequenceData.InternedEventNames[eventName.Iid] = eventName.Name;
                 }
             }
@@ -92,10 +73,6 @@ namespace Tabnalysis
 
         public string GetInternedEventName(TracePacket packet, ulong eventNameIid)
         {
-#if DEBUG_PARSING
-            Debug.Print($"  NameIid={packet.TrackEvent.NameIid}");
-#endif
-
             string name;
             SequenceData sequenceData = null;
             if (!allSequenceData.TryGetValue(packet.TrustedPacketSequenceId, out sequenceData) ||

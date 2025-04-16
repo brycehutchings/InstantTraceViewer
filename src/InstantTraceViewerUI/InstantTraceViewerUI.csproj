@@ -83,4 +83,9 @@
     <ProjectReference Include="..\Common\Common.csproj" />
     <ProjectReference Include="..\InstantTraceViewerNative\InstantTraceViewerNative.vcxproj" />
   </ItemGroup>
+
+  <Target Name="GenerateProto" BeforeTargets="PrepareForBuild" Inputs="Perfetto\Protobuf\perfetto_trace.proto" Outputs="Perfetto\Protobuf\PerfettoTrace.cs">
+    <Message Importance="High" Text="Updating C# from Perfetto protobuf file..." />
+    <Exec Command="$(protoc_windows64) --csharp_out=Perfetto\Protobuf Perfetto\Protobuf\perfetto_trace.proto" />
+  </Target>
 </Project>
