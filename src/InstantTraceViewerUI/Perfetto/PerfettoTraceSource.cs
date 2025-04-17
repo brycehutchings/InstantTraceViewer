@@ -97,19 +97,21 @@ namespace InstantTraceViewerUI.Perfetto
 
                 Trace trace = Trace.Parser.ParseFrom(_fileStream);
 
-                var trackDescriptorManager = new ProcessThreadTracker();
+                var processThreadTracker = new ProcessThreadTracker();
                 var clockSync = new PerfettoClockConverter(trace);
 
-                // First pass: Preprocess packets for track descriptors.
+                // First pass: Preprocess packets for process and thread names.
                 foreach (var packet in trace.Packet)
                 {
                     _tokenSource.Token.ThrowIfCancellationRequested();
-                    trackDescriptorManager.ProcessPacket(packet);
+                    processThreadTracker.ProcessPacket(packet);
                 }
 
                 var internedStringManager = new InternedStringManager();
                 foreach (var packet in trace.Packet)
                 {
+                    _tokenSource.Token.ThrowIfCancellationRequested();
+
                     // Interned strings may be reset or overridden and so the interned string manager can't be precomputed.
                     // It must be used as it is consuming packets.
                     internedStringManager.ProcessPacket(packet);
@@ -136,21 +138,15 @@ namespace InstantTraceViewerUI.Perfetto
                     }
                     else if (packet.ProcessTree != null)
                     {
-                        PerfettoRecord record = new();
-                        record.Source = Source.Metadata;
-                        record.Name = "ProcessTree";
-                        record.Priority = Priority.Info;
-                        record.NamedValues = [new NamedValue { Name = null, Value = JsonFormatter.Format(packet.ProcessTree) }];
-                        record.Timestamp = clockSync.GetPacketRealtimeTimestamp(packet);
-                        records.Add(record);
+                        // Handled by the ProcessThreadTracker
                     }
                     else if (packet.TrackEvent != null)
                     {
-                        ProcessTrackEvent(records, packet, internedStringManager, trackDescriptorManager, clockSync);
+                        ProcessTrackEvent(records, packet, internedStringManager, processThreadTracker, clockSync);
                     }
                     else if (packet.AndroidLog != null)
                     {
-                        ParseAndroidLogEvent(records, packet, trackDescriptorManager, clockSync);
+                        ParseAndroidLogEvent(records, packet, processThreadTracker, clockSync);
                     }
                     else if (packet.FtraceEvents != null)
                     {
@@ -169,7 +165,7 @@ namespace InstantTraceViewerUI.Perfetto
                     }
                 }
 
-                ProcessFTrace(records, trace, clockSync, trackDescriptorManager);
+                ProcessFTrace(records, trace, clockSync, processThreadTracker);
 
                 // All events have been added and now they can be sorted.
                 records.Sort((left, right) =>
@@ -195,13 +191,28 @@ namespace InstantTraceViewerUI.Perfetto
             }
         }
 
-        private static void ProcessFTrace(List<PerfettoRecord> records, Trace trace, PerfettoClockConverter clockSync, ProcessThreadTracker trackDescriptorManager)
+        private void ProcessFTrace(List<PerfettoRecord> records, Trace trace, PerfettoClockConverter clockSync, ProcessThreadTracker processThreadTracker)
         {
             // See ParseSystraceTracePoint in Perfetto's trace_processor for the known structure of the 'Buf' field.
             Dictionary<(uint pid, int tid), Stack<string>> ftracePrintStacks = new();
 
             // In rare cases an FTrace end packet won't specify the pid so we have to look it up by last observed tid from a begin packet...
-            Dictionary<int /* tid */, int /* pid */> pidTracker = new();
+            Dictionary<int /* tid */, int /* pid */> beginPidTracker = new();
+
+            void AddRecord(FtraceEvent evt, string name, int pid, Category category)
+            {
+                PerfettoRecord record = new();
+                record.Source = Source.FTrace;
+                record.Name = name;
+                record.Pid = pid;
+                record.Tid = (int)evt.Pid /* kernel pid appears to be tid... */;
+                record.ProcessName = processThreadTracker.GetProcessDataByPid(pid)?.Name;
+                record.ThreadName = processThreadTracker.GetThreadDataByTid((int)evt.Pid)?.Name;
+                record.Category = category;
+                record.Priority = Priority.Info;
+                record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, evt.Timestamp));
+                records.Add(record);
+            }
 
             // FTrace events may be out of order so they must be sorted first in order to process the Begin/End print messages correctly...
             foreach (var e in trace.Packet
@@ -210,6 +221,8 @@ namespace InstantTraceViewerUI.Perfetto
                 .Where(e => e.EventCase == FtraceEvent.EventOneofCase.Print && e.Print.HasBuf && e.HasPid && e.HasTimestamp)
                 .OrderBy(e => e.Timestamp))
             {
+                _tokenSource.Token.ThrowIfCancellationRequested();
+
                 string buf = e.Print.Buf.TrimEnd('\n');
                 if (buf.StartsWith("B|")) // Begin
                 {
@@ -225,42 +238,21 @@ namespace InstantTraceViewerUI.Perfetto
                             ftracePrintStacks.Add((e.Pid, pid), printStack);
                         }
 
+                        AddRecord(e, name, pid, Category.Begin);
+
                         printStack.Push(name);
-
-                        PerfettoRecord record = new();
-                        record.Source = Source.FTrace;
-                        record.Name = name;
-                        record.Pid = pid;
-                        record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
-                        record.ProcessName = trackDescriptorManager.GetProcessDataByPid(pid)?.Name;
-                        record.ThreadName = trackDescriptorManager.GetThreadDataByTid((int)e.Pid)?.Name;
-                        record.Category = Category.Begin;
-                        record.Priority = Priority.Info;
-                        record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
-                        records.Add(record);
-
-                        pidTracker[record.Tid] = record.Pid;
+                        beginPidTracker[(int)e.Pid /* kernel pid is tid */] = pid;
                     }
                 }
                 else if (buf.StartsWith("E|")) // End
                 {
                     int pid;
-                    if (int.TryParse(buf[2..], out pid) || pidTracker.TryGetValue((int)e.Pid, out pid))
+                    if (int.TryParse(buf[2..], out pid) || beginPidTracker.TryGetValue((int)e.Pid, out pid))
                     {
                         // Must protect against getting an End without a matching Begin.
                         if (ftracePrintStacks.TryGetValue((e.Pid, pid), out Stack<string> printStack) && printStack.TryPop(out string name))
                         {
-                            PerfettoRecord record = new();
-                            record.Source = Source.FTrace;
-                            record.Name = name;
-                            record.Pid = pid;
-                            record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
-                            record.ProcessName = trackDescriptorManager.GetProcessDataByPid(pid)?.Name;
-                            record.ThreadName = trackDescriptorManager.GetThreadDataByTid((int)e.Pid)?.Name;
-                            record.Category = Category.End;
-                            record.Priority = Priority.Info;
-                            record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
-                            records.Add(record);
+                            AddRecord(e, name, pid, Category.End);
                         }
                     }
                 }
@@ -270,25 +262,13 @@ namespace InstantTraceViewerUI.Perfetto
                     if (nameIndex != -1 && nameIndex < buf.Length - 1 && int.TryParse(buf[2..nameIndex], out int pid))
                     {
                         string name = buf[(nameIndex + 1)..];
-
-                        PerfettoRecord record = new();
-                        record.Source = Source.FTrace;
-                        record.Name = name;
-                        record.Pid = pid;
-                        record.Tid = (int)e.Pid /* kernel pid appears to be tid... */;
-                        record.ProcessName = trackDescriptorManager.GetProcessDataByPid(pid)?.Name;
-                        record.ThreadName = trackDescriptorManager.GetThreadDataByTid((int)e.Pid)?.Name;
-                        record.Priority = Priority.Info;
-                        record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(clockSync.ConvertTimestamp(BuiltinClock.Boottime, BuiltinClock.Realtime, e.Timestamp));
-                        records.Add(record);
-
-                        pidTracker[record.Tid] = record.Pid;
+                        AddRecord(e, name, pid, Category.None);
                     }
                 }
             }
         }
 
-        private void ProcessTrackEvent(List<PerfettoRecord> records, TracePacket packet, InternedStringManager internedStringManager, ProcessThreadTracker trackDescriptorManager, PerfettoClockConverter clockConverter)
+        private void ProcessTrackEvent(List<PerfettoRecord> records, TracePacket packet, InternedStringManager internedStringManager, ProcessThreadTracker processThreadTracker, PerfettoClockConverter clockConverter)
         {
             // Use the provided non-interned name if available.
             string name = string.Empty;
@@ -357,8 +337,8 @@ namespace InstantTraceViewerUI.Perfetto
                 namedValues.Add(new NamedValue(debugAnnotationName, debugAnnotationValue));
             }
 
-            ProcessThreadTracker.ThreadData threadData = trackDescriptorManager.GetThreadData(packet);
-            ProcessThreadTracker.ProcessData processData = trackDescriptorManager.GetProcessData(packet, threadData);
+            ProcessThreadTracker.ThreadData threadData = processThreadTracker.GetThreadData(packet);
+            ProcessThreadTracker.ProcessData processData = processThreadTracker.GetProcessData(packet, threadData);
 
             PerfettoRecord record = new();
             record.Name = name;
@@ -454,7 +434,7 @@ namespace InstantTraceViewerUI.Perfetto
         }
 
 
-        private void ParseAndroidLogEvent(List<PerfettoRecord> records, TracePacket packet, ProcessThreadTracker trackDescriptorManager, PerfettoClockConverter clockSync)
+        private void ParseAndroidLogEvent(List<PerfettoRecord> records, TracePacket packet, ProcessThreadTracker processThreadTracker, PerfettoClockConverter clockSync)
         {
             foreach (var evt in packet.AndroidLog.Events)
             {
@@ -485,8 +465,8 @@ namespace InstantTraceViewerUI.Perfetto
                 };
                 record.Pid = pid;
                 record.Tid = tid;
-                record.ProcessName = trackDescriptorManager.GetProcessDataByPid(pid)?.Name;
-                record.ThreadName = trackDescriptorManager?.GetThreadDataByTid(tid)?.Name;
+                record.ProcessName = processThreadTracker.GetProcessDataByPid(pid)?.Name;
+                record.ThreadName = processThreadTracker?.GetThreadDataByTid(tid)?.Name;
 
                 // evt.Timestamp is more accurate than packet.Timestamp. It's already in the Realtime clock domain.
                 record.Timestamp = PerfettoClockConverter.RealTimeClockToDateTime(evt.Timestamp);

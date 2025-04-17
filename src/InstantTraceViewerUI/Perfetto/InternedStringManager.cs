@@ -44,10 +44,6 @@ namespace InstantTraceViewerUI.Perfetto
                 sequenceData.Clear();
             }
 
-            // TODO: packet.InternedData.DebugAnnotationStringValues
-            // packet.InternedData.EventCategories[0].
-            // packet.InternedData.LogMessageBody[0].
-
             foreach (var eventName in packet.InternedData.EventNames)
             {
                 if (eventName.HasIid && eventName.HasName)

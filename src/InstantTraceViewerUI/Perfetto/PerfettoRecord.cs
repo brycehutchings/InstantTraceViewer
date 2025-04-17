@@ -18,7 +18,6 @@ namespace InstantTraceViewerUI.Perfetto
         LogcatKernel,
     };
 
-    // Union of TrackEvent Type, <TODO>
     internal enum Category { 
         None,Begin,
         End,
