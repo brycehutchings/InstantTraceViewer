@@ -4,12 +4,10 @@ using System;
 namespace InstantTraceViewerUI.Perfetto
 {
     internal enum Source {
-        SystemInfo,
-        TraceConfig,
+        Metadata,
+
         TrackEvent,
         FTrace,
-
-        // Logcat
         LogcatDefault,
         LogcatRadio,
         LogcatEvents,
@@ -22,8 +20,7 @@ namespace InstantTraceViewerUI.Perfetto
 
     // Union of TrackEvent Type, <TODO>
     internal enum Category { 
-        None,
-        Begin,
+        None,Begin,
         End,
     }
 
@@ -47,11 +44,7 @@ namespace InstantTraceViewerUI.Perfetto
         public Source Source;
         public Category Category;
         public Priority Priority;
-        //public string Category;
-        //public ulong BootTimestamp;
-        //public ulong? RealtimeTimestamp;
         public DateTime Timestamp;
-        //public string Data;
         public NamedValue[] NamedValues;
     }
 }

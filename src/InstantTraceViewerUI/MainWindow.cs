@@ -65,7 +65,7 @@ namespace InstantTraceViewerUI
                 else if (
                     string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(Path.GetExtension(args[0]), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(Path.GetExtension(args[0]), ".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
+                    args[0].EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
                 {
                     var perfettoTableSource = new Perfetto.PerfettoTraceSource(args[0]);
                     _logViewerWindows.Add(new LogViewerWindow(perfettoTableSource));

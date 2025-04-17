@@ -21,13 +21,13 @@ namespace InstantTraceViewerUI.Perfetto
             if (column == PerfettoTraceSource.ColumnProcess)
             {
                 return
-                    traceRecord.Pid == -1 ? string.Empty :
+                    traceRecord.Pid <= 0 ? string.Empty :
                     !string.IsNullOrEmpty(traceRecord.ProcessName) ? $"{traceRecord.Pid} ({traceRecord.ProcessName})" : traceRecord.Pid.ToString();
             }
             else if (column == PerfettoTraceSource.ColumnThread)
             {
                 return
-                    traceRecord.Tid == -1 ? string.Empty :
+                    traceRecord.Tid <= 0 ? string.Empty :
                     !string.IsNullOrEmpty(traceRecord.ThreadName) ? $"{traceRecord.Tid} ({traceRecord.ThreadName})" : traceRecord.Tid.ToString();
             }
             else if (column == PerfettoTraceSource.ColumnCategory)
