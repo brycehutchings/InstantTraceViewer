@@ -96,6 +96,18 @@ namespace InstantTraceViewerUI
             }
         }
 
+        public static string? PerfettoOpenLocation
+        {
+            get
+            {
+                return Key.GetValue("PerfettoOpenLocation", null) as string;
+            }
+            set
+            {
+                Key.SetValue("PerfettoOpenLocation", value!);
+            }
+        }
+
         public static string? EtlOpenLocation
         {
             get

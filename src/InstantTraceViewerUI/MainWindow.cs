@@ -62,6 +62,14 @@ namespace InstantTraceViewerUI
                     var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
                     _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
                 }
+                else if (
+                    string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetExtension(args[0]), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
+                    args[0].EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
+                {
+                    var perfettoTableSource = new Perfetto.PerfettoTraceSource(args[0]);
+                    _logViewerWindows.Add(new LogViewerWindow(perfettoTableSource));
+                }
             }
         }
 
@@ -122,7 +130,7 @@ namespace InstantTraceViewerUI
                 ImGui.NewLine();
 
                 // "OK" results in an awkardly small button, so make it wider by increasing padding.
-                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,new Vector2(32, ImGui.GetStyle().FramePadding.Y));
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(32, ImGui.GetStyle().FramePadding.Y));
                 if (ImGui.Button("OK"))
                 {
                     ImGui.CloseCurrentPopup();
@@ -473,6 +481,32 @@ namespace InstantTraceViewerUI
                     {
                         _adbDevices = null;
                         _adbDevicesException = null;
+                    }
+
+                    ImGui.EndMenu();
+                }
+
+                ImGui.SetNextItemShortcut(ImGuiKey.P | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                if (ImGui.BeginMenu("Perfetto"))
+                {
+                    if (ImGui.MenuItem($"Open Perfetto capture..."))
+                    {
+                        // TODO: This blocks the render thread
+                        string file = FileDialog.OpenFile("Perfetto capture file (*.perfetto-trace; *.perfetto_trace; *.perfetto_trace.gz)|*.perfetto-trace;*.perfetto_trace;*.perfetto_trace.gz",
+                            Settings.PerfettoOpenLocation,
+                            (s) => Settings.PerfettoOpenLocation = s);
+                        if (!string.IsNullOrEmpty(file))
+                        {
+                            try
+                            {
+                                var tsvTableSource = new Perfetto.PerfettoTraceSource(file);
+                                _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                            }
+                            catch (Exception ex)
+                            {
+                                ShowMessageBox($"Failed to open perfetto capture file.\n\n{ex.Message}", "Error", isError: true);
+                            }
+                        }
                     }
 
                     ImGui.EndMenu();
