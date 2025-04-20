@@ -587,7 +587,11 @@ namespace InstantTraceViewerUI
                     Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackTopLeft;
                     Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackTopLeft;
 
-                    bool isHovered = mousePos.Y >= min.Y && mousePos.Y < max.Y && mousePos.X >= min.X && mousePos.X < max.X;
+                    // The earlier IsItemVisible check will ensure some part of the track is visible, but the part the mouse is hovering over might be clipped so
+                    // we need to check if the mouse point is visible in addition to if it is over the bar.
+                    bool isHovered = (mousePos.Y >= min.Y && mousePos.Y < max.Y && mousePos.X >= min.X && mousePos.X < max.X) &&
+                        ImGui.IsRectVisible(mousePos, mousePos);
+
                     uint barColor = isHovered ? DarkenColor(bar.Color) : bar.Color;
                     drawList.AddRectFilled(min, max, barColor);
 
@@ -639,7 +643,10 @@ namespace InstantTraceViewerUI
 
                     mostSevereTickLevel = (UnifiedLevel)Math.Max((int)mostSevereTickLevel, (int)instantEvent.Level);
 
-                    bool isHovered = mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X;
+                    // The earlier IsItemVisible check will ensure some part of the track is visible, but the part the mouse is hovering over might be clipped so
+                    // we need to check if the mouse point is visible in addition to if it is over the instant event.
+                    bool isHovered = (mousePos.Y >= tickTop.Y && mousePos.Y < tickBottomRight.Y && mousePos.X >= tickBottomLeft.X && mousePos.X < tickBottomRight.X) &&
+                        ImGui.IsRectVisible(mousePos, mousePos);
 
                     if (isHovered)
                     {
