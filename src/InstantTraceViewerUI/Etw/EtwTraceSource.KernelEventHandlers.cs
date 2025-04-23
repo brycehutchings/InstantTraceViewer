@@ -210,6 +210,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnImageLoadUnload(ImageLoadTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             var newRecord = CreateBaseTraceRecord(obj);
 
             // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
@@ -226,22 +231,42 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnStackWalkStack(StackWalkStackTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             // Better for analysis or graphical visualization. Too noisy for logs.
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             // Better for analysis or graphical visualization. Too noisy for logs.
         }
 
         private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             // Better for analysis or graphical visualization. Too noisy for logs.
         }
 
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-create
         private void FileIO_Create(FileIOCreateTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
@@ -258,6 +283,11 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-opend
         private void Kernel_FileIOOperationEnd(FileIOOpEndTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
 #if false
             // TODO: This is too noisy to have as its own event. It gives the result of a prior operation.
             // I think we should search backwards and augment the first event with the same IrpPtr with this NtStatus.
@@ -272,6 +302,11 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-simpleop
         private void FileIO_SimpleOp(FileIOSimpleOpTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
@@ -283,6 +318,11 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-name
         private void FileIO_Name(FileIONameTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
@@ -294,6 +334,11 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-readwrite
         private void FileIO_ReadWrite(FileIOReadWriteTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
@@ -315,6 +360,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void FileIO_MapFile(MapFileTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
@@ -326,6 +376,11 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-info
         private void FileIO_Info(FileIOInfoTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if (!string.IsNullOrEmpty(obj.FileName))
             {
                 var newRecord = CreateBaseTraceRecord(obj);
@@ -351,6 +406,11 @@ namespace InstantTraceViewerUI.Etw
         // https://learn.microsoft.com/en-us/windows/win32/etw/fileio-direnum
         private void FileIO_DirEnum(FileIODirEnumTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             var newRecord = CreateBaseTraceRecord(obj);
             newRecord.NamedValues = [
                 new NamedValue("Directory", obj.DirectoryName),
@@ -361,6 +421,11 @@ namespace InstantTraceViewerUI.Etw
         private void OnThreadSetName(ThreadSetNameTraceData data)
         {
             _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
+
+            if (IsPaused)
+            {
+                return; // We still want to update the names but not add events.
+            }
         }
 
         private void OnThreadEvent(ThreadTraceData data)
@@ -378,6 +443,11 @@ namespace InstantTraceViewerUI.Etw
                 }
             }
 
+            if (IsPaused)
+            {
+                return; // We still want to update the names but not add events.
+            }
+
             // IGNORED: Very noisy--Do we think anyone will want to see the thread events?
         }
 
@@ -386,6 +456,11 @@ namespace InstantTraceViewerUI.Etw
             if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
                 _processNames.AddOrUpdate(data.ProcessID, data.ProcessName, (key, oldValue) => data.ProcessName);
+            }
+
+            if (IsPaused)
+            {
+                return; // We still want to update the names but not add events.
             }
 
             if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||

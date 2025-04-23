@@ -14,6 +14,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnDynamicEvent(TraceEvent data)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             if ((int)data.Opcode == 11 /* Terminate */ && data.ProviderGuid == EtwTraceSource.SystemProvider && data.TaskName == "Process")
             {
                 // Ignore Process/Terminate events. They add no extra information over Process Start/Stop events, and because they are associated with

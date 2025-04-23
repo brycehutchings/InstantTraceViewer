@@ -276,6 +276,11 @@ namespace InstantTraceViewerUI
                             try
                             {
                                 var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
+                                if (etlSession.LostEvents > 0)
+                                {
+                                    ShowMessageBox($"{Path.GetFileName(file)} has {etlSession.LostEvents:N0} lost events.", "Warning", isError: false);
+                                }
+
                                 _logViewerWindows.Add(new LogViewerWindow(etlSession));
                             }
                             catch (Exception ex)

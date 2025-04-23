@@ -68,6 +68,15 @@ namespace InstantTraceViewer
             throw new NotImplementedException();
         }
 
+        public bool CanPause => false;
+        public bool IsPaused => false;
+        public void TogglePause()
+        {
+            throw new NotImplementedException();
+        }
+
+        public int LostEvents => 0;
+
         public ITraceTableSnapshot CreateSnapshot()
         {
             _traceRecordsLock.EnterReadLock();

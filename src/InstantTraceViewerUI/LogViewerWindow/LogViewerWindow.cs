@@ -636,6 +636,15 @@ namespace InstantTraceViewerUI
                 }
             }
 
+            if (_traceSource.TraceSource.CanPause)
+            {
+                ImGui.SameLine();
+                if (ImGui.Button(_traceSource.TraceSource.IsPaused ? "\uF04B Resume" : "\uF04C Pause"))
+                {
+                    _traceSource.TraceSource.TogglePause();
+                }
+            }
+
             ImGui.SameLine();
             string filterCountSuffix =
                 !_viewerRules.ApplyFiltering ? "(Off)" :
