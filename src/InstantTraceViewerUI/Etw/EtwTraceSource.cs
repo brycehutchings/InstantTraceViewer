@@ -96,6 +96,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void AddEvent(EtwRecord record)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             _pendingTraceRecordsLock.EnterWriteLock();
             try
             {
@@ -197,6 +202,8 @@ namespace InstantTraceViewerUI.Etw
 
         public string DisplayName { get; private set; }
 
+        public int LostEvents => _etwSource?.EventsLost ?? 0;
+
         public bool CanClear => _etwSource.IsRealTime;
 
         public void Clear()
@@ -213,6 +220,13 @@ namespace InstantTraceViewerUI.Etw
             }
 
             GC.Collect();
+        }
+
+        public bool CanPause => true;
+        public bool IsPaused { get; private set; }
+        public void TogglePause()
+        {
+            IsPaused = !IsPaused;
         }
 
         public ITraceTableSnapshot CreateSnapshot()

@@ -146,6 +146,8 @@ namespace InstantTraceViewerUI
                     0xF00D, // "xmark"
                     0xF010, // "magnifying-glass-minus"
                     0xF044, // "pen-to-square"
+                    0xF04B, // "play"
+                    0xF04C, // "pause"
                     0xF059, // "circle-question"
                     0xF05B, // "crosshairs"
                     0xF060, // "arrow-left"

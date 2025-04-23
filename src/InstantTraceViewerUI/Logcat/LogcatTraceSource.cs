@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI.Logcat
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnBufferId = new TraceSourceSchemaColumn { Name = "BufferId", DefaultColumnSize = 3.75f };
-        public static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", DefaultColumnSize = 8.75f };
+        public static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", Colorize = true, DefaultColumnSize = 8.75f };
         public static readonly TraceSourceSchemaColumn ColumnPriority = new TraceSourceSchemaColumn { Name = "Priority", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnTime = new TraceSourceSchemaColumn { Name = "Time", DefaultColumnSize = 9.00f };
         public static readonly TraceSourceSchemaColumn ColumnMessage = new TraceSourceSchemaColumn { Name = "Message", DefaultColumnSize = null };
@@ -88,6 +88,15 @@ namespace InstantTraceViewerUI.Logcat
             }
         }
 
+        public bool CanPause => true;
+        public bool IsPaused { get; private set; }
+        public void TogglePause()
+        {
+            IsPaused = !IsPaused;
+        }
+
+        public int LostEvents => 0;
+
         public ITraceTableSnapshot CreateSnapshot()
         {
             _traceRecordsLock.EnterReadLock();
@@ -119,6 +128,11 @@ namespace InstantTraceViewerUI.Logcat
                 //        So until this issue is understood and fixed, kernel messages are not included.
                 await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, [LogId.Main, LogId.Crash, /*LogId.Kernel,*/ LogId.System, LogId.Security, LogId.Radio]))
                 {
+                    if (IsPaused)
+                    {
+                        continue;
+                    }
+
                     if (logEntry is AndroidLogEntry androidLogEntry)
                     {
                         ProcessSystemMessage(androidLogEntry);

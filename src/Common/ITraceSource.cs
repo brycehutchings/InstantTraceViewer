@@ -52,9 +52,14 @@
     {
         string DisplayName { get; }
 
-        bool CanClear { get; }
+        int LostEvents { get; }
 
+        bool CanClear { get; }
         void Clear();
+
+        bool CanPause { get; }
+        bool IsPaused { get; }
+        void TogglePause();
 
         ITraceTableSnapshot CreateSnapshot();
     }
@@ -68,6 +73,11 @@
         /// Returns null when the column size is stretched (this is only recommended for the message).
         /// </summary>
         public float? DefaultColumnSize { get; init; }
+
+        /// <summary>
+        /// Set to true to have the log viewer colorize the column
+        /// </summary>
+        public bool Colorize { get; init; } = false;
     }
 
     public class TraceTableSchema
