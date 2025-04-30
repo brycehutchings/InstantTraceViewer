@@ -28,6 +28,15 @@ namespace InstantTraceViewerUI
 
         public static void UpdateTheme()
         {
+            if (Settings.Theme == ImGuiTheme.Dark)
+            {
+                ImGui.StyleColorsDark();
+            }
+            else
+            {
+                ImGui.StyleColorsLight();
+            }
+
             // Adjust the dark theme to match VSCode/VS/Teams color. Instead of harsh pure black background, a dark gray is used.
             if (Settings.Theme == ImGuiTheme.Dark)
             {

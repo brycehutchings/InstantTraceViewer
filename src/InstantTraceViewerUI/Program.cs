@@ -8,7 +8,6 @@ namespace InstantTraceViewerUI
 {
     internal class Program
     {
-        [STAThread] // For WinForms file browser usage :-\
         public static int Main(string[] args)
         {
             if (NativeInterop.WindowInitialize(out nint imguiContext) != 0)
@@ -22,6 +21,13 @@ namespace InstantTraceViewerUI
             int? lastSetFontSize = null;
             ImGuiTheme? lastThemeSet = null;
 
+            ImGui.GetStyle().ScrollbarSize = 18;
+
+            // Scale is only applied once at startup based on DPI scale. If we want to make this dynamicly change, we need to reset the style first using the following code:
+            // > *ImGui.GetStyle().NativePtr = *(new ImGuiStylePtr(ImGuiNative.ImGuiStyle_ImGuiStyle())).NativePtr;
+            // and then rerun AppTheme.UpdateTheme to fix the colors.
+            ImGui.GetStyle().ScaleAllSizes(GetDpiScale());
+
             using (MainWindow mainWindow = new(args))
             {
                 while (true)
@@ -29,21 +35,13 @@ namespace InstantTraceViewerUI
                     // Font can only change outside of Begin/End frame.
                     if (lastSetFont != Settings.Font || lastSetFontSize != Settings.FontSize)
                     {
-                        LoadFontAndScaleSizes();
+                        LoadFont();
                         lastSetFont = Settings.Font;
                         lastSetFontSize = Settings.FontSize;
                     }
 
                     if (lastThemeSet != Settings.Theme)
                     {
-                        if (Settings.Theme == ImGuiTheme.Dark)
-                        {
-                            ImGui.StyleColorsDark();
-                        }
-                        else
-                        {
-                            ImGui.StyleColorsLight();
-                        }
                         AppTheme.UpdateTheme();
                         lastThemeSet = Settings.Theme;
                     }
@@ -94,23 +92,19 @@ namespace InstantTraceViewerUI
             return 0;
         }
 
-        private static unsafe void LoadFontAndScaleSizes()
+        private static float GetDpiScale()
+        {
+            // For now, use the scale of the primary monitor
+            ImPtrVector<ImGuiPlatformMonitorPtr> monitors = ImGui.GetPlatformIO().Monitors;
+            return monitors.Size > 0 ? monitors[0].DpiScale : 1.0f;
+        }
+
+        private static unsafe void LoadFont()
         {
             Debug.WriteLine("Loading and building font atlas...");
 
-            float dpiScale = 1.0f;
-            // For now, use the scale of the primary monitor
-            ImPtrVector<ImGuiPlatformMonitorPtr> monitors = ImGui.GetPlatformIO().Monitors;
-            if (monitors.Size > 0)
-            {
-                dpiScale = monitors[0].DpiScale;
-
-                ImGui.GetStyle().ScrollbarSize = 18;
-                ImGui.GetStyle().ScaleAllSizes(dpiScale);
-            }
-
             // ImGui Q&A recommends rounding down font size after applying DPI scaling.
-            float CalcScaledFontSize(float fontSize) => (float)Math.Floor(fontSize * dpiScale);
+            float CalcScaledFontSize(float fontSize) => (float)Math.Floor(fontSize * GetDpiScale());
 
             bool needsRebuild = ImGui.GetIO().Fonts.TexID != nint.Zero;
             ImGui.GetIO().Fonts.Clear();
