@@ -2,9 +2,20 @@
 
 [![Windows Build](https://github.com/brycehutchings/InstantTraceViewer/actions/workflows/build-windows.yml/badge.svg)](https://github.com/brycehutchings/InstantTraceViewer/actions/workflows/build-windows.yml)
 
-Instant Trace Viewer is a developer tool for collecting and viewing traces and logs. It provides an easy-to-use interface for viewing both **real-time** Event Tracing for Windows (ETW) and opening ETL files. The tool includes filtering options and graphical visualizations with the goal of making it effortless to see your program's trace logging as you develop software.
+Instant Trace Viewer is a developer tool for collecting and analyzing traces and logs.
+It features a straightforward interface for viewing both real-time traces and trace files,
+with filtering and graphical visualizations to help you quickly understand your program's behavior during development.
 
-![image](https://github.com/user-attachments/assets/129b203a-be43-4366-8dde-1eb98eebbbaa)
+![image](https://github.com/user-attachments/assets/a996841e-afad-496b-85f7-6b23bb5b5e22)
+
+Real-time trace sources supported:
+* Event Tracing for Windows (ETW)
+* Android Logcat
+
+Supported file formats:
+* ETL (Event Tracing for Windows)
+* Perfetto
+* CSV and TSV
 
 ## Installation
 
