@@ -74,7 +74,6 @@ namespace InstantTraceViewerUI
             // Post-processing Output:
             //
             public string? ProcessName;
-            public int ThreadId;
             public string? ThreadName;
             public List<Bar> Bars = new();
             public List<InstantEvent> InstantEvents = new();
@@ -82,7 +81,9 @@ namespace InstantTraceViewerUI
 
         struct ComputedTrack
         {
+            public int ProcessId;
             public string ProcessName;
+            public int ThreadId;
             public string ThreadName;
 
             public int MaxBarDepth;
@@ -298,7 +299,9 @@ namespace InstantTraceViewerUI
                         {
                             ImGui.SetNextItemOpen(!expandCollapse.Value, ImGuiCond.Always);
                         }
-                        isOpen = ImGui.TreeNodeEx(track.ProcessName, ImGuiTreeNodeFlags.SpanFullWidth);
+
+                        string processDescription = string.IsNullOrEmpty(track.ProcessName) ? $"{track.ProcessId}" : $"{track.ProcessId} ({track.ProcessName})";
+                        isOpen = ImGui.TreeNodeEx(processDescription, ImGuiTreeNodeFlags.SpanFullWidth);
                         ImGui.TableNextColumn();
 
                         previousProcessName = track.ProcessName;
@@ -549,7 +552,8 @@ namespace InstantTraceViewerUI
             }
             ImGui.SameLine();
 
-            ImGui.TextUnformatted(track.ThreadName);
+            string threadDescription = string.IsNullOrEmpty(track.ThreadName) ? $"{track.ThreadId}" : $"{track.ThreadId} ({track.ThreadName})";
+            ImGui.TextUnformatted(threadDescription);
 
             ImGui.TableNextColumn();
 
@@ -779,17 +783,17 @@ namespace InstantTraceViewerUI
 
                 if (!tracks.TryGetValue(trackKey, out Track? track))
                 {
-                    track = new Track { ThreadId = trackKey.Tid };
+                    track = new Track();
                     tracks.Add(trackKey, track);
                 }
 
                 if (track.ProcessName == null)
                 {
-                    track.ProcessName = traceTable.GetColumnValueString(i, traceTable.Schema.ProcessIdColumn);
+                    track.ProcessName = traceTable.GetColumnValueNameForId(i, traceTable.Schema.ProcessIdColumn);
                 }
                 if (track.ThreadName == null)
                 {
-                    track.ThreadName = traceTable.GetColumnValueString(i, traceTable.Schema.ThreadIdColumn);
+                    track.ThreadName = traceTable.GetColumnValueNameForId(i, traceTable.Schema.ThreadIdColumn);
                 }
 
                 DateTime traceEventTime = traceTable.GetTimestamp(i);
@@ -842,7 +846,7 @@ namespace InstantTraceViewerUI
                 foreach (var processTracks in tracks.GroupBy(t => t.Value.ProcessName).OrderByDescending(tg => tg.Sum(tg2 => (tg2.Value.Bars.Count * 2) + tg2.Value.InstantEvents.Count)))
                 {
                     // Next order the tracks for the process by thread id so they are easy to visually search.
-                    foreach (var track in processTracks.OrderBy(t => t.Value.ThreadId))
+                    foreach (var track in processTracks.OrderBy(t => t.Key.Tid))
                     {
                         if (track.Value.Bars.Count == 0 && track.Value.InstantEvents.Count == 0)
                         {
@@ -851,7 +855,9 @@ namespace InstantTraceViewerUI
 
                         computedTracks.Add(new ComputedTrack
                         {
+                            ProcessId = track.Key.Pid,
                             ProcessName = track.Value.ProcessName,
+                            ThreadId = track.Key.Tid,
                             ThreadName = track.Value.ThreadName,
                             MaxBarDepth = track.Value.Bars.Count > 0 ? track.Value.Bars.Max(b => b.Depth) : 0,
                             Bars = track.Value.Bars,
