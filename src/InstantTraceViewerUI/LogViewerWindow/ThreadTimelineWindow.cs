@@ -92,7 +92,7 @@ namespace InstantTraceViewerUI
             public int MaxInstantEventDepth;
             public List<InstantEvent> InstantEvents;
 
-            public string UniqueKey => $"{ProcessName}_{ThreadName}";
+            public string UniqueKey => $"{ProcessId}_{ProcessName}_{ThreadId}_{ThreadName}";
         }
 
         class ComputedTracks
