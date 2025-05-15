@@ -110,7 +110,7 @@ namespace InstantTraceViewerUI
 
         private Task<ComputedTracks> _computedTracksTask = null;
         private ComputedTracks _latestComputedTracks;
-        private HashSet<string> _pinnedTracks = new(); // Value is ComputedTrack UniqueKey.
+        private List<string> _pinnedTracks = new(); // Value is ComputedTrack UniqueKey.
         private DateTime _startZoomRange = DateTime.MinValue;
         private DateTime _endZoomRange = DateTime.MaxValue;
         private bool _isMouseHoveringTable = false;
@@ -246,10 +246,10 @@ namespace InstantTraceViewerUI
             // 'ScrollY' required for freezing rows (for pinning/timeline header).
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
-                var pinnedTracks = _latestComputedTracks.Tracks.Where(t => _pinnedTracks.Contains(t.UniqueKey)).ToList();
+                var pinnedTracksSnapshot = _pinnedTracks.ToList(); // Copy the list so we can modify it while iterating.
 
                 // Freeze pinned tracks so they are always visible. Plus one because we also want to pin the timeline. Plus one more if we have pinned tracks because that is the separator row.
-                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count + 1 + (pinnedTracks.Any() ? 1 : 0));
+                ImGui.TableSetupScrollFreeze(0, pinnedTracksSnapshot.Count + 1 + (pinnedTracksSnapshot.Any() ? 1 : 0));
 
                 float dpiBase = ImGui.GetFontSize();
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
@@ -260,12 +260,13 @@ namespace InstantTraceViewerUI
                 DrawTimeline(_startZoomRange, _endZoomRange, startWindow, endWindow, lastSelectedVisibleRowIndex);
 
                 List<object> hoveredEvents = new(); // Contains 0 or more 'Bar' and 'InstantEvent' objects.
-                foreach (var track in pinnedTracks)
+                foreach (var trackKey in pinnedTracksSnapshot)
                 {
+                    var track = _latestComputedTracks.Tracks.FirstOrDefault(t => t.UniqueKey == trackKey);
                     DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
                 }
 
-                if (pinnedTracks.Any())
+                if (pinnedTracksSnapshot.Any())
                 {
                     // Blank row to separate pinned tracks from the rest. Fill color matches border color so it looks like a solid thick separator.
                     // If this is removed, the ScrollFreeze math needs to change too.
@@ -279,7 +280,7 @@ namespace InstantTraceViewerUI
                 bool isOpen = false;
                 foreach (var track in _latestComputedTracks.Tracks)
                 {
-                    bool isPinned = _pinnedTracks.Contains(track.UniqueKey);
+                    bool isPinned = pinnedTracksSnapshot.Contains(track.UniqueKey);
                     if (isPinned)
                     {
                         continue; // Pinned tracks were already rendered.
