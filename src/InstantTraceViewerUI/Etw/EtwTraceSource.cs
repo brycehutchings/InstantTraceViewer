@@ -50,8 +50,8 @@ namespace InstantTraceViewerUI.Etw
         // Fixed name is used because ETW sessions can outlive their processes and there is a low system limit. This way we replace leaked sessions rather than creating new ones.
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
-        private readonly TraceEventSession _etwSession;
-        private readonly ETWTraceEventSource? _etwSource;
+        private readonly TraceEventSession? _etwSession;
+        private readonly ETWTraceEventSource _etwSource;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
@@ -202,7 +202,7 @@ namespace InstantTraceViewerUI.Etw
 
         public string DisplayName { get; private set; }
 
-        public int LostEvents => _etwSource?.EventsLost ?? 0;
+        public int LostEvents => _etwSource.EventsLost;
 
         public bool CanClear => _etwSource.IsRealTime;
 
@@ -222,7 +222,7 @@ namespace InstantTraceViewerUI.Etw
             GC.Collect();
         }
 
-        public bool CanPause => true;
+        public bool CanPause => _etwSource.IsRealTime;
         public bool IsPaused { get; private set; }
         public void TogglePause()
         {
