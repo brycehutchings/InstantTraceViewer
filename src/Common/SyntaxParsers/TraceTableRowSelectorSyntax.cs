@@ -25,7 +25,9 @@ namespace InstantTraceViewer
 
             public int ExpectedTokenStartIndex = 0;
 
-            public IEnumerator<Token> TokenEnumerator;
+            public int TokenIndex = 0;
+
+            public IReadOnlyList<Token> Tokens;
 
             public bool CurrentTokenMatches(string expectedToken)
             {
@@ -50,7 +52,7 @@ namespace InstantTraceViewer
                         throw new ArgumentException("Unexpected end of input");
                     }
 
-                    return TokenEnumerator.Current.Text;
+                    return Tokens[TokenIndex].Text;
                 }
             }
 
@@ -58,14 +60,58 @@ namespace InstantTraceViewer
 
             public void MoveNextToken()
             {
-                bool movedNext = !TokenEnumerator.MoveNext();
-                Debug.Assert(!movedNext); // We should never move past the last token because the EOF token should be hit instead.
+                TokenIndex++;
+                if (TokenIndex >= Tokens.Count)
+                {
+                    Debug.Fail("Moved past end of token list"); // We should never move past the last token because the EOF token should be hit instead.
+                }
 
                 // If we moved to the next token, then the previous token was valid and any tracked expected tokens can be cleared
                 // for building a new set of expected tokens for this new token.
                 ExpectedTokens.Clear();
-                Eof = TokenEnumerator.Current.Text == SyntaxTokenizer.EofText;
-                ExpectedTokenStartIndex = TokenEnumerator.Current.StartIndex;
+                Eof = CurrentToken == SyntaxTokenizer.EofText;
+                ExpectedTokenStartIndex = Tokens[TokenIndex].StartIndex;
+            }
+
+            public ParserState Clone()
+            {
+                return new ParserState
+                {
+                    ExpectedTokens = new List<string>(ExpectedTokens),
+                    ExpectedTokenStartIndex = ExpectedTokenStartIndex,
+                    Tokens = Tokens,
+                    TokenIndex = TokenIndex,
+                    Eof = Eof
+                };
+            }
+
+            public void ReplaceWith(ParserState state)
+            {
+                ExpectedTokens = state.ExpectedTokens;
+                ExpectedTokenStartIndex = state.ExpectedTokenStartIndex;
+                Tokens = state.Tokens;
+                TokenIndex = state.TokenIndex;
+                Eof = state.Eof;
+            }
+
+            public void MergeExpectedTokens(ParserState otherState)
+            {
+                // Both int and string parsing failed. Now we need to figure out what to show the user.
+                // To resolve, we will use whichever one made it further in the parsing process.
+                if (ExpectedTokenStartIndex > otherState.ExpectedTokenStartIndex)
+                {
+                    // This state already has what it needs to show the user.
+                }
+                else if (ExpectedTokenStartIndex < otherState.ExpectedTokenStartIndex)
+                {
+                    // The other parser actually made it further, so use it instead.
+                    ReplaceWith(otherState);
+                }
+                else
+                {
+                    // Both parsers made it to the same point, so union the expected tokens.
+                    ExpectedTokens.AddRange(otherState.ExpectedTokens);
+                }
             }
         }
 
@@ -102,12 +148,11 @@ namespace InstantTraceViewer
         {
             // Split the text up by whitespace or punctuation
             IEnumerable<Token> tokens = SyntaxTokenizer.Tokenize(text);
-            ParserState state = new() { TokenEnumerator = tokens.GetEnumerator() };
+            ParserState state = new() { Tokens = tokens.ToList() };
 
             Expression expressionBody = null;
             try
             {
-                state.MoveNextToken(); // Move to first token.
                 expressionBody = TryParseExpression(state);
             }
             catch (Exception)
@@ -120,7 +165,7 @@ namespace InstantTraceViewer
                 Expression = expressionBody != null ? Expression.Lambda<TraceTableRowSelector>(expressionBody, Param1TraceTableSnapshot, Param2RowIndex) : null,
                 ExpectedTokens = state.ExpectedTokens.Distinct().ToArray(),
                 ExpectedTokenStartIndex = state.ExpectedTokenStartIndex,
-                ActualToken = state.TokenEnumerator.Current
+                ActualToken = state.Tokens[state.TokenIndex]
             };
         }
 
@@ -242,7 +287,10 @@ namespace InstantTraceViewer
             {
                 return TryParseTimestampPredicate(state, matchedColumn);
             }
-
+            else if (matchedColumn == _schema.ProcessIdColumn || matchedColumn == _schema.ThreadIdColumn)
+            {
+                return TryParseMany(state, matchedColumn, TryParseStringPredicate, TryParseIntIdentifierPredicate);
+            }
 
             return TryParseStringPredicate(state, matchedColumn);
         }
@@ -360,7 +408,7 @@ namespace InstantTraceViewer
 
         private Expression TryParseTimestampPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state);
+            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state, true);
             if (binaryExpression != null)
             {
                 state.MoveNextToken();
@@ -383,9 +431,42 @@ namespace InstantTraceViewer
             return null; // Unexpected token or end of input.
         }
 
+        // Parses for a column that holds an integer value but does not provide < or > or the like.
+        private Expression TryParseIntIdentifierPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
+        {
+            // Inequality operators don't make sense for integers that represent IDs.
+            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state, false);
+            if (binaryExpression != null)
+            {
+                state.MoveNextToken();
+                int? value = TryReadInt(state);
+                if (value != null)
+                {
+                    state.MoveNextToken();
+                    return binaryExpression(GetTableInt(matchedColumn), Expression.Constant(value.Value));
+                }
+            }
+            else if (state.CurrentTokenMatches(InOperatorName))
+            {
+                state.MoveNextToken();
+
+                IReadOnlyList<int> values = TryReadIntList(state);
+                if (values != null)
+                {
+                    state.MoveNextToken();
+                    return Expression.Call(
+                        Expression.Constant(values.ToHashSet()),
+                        typeof(HashSet<int>).GetMethod(nameof(HashSet<int>.Contains))!,
+                        GetTableInt(matchedColumn));
+                }
+            }
+
+            return null; // Unexpected token or end of input.
+        }
+
         private Expression TryParseLevelPredicate(ParserState state, TraceSourceSchemaColumn matchedColumn)
         {
-            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state);
+            Func<Expression, Expression, BinaryExpression> binaryExpression = TryGetBinaryExpression(state, true);
             if (binaryExpression != null)
             {
                 state.MoveNextToken();
@@ -456,6 +537,27 @@ namespace InstantTraceViewer
             return UnescapeStringLiteral(state.CurrentToken);
         }
 
+        // Runs through parsers using the first to parse successfully. If all fail, the one that got furthest is used.
+        private Expression TryParseMany(ParserState state, TraceSourceSchemaColumn matchedColumn, params Func<ParserState, TraceSourceSchemaColumn, Expression>[] parsers)
+        {
+            ParserState mergedParserState = state.Clone();
+            foreach (var parser in parsers)
+            {
+                ParserState parserAttempt = state.Clone();
+                Expression expression = parser(parserAttempt, matchedColumn);
+                if (expression != null)
+                {
+                    state.ReplaceWith(parserAttempt);
+                    return expression;
+                }
+
+                mergedParserState.MergeExpectedTokens(parserAttempt);
+            }
+
+            state.ReplaceWith(mergedParserState);
+            return null;
+        }
+
         private static IReadOnlyList<string> TryReadStringLiteralList(ParserState state) => TryReadList<string>(state, TryReadStringLiteral);
 
         private static IReadOnlyList<int> TryReadIntList(ParserState state) => TryReadList<int>(state, state => TryReadInt(state));
@@ -520,7 +622,7 @@ namespace InstantTraceViewer
             return matchedLevel;
         }
 
-        private static Func<Expression, Expression, BinaryExpression> TryGetBinaryExpression(ParserState state)
+        private static Func<Expression, Expression, BinaryExpression> TryGetBinaryExpression(ParserState state, bool includeInequalityOperators)
         {
             Func<Expression, Expression, BinaryExpression> matchingOperatorExpression = null;
 
@@ -532,12 +634,16 @@ namespace InstantTraceViewer
                 }
             }
 
-            CheckCurrentToken(LessThanOperatorName, Expression.LessThan);
-            CheckCurrentToken(LessThanOrEqualOperatorName, Expression.LessThanOrEqual);
             CheckCurrentToken(EqualsOperatorName, Expression.Equal);
             CheckCurrentToken(NotEqualsOperatorName, Expression.NotEqual);
-            CheckCurrentToken(GreaterThanOperatorName, Expression.GreaterThan);
-            CheckCurrentToken(GreaterThanOrEqualOperatorName, Expression.GreaterThanOrEqual);
+
+            if (includeInequalityOperators)
+            {
+                CheckCurrentToken(LessThanOperatorName, Expression.LessThan);
+                CheckCurrentToken(LessThanOrEqualOperatorName, Expression.LessThanOrEqual);
+                CheckCurrentToken(GreaterThanOperatorName, Expression.GreaterThan);
+                CheckCurrentToken(GreaterThanOrEqualOperatorName, Expression.GreaterThanOrEqual);
+            }
 
             return matchingOperatorExpression;
         }
