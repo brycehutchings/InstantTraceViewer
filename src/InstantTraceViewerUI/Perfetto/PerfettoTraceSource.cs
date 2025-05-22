@@ -358,9 +358,9 @@ namespace InstantTraceViewerUI.Perfetto
                 _ => Category.None,
             };
             record.Priority = record.Category == Category.None ? Priority.Info : Priority.Verbose;
-            record.ProcessName = threadData?.Name;
+            record.ProcessName = processData?.Name;
             record.ThreadName = threadData?.Name;
-            record.Pid = threadData?.Pid ?? threadData?.Pid ?? 0;
+            record.Pid = processData?.Pid ?? threadData?.Pid ?? 0;
             record.Tid = threadData?.Tid ?? 0;
             record.Timestamp = clockConverter.GetPacketRealtimeTimestamp(packet);
             record.NamedValues = namedValues.ToArray();

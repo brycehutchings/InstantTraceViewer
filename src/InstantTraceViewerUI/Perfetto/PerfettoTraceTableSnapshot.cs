@@ -60,7 +60,7 @@ namespace InstantTraceViewerUI.Perfetto
         }
         public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
             => column == PerfettoTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
-               column == PerfettoTraceSource.ColumnThread ? null :
+               column == PerfettoTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadName :
                throw new NotSupportedException();
 
 
