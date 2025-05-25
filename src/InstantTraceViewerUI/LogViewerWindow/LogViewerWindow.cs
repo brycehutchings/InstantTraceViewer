@@ -457,7 +457,7 @@ namespace InstantTraceViewerUI
                 string newRuleStr = string.Join(' ', newRule);
                 if (ImGui.MenuItem($"Include: {newRuleStr}"))
                 {
-                    _viewerRules.AddIncludeRule(newRuleStr);
+                    _viewerRules.AddRule(newRuleStr, TraceRowRuleAction.Exclude);
                 }
             }
             void AddExcludeRule(IEnumerable<string> newRule)
@@ -465,7 +465,7 @@ namespace InstantTraceViewerUI
                 string newRuleStr = string.Join(' ', newRule);
                 if (ImGui.MenuItem($"Exclude: {newRuleStr}"))
                 {
-                    _viewerRules.AddExcludeRule(newRuleStr);
+                    _viewerRules.AddRule(newRuleStr, TraceRowRuleAction.Exclude);
                 }
             }
             void AddCustomRule(IEnumerable<string> newRule)

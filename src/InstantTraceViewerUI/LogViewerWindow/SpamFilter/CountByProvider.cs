@@ -70,7 +70,7 @@ namespace InstantTraceViewerUI
                 _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
             };
 
-        public override void CreateExcludeRules(ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames)
+        public override void CreateRules(ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames, TraceRowRuleAction ruleAction)
         {
             // Create a rule for every provider so that it is easier for the user to manage the generated rules.
             foreach (var providerCount in countByEventNames.Cast<CountByProvider>().Where(c => c.Selected).GroupBy(s => (ProviderName: s.ProviderName, Dummy: 0)).OrderBy(s => s.Key))
@@ -87,7 +87,7 @@ namespace InstantTraceViewerUI
                     query += $" {TraceTableRowSelectorSyntax.AndOperatorName} {TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.UnifiedLevelColumn)} in [{string.Join(", ", levelStrings)}]";
                 }
 
-                viewerRules.AddExcludeRule(query);
+                viewerRules.AddRule(query, ruleAction);
             }
         }
 

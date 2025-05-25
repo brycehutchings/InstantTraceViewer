@@ -72,12 +72,12 @@ namespace InstantTraceViewerUI
             ImGui.SameLine();
             if (ImGui.Button("Add Include"))
             {
-                rules.AddIncludeRule(_addRuleInputText);
+                rules.AddRule(_addRuleInputText, TraceRowRuleAction.Include);
             }
             ImGui.SameLine();
             if (ImGui.Button("Add Exclude"))
             {
-                rules.AddExcludeRule(_addRuleInputText);
+                rules.AddRule(_addRuleInputText, TraceRowRuleAction.Exclude);
             }
             ImGui.EndDisabled();
             ImGui.SameLine();

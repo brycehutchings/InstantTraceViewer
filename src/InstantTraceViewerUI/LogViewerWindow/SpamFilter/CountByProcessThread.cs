@@ -92,7 +92,7 @@ namespace InstantTraceViewerUI
                 _ => throw new ArgumentOutOfRangeException(nameof(spec), "Unknown column index")
             };
 
-        public override void CreateExcludeRules(ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames)
+        public override void CreateRules(ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames, TraceRowRuleAction ruleAction)
         {
             var selectedProcessIds = countByEventNames.Cast<CountByProcessThread>().Where(c => c.Selected).GroupBy(c => c.ProcessId).OrderBy(c => c.Key);
             if (_includeThreadColumn)
@@ -104,7 +104,7 @@ namespace InstantTraceViewerUI
 
                     string query = $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ProcessIdColumn)} {TraceTableRowSelectorSyntax.EqualsOperatorName} {selectedProcessId.Key}";
                     query += $" {TraceTableRowSelectorSyntax.AndOperatorName} {TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ThreadIdColumn)} {TraceTableRowSelectorSyntax.InOperatorName} [{tidList}]";
-                    viewerRules.AddExcludeRule(query);
+                    viewerRules.AddRule(query, ruleAction);
                 }
             }
             else
@@ -112,7 +112,7 @@ namespace InstantTraceViewerUI
                 // One rule for all pids
                 string pidList = string.Join(", ", selectedProcessIds.Select(c => c.Key));
                 string query = $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(_schema.ProcessIdColumn)} {TraceTableRowSelectorSyntax.InOperatorName} [{pidList}]";
-                viewerRules.AddExcludeRule(query);
+                viewerRules.AddRule(query, ruleAction);
             }
         }
 

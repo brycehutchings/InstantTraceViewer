@@ -66,17 +66,18 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
-        public void AddIncludeRule(string query)
+        public void AddRule(string query, TraceRowRuleAction ruleAction)
         {
-            // Include rules go last to ensure anything already excluded stays excluded.
-            _visibleRules.Add(new Rule { Query = query, Action = TraceRowRuleAction.Include });
-            GenerationId++;
-        }
-
-        public void AddExcludeRule(string query)
-        {
-            // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
-            _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
+            if (ruleAction == TraceRowRuleAction.Include)
+            {
+                // Include rules go last to ensure anything already excluded stays excluded.
+                _visibleRules.Add(new Rule { Query = query, Action = TraceRowRuleAction.Include });
+            }
+            else if (ruleAction == TraceRowRuleAction.Exclude)
+            {
+                // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
+                _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
+            }
             GenerationId++;
         }
 

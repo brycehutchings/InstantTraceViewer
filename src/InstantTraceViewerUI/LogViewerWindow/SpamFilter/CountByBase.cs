@@ -15,7 +15,7 @@ namespace InstantTraceViewerUI
         public abstract IReadOnlyList<CountByBase> CountBy(ITraceTableSnapshot traceTable);
         public abstract bool IsSchemaSupported();
         public abstract IEnumerable<CountByBase> ImGuiSort(ImGuiTableColumnSortSpecsPtr spec, IEnumerable<CountByBase> list);
-        public abstract void CreateExcludeRules(ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames);
+        public abstract void CreateRules(ViewerRules viewerRules, IReadOnlyCollection<CountByBase> countByEventNames, TraceRowRuleAction ruleAction);
 
         protected IEnumerable<CountByBase> ImGuiSortInternal<TKey>(ImGuiSortDirection sortDirection, IEnumerable<CountByBase> list, Func<CountByBase, TKey> keySelector)
              => sortDirection == ImGuiSortDirection.Ascending ? list.OrderBy(keySelector) : list.OrderByDescending(keySelector);

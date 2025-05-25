@@ -88,7 +88,12 @@ namespace InstantTraceViewerUI
                 ImGui.BeginDisabled(selectedCount == 0);
                 if (ImGui.Button($"Exclude selected events"))
                 {
-                    currentAdapter.CreateExcludeRules(viewerRules, _eventCounts);
+                    currentAdapter.CreateRules(viewerRules, _eventCounts, TraceRowRuleAction.Exclude);
+                }
+                ImGui.SameLine();
+                if (ImGui.Button($"Include selected events"))
+                {
+                    currentAdapter.CreateRules(viewerRules, _eventCounts, TraceRowRuleAction.Include);
                 }
                 ImGui.EndDisabled();
                 ImGui.SameLine();

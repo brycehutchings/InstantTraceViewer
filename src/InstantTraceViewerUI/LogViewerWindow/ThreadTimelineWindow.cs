@@ -176,10 +176,11 @@ namespace InstantTraceViewerUI
             {
                 var startZoomTimeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(_startZoomRange);
                 var endZoomTimeStr = TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(_endZoomRange);
-                viewerRules.AddExcludeRule(
+                viewerRules.AddRule(
                     $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(traceTable.Schema.TimestampColumn)} {TraceTableRowSelectorSyntax.LessThanOperatorName} {startZoomTimeStr}"
                   + $" {TraceTableRowSelectorSyntax.OrOperatorName} "
-                  + $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(traceTable.Schema.TimestampColumn)} {TraceTableRowSelectorSyntax.GreaterThanOperatorName} {endZoomTimeStr}");
+                  + $"{TraceTableRowSelectorSyntax.CreateColumnVariableName(traceTable.Schema.TimestampColumn)} {TraceTableRowSelectorSyntax.GreaterThanOperatorName} {endZoomTimeStr}",
+                    TraceRowRuleAction.Exclude);
             }
             ImGui.SetItemTooltip("Adds an exclude rule to filter out events that come before or after the current zoomed in time range.");
             ImGui.SameLine();
