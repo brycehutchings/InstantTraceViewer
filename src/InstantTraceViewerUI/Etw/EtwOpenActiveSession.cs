@@ -51,7 +51,7 @@ namespace InstantTraceViewerUI.Etw
                         ImGui.TextUnformatted(text);
                     };
 
-                    foreach (var session in _activeSessions)
+                    foreach (var session in _activeSessions.OrderBy(s => s.SessionName))
                     {
                         ImGui.PushID(session.SessionName);
 
