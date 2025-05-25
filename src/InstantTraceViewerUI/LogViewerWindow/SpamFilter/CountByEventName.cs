@@ -25,9 +25,6 @@ namespace InstantTraceViewerUI
                 ImGui.TableNextColumn();
                 ImGui.TextUnformatted(MaxLevel?.ToString() ?? "");
             }
-
-            public override bool Equals(object obj) => obj is CountByEventName key && ProviderName == key.ProviderName && Name == key.Name;
-            public override int GetHashCode() => HashCode.Combine(ProviderName, Name);
         }
 
         private readonly TraceTableSchema _schema;

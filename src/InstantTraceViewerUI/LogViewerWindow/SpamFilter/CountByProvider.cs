@@ -18,8 +18,6 @@ namespace InstantTraceViewerUI
                 ImGui.TableNextColumn();
                 ImGui.TextUnformatted(Level?.ToString() ?? "");
             }
-            public override bool Equals(object obj) => obj is CountByProvider key && ProviderName == key.ProviderName && Level == key.Level;
-            public override int GetHashCode() => HashCode.Combine(ProviderName, Level);
         }
 
         private readonly TraceTableSchema _schema;

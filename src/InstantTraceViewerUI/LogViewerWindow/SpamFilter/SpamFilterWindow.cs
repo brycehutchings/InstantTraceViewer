@@ -17,7 +17,7 @@ namespace InstantTraceViewerUI
 
         private IReadOnlyList<CountByBaseAdapter> _adapters;
         private int _adaptersLastGenerationId = -1;
-        private CountByBaseAdapter _currentAdapter;
+        private int _selectedAdapterIndex = 0;
 
         private IReadOnlyCollection<CountByBase> _eventCounts = null;
         private int _eventCountsLastGenerationId = -1;
@@ -34,9 +34,12 @@ namespace InstantTraceViewerUI
         {
             if (_adapters == null || _adaptersLastGenerationId != traceTable.GenerationId)
             {
-                _adapters = [new CountByProviderAdapter(traceTable.Schema), new CountByEventNameAdapter(traceTable.Schema)];
+                _adapters = [
+                    new CountByProviderAdapter(traceTable.Schema),
+                    new CountByEventNameAdapter(traceTable.Schema),
+                    new CountByProcessThreadAdapter(traceTable.Schema, includeThreadColumn: true),
+                    new CountByProcessThreadAdapter(traceTable.Schema, includeThreadColumn: false)];
                 _adaptersLastGenerationId = traceTable.GenerationId;
-                _currentAdapter = _adapters.First();
                 _eventCounts = null;
             }
 
@@ -45,14 +48,17 @@ namespace InstantTraceViewerUI
 
             if (ImGui.Begin($"{WindowName} - {_name}###SpamFilter_{_parentWindowId}", ref _open))
             {
+                ImGui.Text("Group events by: ");
+                ImGui.SameLine();
                 ImGui.SetNextItemWidth(15 * ImGui.GetFontSize());
-                if (ImGui.BeginCombo("Count by group", _currentAdapter.Name))
+                if (ImGui.BeginCombo("##CountByGroup", _adapters[_selectedAdapterIndex].Name))
                 {
-                    foreach (var adapter in _adapters)
+                    for (int i = 0; i < _adapters.Count; i++)
                     {
-                        if (ImGui.Selectable(adapter.Name, _currentAdapter == adapter))
+                        var adapter = _adapters[i];
+                        if (ImGui.Selectable(adapter.Name, _selectedAdapterIndex == i))
                         {
-                            _currentAdapter = adapter;
+                            _selectedAdapterIndex = i;
                             _eventCounts = null;
                         }
                     }
@@ -61,15 +67,17 @@ namespace InstantTraceViewerUI
 
                 ImGui.NewLine();
 
-                if (!_currentAdapter.IsSchemaSupported())
+                CountByBaseAdapter currentAdapter = _adapters[_selectedAdapterIndex];
+
+                if (!currentAdapter.IsSchemaSupported())
                 {
-                    ImGui.TextUnformatted($"Cannot group by {_currentAdapter.Name} because the schema does not have the required columns.");
+                    ImGui.TextUnformatted($"Cannot group by {currentAdapter.Name} because the schema does not have the required columns.");
                     return _open;
                 }
 
                 if (_eventCounts == null || _eventCountsLastGenerationId != traceTable.GenerationId)
                 {
-                    _eventCounts = _currentAdapter.CountBy(traceTable);
+                    _eventCounts = currentAdapter.CountBy(traceTable);
                     _eventCountsLastGenerationId = traceTable.GenerationId;
                 }
 
@@ -80,7 +88,7 @@ namespace InstantTraceViewerUI
                 ImGui.BeginDisabled(selectedCount == 0);
                 if (ImGui.Button($"Exclude selected events"))
                 {
-                    _currentAdapter.CreateExcludeRules(viewerRules, _eventCounts);
+                    currentAdapter.CreateExcludeRules(viewerRules, _eventCounts);
                 }
                 ImGui.EndDisabled();
                 ImGui.SameLine();
@@ -96,12 +104,12 @@ namespace InstantTraceViewerUI
 
                 ImGui.TextUnformatted("Tip: Use CTRL, SHIFT and mouse dragging to select the events that you want excluded.");
 
-                if (ImGui.BeginTable($"TraceCounts_{_currentAdapter.Name}", 1 + _currentAdapter.ColumnCount /* columns */,
+                if (ImGui.BeginTable($"TraceCounts_{currentAdapter.Name}", 1 + currentAdapter.ColumnCount /* columns */,
                         ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.Hideable |
                         ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable | ImGuiTableFlags.SortMulti))
                 {
                     ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
-                    _currentAdapter.SetupColumns();
+                    currentAdapter.SetupColumns();
                     ImGui.TableSetupColumn("Count", ImGuiTableColumnFlags.WidthFixed | ImGuiTableColumnFlags.PreferSortDescending | ImGuiTableColumnFlags.DefaultSort, 10 * ImGui.GetFontSize());
                     ImGui.TableHeadersRow();
 
@@ -112,7 +120,7 @@ namespace InstantTraceViewerUI
                         for (int i = 0; i < sortSpecs.SpecsCount; i++)
                         {
                             var spec = new ImGuiTableColumnSortSpecsPtr(sortSpecs.NativePtr->Specs + i);
-                            sortedCountsEnumerable = _currentAdapter.ImGuiSort(spec, sortedCountsEnumerable);
+                            sortedCountsEnumerable = currentAdapter.ImGuiSort(spec, sortedCountsEnumerable);
                         }
 
                         sortedCounts = sortedCountsEnumerable.ToList();

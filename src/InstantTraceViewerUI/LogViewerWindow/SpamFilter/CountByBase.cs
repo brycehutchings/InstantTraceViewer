@@ -26,9 +26,6 @@ namespace InstantTraceViewerUI
         public int Count { get; init; }
         public bool Selected { get; set; }
 
-        public abstract override bool Equals(object obj);
-        public abstract override int GetHashCode();
-
         public abstract void AddColumnValues();
     }
 }
