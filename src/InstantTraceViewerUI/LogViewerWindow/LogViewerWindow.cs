@@ -457,7 +457,7 @@ namespace InstantTraceViewerUI
                 string newRuleStr = string.Join(' ', newRule);
                 if (ImGui.MenuItem($"Include: {newRuleStr}"))
                 {
-                    _viewerRules.AddRule(newRuleStr, TraceRowRuleAction.Exclude);
+                    _viewerRules.AddRule(newRuleStr, TraceRowRuleAction.Include);
                 }
             }
             void AddExcludeRule(IEnumerable<string> newRule)
