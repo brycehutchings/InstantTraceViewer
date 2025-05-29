@@ -33,6 +33,8 @@ namespace InstantTraceViewerUI.Perfetto
             NameColumn = ColumnName,
         };
 
+        private static readonly JsonFormatter JsonFormatter = new JsonFormatter(JsonFormatter.Settings.Default.WithIndentation());
+
         private readonly FileStream _fileStream;
         private readonly string _displayName;
 
@@ -42,10 +44,7 @@ namespace InstantTraceViewerUI.Perfetto
         private readonly CancellationTokenSource _tokenSource = new CancellationTokenSource();
         private readonly Thread _readThread;
 
-        private readonly ConcurrentDictionary<int, string> _processNames = new ConcurrentDictionary<int, string>();
         private Dictionary<uint, Stack<string>> _sliceBeginNames = new Dictionary<uint, Stack<string>>();
-
-        private static readonly JsonFormatter JsonFormatter = new JsonFormatter(JsonFormatter.Settings.Default.WithIndentation());
 
         public PerfettoTraceSource(string perfettoPath)
         {
@@ -72,6 +71,9 @@ namespace InstantTraceViewerUI.Perfetto
 
         public int LostEvents => 0;
 
+        // Perfetto parsing is quite slow and must be sorted at the end, so events can't stream out as they are parsed. So we indicate preprocessing is happening until all of the data is ready.
+        public bool IsPreprocessingData { get; private set; } = true;
+
         public ITraceTableSnapshot CreateSnapshot()
         {
             _traceRecordsLock.EnterReadLock();
@@ -94,8 +96,6 @@ namespace InstantTraceViewerUI.Perfetto
         {
             _tokenSource.Cancel();
         }
-
-        ulong _prevTimestamp;
 
         private async void ReadThread()
         {
@@ -196,6 +196,10 @@ namespace InstantTraceViewerUI.Perfetto
             catch (OperationCanceledException)
             {
                 // Trace source is being disposed.
+            }
+            finally
+            {
+                IsPreprocessingData = false;
             }
         }
 

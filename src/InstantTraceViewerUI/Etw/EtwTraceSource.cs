@@ -229,6 +229,9 @@ namespace InstantTraceViewerUI.Etw
             IsPaused = !IsPaused;
         }
 
+        // ETW data streams in very quickly, so no need to indicate to user that it is loading.
+        public bool IsPreprocessingData => false;
+
         public ITraceTableSnapshot CreateSnapshot()
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.

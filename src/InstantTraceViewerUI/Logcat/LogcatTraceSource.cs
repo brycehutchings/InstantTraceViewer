@@ -95,6 +95,9 @@ namespace InstantTraceViewerUI.Logcat
             IsPaused = !IsPaused;
         }
 
+        // Logcat is real-time which means it's expected that data never stops coming in, so no need to indicate to user it is loading.
+        public bool IsPreprocessingData => false;
+
         public int LostEvents => 0;
 
         public ITraceTableSnapshot CreateSnapshot()

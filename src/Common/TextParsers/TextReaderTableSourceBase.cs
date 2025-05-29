@@ -77,6 +77,8 @@ namespace InstantTraceViewer
 
         public int LostEvents => 0;
 
+        public bool IsPreprocessingData => false;
+
         public ITraceTableSnapshot CreateSnapshot()
         {
             _traceRecordsLock.EnterReadLock();

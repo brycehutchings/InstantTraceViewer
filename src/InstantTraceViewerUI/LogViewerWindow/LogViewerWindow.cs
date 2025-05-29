@@ -779,20 +779,32 @@ namespace InstantTraceViewerUI
                 findRequested = true;
             }
 
-            ImGui.SameLine();
-            ImGui.TextUnformatted($"{visibleTraceTable.RowCount:N0} rows");
-            if (visibleTraceTable.RowCount != visibleTraceTable.FullTable.RowCount)
+            if (_traceSource.TraceSource.IsPreprocessingData)
             {
-                ImGui.SameLine();
-                ImGui.TextUnformatted($"({visibleTraceTable.FullTable.RowCount - visibleTraceTable.RowCount:N0} excluded)");
-            }
+                // The intent is that we only show "Loading..." when we can't stream in events yet. Parsing some file types sometimes takes time before the data can be returned.
+                Debug.Assert(visibleTraceTable.RowCount == 0, "Visible trace table should be empty while preprocessing data.");
 
-            if (visibleTraceTable.ErrorCount > 0)
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(ImGui.GetFontSize() * 10);
+                ImGui.ProgressBar(-1.0f * (float)ImGui.GetTime(), new Vector2(0.0f, 0.0f), "Loading..");
+            }
+            else
             {
                 ImGui.SameLine();
-                ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(UnifiedLevel.Error));
-                ImGui.TextUnformatted($"{visibleTraceTable.ErrorCount:N0} Errors");
-                ImGui.PopStyleColor();
+                ImGui.TextUnformatted($"{visibleTraceTable.RowCount:N0} rows");
+                if (visibleTraceTable.RowCount != visibleTraceTable.FullTable.RowCount)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextUnformatted($"({visibleTraceTable.FullTable.RowCount - visibleTraceTable.RowCount:N0} excluded)");
+                }
+
+                if (visibleTraceTable.ErrorCount > 0)
+                {
+                    ImGui.SameLine();
+                    ImGui.PushStyleColor(ImGuiCol.Text, LevelToColor(UnifiedLevel.Error));
+                    ImGui.TextUnformatted($"{visibleTraceTable.ErrorCount:N0} Errors");
+                    ImGui.PopStyleColor();
+                }
             }
 
             if (!string.IsNullOrEmpty(_findBuffer))

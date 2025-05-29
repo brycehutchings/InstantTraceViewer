@@ -61,6 +61,9 @@
         bool IsPaused { get; }
         void TogglePause();
 
+        // Returns true if the trace source is in the process of loading the data and not able to stream any events out yet.
+        bool IsPreprocessingData { get; }
+
         ITraceTableSnapshot CreateSnapshot();
     }
 
