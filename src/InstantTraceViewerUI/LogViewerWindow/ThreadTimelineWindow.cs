@@ -92,7 +92,8 @@ namespace InstantTraceViewerUI
             public int MaxInstantEventDepth;
             public List<InstantEvent> InstantEvents;
 
-            public string UniqueKey => $"{ProcessId}_{ProcessName}_{ThreadId}_{ThreadName}";
+            public string UniqueKey => $"{UniqueProcessKey}_{ThreadId}_{ThreadName}";
+            public string UniqueProcessKey => $"{ProcessId}_{ProcessName}";
         }
 
         class ComputedTracks
@@ -277,7 +278,7 @@ namespace InstantTraceViewerUI
                     ImGui.TableNextColumn(); // Track graph area
                 }
 
-                string? previousProcessName = null;
+                string? previousProcessKey = null;
                 bool isOpen = false;
                 foreach (var track in _latestComputedTracks.Tracks)
                 {
@@ -287,7 +288,7 @@ namespace InstantTraceViewerUI
                         continue; // Pinned tracks were already rendered.
                     }
 
-                    if (previousProcessName != track.ProcessName)
+                    if (previousProcessKey != track.UniqueProcessKey)
                     {
                         if (isOpen)
                         {
@@ -306,7 +307,7 @@ namespace InstantTraceViewerUI
                         isOpen = ImGui.TreeNodeEx(processDescription, ImGuiTreeNodeFlags.SpanFullWidth);
                         ImGui.TableNextColumn();
 
-                        previousProcessName = track.ProcessName;
+                        previousProcessKey = track.UniqueProcessKey;
                     }
 
                     if (!isOpen)
@@ -843,9 +844,10 @@ namespace InstantTraceViewerUI
 
             var computedTracks = new List<ComputedTrack>();
             {
-                // Group by process name, ordered so that the most active processes are at the top. Bars count as two events (start/stop), instant events count as one.
-                // We must group by process name because ComputedTracks.Tracks requires this for proper UI rendering.
-                foreach (var processTracks in tracks.GroupBy(t => t.Value.ProcessName).OrderByDescending(tg => tg.Sum(tg2 => (tg2.Value.Bars.Count * 2) + tg2.Value.InstantEvents.Count)))
+                // Group by Pid+ProcessName, ordered so that the most active processes are at the top. Bars count as two events (start/stop), instant events count as one.
+                // We group by Pid+Process name because PIDs can be reused so this can prevent separate instances to be combined.
+                // The UI also expects all tracks for a process to be grouped together so that the process name is shown only once.
+                foreach (var processTracks in tracks.GroupBy(t => (t.Key.Pid, t.Value.ProcessName)).OrderByDescending(tg => tg.Sum(tg2 => (tg2.Value.Bars.Count * 2) + tg2.Value.InstantEvents.Count)))
                 {
                     // Next order the tracks for the process by thread id so they are easy to visually search.
                     foreach (var track in processTracks.OrderBy(t => t.Key.Tid))
