@@ -52,6 +52,10 @@
     <PackageReference Include="Google.Protobuf" Version="3.30.2" />
     <PackageReference Include="Google.Protobuf.Tools" Version="3.30.2" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
+    <PackageReference Include="Microsoft.Net.Compilers.Toolset" Version="4.14.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
     <PackageReference Include="System.IO.Hashing" Version="9.0.3" />
     <Manifest Include="$(ApplicationManifest)" />
