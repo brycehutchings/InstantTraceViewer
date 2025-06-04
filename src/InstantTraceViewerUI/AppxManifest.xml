@@ -1,42 +1,20 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-
-<Package
-  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
-  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  xmlns:uap18="http://schemas.microsoft.com/appx/manifest/uap/windows10/18"
-  IgnorableNamespaces="uap rescap uap18">
-
-  <Identity
-    Name="7121BryceHutchings.InstantTraceViewer"
-    Publisher="CN=FE01EC5C-A845-4996-83AA-3BF4024D23C2"
-    Version="1.2.1.0" />
-
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:uap18="http://schemas.microsoft.com/appx/manifest/uap/windows10/18" IgnorableNamespaces="uap rescap uap18 build" xmlns:build="http://schemas.microsoft.com/developer/appx/2015/build">
+  <Identity Name="7121BryceHutchings.InstantTraceViewer" Publisher="CN=FE01EC5C-A845-4996-83AA-3BF4024D23C2" Version="1.2.1.0" ProcessorArchitecture="arm64" />
   <Properties>
     <DisplayName>Instant Trace Viewer</DisplayName>
     <PublisherDisplayName>Bryce Hutchings</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
-
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.14393.0" MaxVersionTested="10.0.14393.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
-
   <Resources>
-    <Resource Language="x-generate"/>
+    <Resource Language="EN-US" />
   </Resources>
-
   <Applications>
-    <Application Id="App"
-      Executable="$targetnametoken$.exe"
-      EntryPoint="$targetentrypoint$" uap18:TrustLevel="mediumIL" uap18:RuntimeBehavior="packagedClassicApp">
-      <uap:VisualElements
-        DisplayName="Instant Trace Viewer"
-        Description="Instant Trace Viewer"
-        BackgroundColor="transparent"
-        Square150x150Logo="Images\Square150x150Logo.png"
-        Square44x44Logo="Images\Square44x44Logo.png">
+    <Application Id="App" Executable="InstantTraceViewerUI.exe" EntryPoint="Windows.FullTrustApplication" uap18:TrustLevel="mediumIL" uap18:RuntimeBehavior="packagedClassicApp">
+      <uap:VisualElements DisplayName="Instant Trace Viewer" Description="Instant Trace Viewer" BackgroundColor="transparent" Square150x150Logo="Images\Square150x150Logo.png" Square44x44Logo="Images\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Images\SplashScreen.png" />
       </uap:VisualElements>
@@ -69,7 +47,7 @@
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
-        <uap5:Extension Category="windows.appExecutionAlias" Executable="InstantTraceViewerUI\InstantTraceViewerUI.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="InstantTraceViewerUI.exe" EntryPoint="Windows.FullTrustApplication">
           <uap5:AppExecutionAlias>
             <uap5:ExecutionAlias Alias="InstantTraceViewer.exe" />
             <uap5:ExecutionAlias Alias="itv.exe" />
@@ -78,7 +56,6 @@
       </Extensions>
     </Application>
   </Applications>
-
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
