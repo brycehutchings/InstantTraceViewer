@@ -31,13 +31,12 @@
     <None Remove="FieldMap_HResults.tsv" />
     <None Remove="FieldMap_NTStatus.tsv" />
     <None Remove="FieldMap_Win32Errors.tsv" />
-    <None Remove="Images\LockScreenLogo.scale-200.png" />
-    <None Remove="Images\SplashScreen.scale-200.png" />
-    <None Remove="Images\Square150x150Logo.scale-200.png" />
-    <None Remove="Images\Square44x44Logo.scale-200.png" />
-    <None Remove="Images\Square44x44Logo.targetsize-24_altform-unplated.png" />
+    <None Remove="Images\LockScreenLogo.png" />
+    <None Remove="Images\SplashScreen.png" />
+    <None Remove="Images\Square150x150Logo.png" />
+    <None Remove="Images\Square44x44Logo.png" />
     <None Remove="Images\StoreLogo.png" />
-    <None Remove="Images\Wide310x150Logo.scale-200.png" />
+    <None Remove="Images\Wide310x150Logo.png" />
     <None Remove="AppxManifest.xml" />
   </ItemGroup>
   <ItemGroup>
@@ -53,25 +52,22 @@
     <Content Include="FieldMap_Win32Errors.tsv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\LockScreenLogo.scale-200.png">
+    <Content Include="Images\LockScreenLogo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\SplashScreen.scale-200.png">
+    <Content Include="Images\SplashScreen.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\Square150x150Logo.scale-200.png">
+    <Content Include="Images\Square150x150Logo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\Square44x44Logo.scale-200.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Images\Square44x44Logo.targetsize-24_altform-unplated.png">
+    <Content Include="Images\Square44x44Logo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Images\StoreLogo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\Wide310x150Logo.scale-200.png">
+    <Content Include="Images\Wide310x150Logo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="AppxManifest.xml">

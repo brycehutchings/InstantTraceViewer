@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:uap18="http://schemas.microsoft.com/appx/manifest/uap/windows10/18" IgnorableNamespaces="uap rescap uap18 build" xmlns:build="http://schemas.microsoft.com/developer/appx/2015/build">
-  <Identity Name="7121BryceHutchings.InstantTraceViewer" Publisher="CN=FE01EC5C-A845-4996-83AA-3BF4024D23C2" Version="1.2.1.0" ProcessorArchitecture="arm64" />
+  <Identity Name="7121BryceHutchings.InstantTraceViewer" Publisher="CN=FE01EC5C-A845-4996-83AA-3BF4024D23C2" Version="1.2.2.0" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>Instant Trace Viewer</DisplayName>
     <PublisherDisplayName>Bryce Hutchings</PublisherDisplayName>
