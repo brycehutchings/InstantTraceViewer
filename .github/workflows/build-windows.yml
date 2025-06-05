@@ -26,9 +26,6 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
-    - name: Restore NuGet packages
-      run: dotnet restore InstantTraceViewer.sln
-
     - name: Pack MSIX
       shell: pwsh
       run: |
