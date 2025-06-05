@@ -28,7 +28,7 @@ jobs:
 
     - name: Publish MSIX
       working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: msbuild -m -target:Restore;Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 .\src\InstantTraceViewerMsixPackaging\InstantTraceViewerMsixPackaging.wapproj
+      run: msbuild -m -target:"Restore;Publish" -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 .\src\InstantTraceViewerMsixPackaging\InstantTraceViewerMsixPackaging.wapproj
 
     - name: Upload Instant Trace Viewer Unpackaged
       uses: actions/upload-artifact@v4
