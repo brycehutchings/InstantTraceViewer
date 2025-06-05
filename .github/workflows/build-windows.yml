@@ -32,8 +32,8 @@ jobs:
     - name: Pack MSIX
       shell: pwsh
       run: |
-        & ./src/InstantTraceViewerUI/PackMSIX.ps1 ${{ matrix.platform }}
-      working-directory: ${{ github.workspace }}
+        & ./PackMSIX.ps1 ${{ matrix.platform }}
+      working-directory: ${{ github.workspace }}/src/InstantTraceViewerUI/
 
     - name: Upload Instant Trace Viewer Unpackaged
       uses: actions/upload-artifact@v4

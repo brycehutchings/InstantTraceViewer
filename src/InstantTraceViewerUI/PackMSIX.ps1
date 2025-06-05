@@ -21,7 +21,7 @@ $PublishPath = Join-Path $BuildPath "publish"
 
 Remove-Item $BuildPath -Recurse -Force -ErrorAction Ignore
 
-msbuild -m -target:Publish -p:Configuration=Release -p:Platform=$Platform -p:RuntimeIdentifier=win-$PlatformLower -p:NoWarn=1591 ..\InstantTraceViewerUI\InstantTraceViewerUI.csproj
+msbuild -m -target:Publish -p:Configuration=Release -p:Platform=$Platform -p:RuntimeIdentifier=win-$PlatformLower -p:NoWarn=1591 InstantTraceViewerUI.csproj
 
 # Patch up the AppxManifest.xml
 $AppxManifest = Join-Path $PublishPath "AppxManifest.xml"

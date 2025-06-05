@@ -6,6 +6,8 @@ $pfxPath = "$env:TEMP\MyMsixTestCert.pfx"
 $msixPath = "D:\repos\itv2\src\InstantTraceViewerUI\bin\MSIX\InstantTraceViewer_X64.msix"
 $pfxPassword = "hello123"
 
+# FIXME: Only create a new certificate if it doesn't already exist
+
 # Step 1: Create a self-signed certificate
 $cert = New-SelfSignedCertificate `
     -Subject $certName `
