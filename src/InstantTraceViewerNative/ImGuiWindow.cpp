@@ -3,12 +3,14 @@
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
 #include <d3d11.h>
+#include <dxgi1_3.h>
 #include <shellapi.h>
 
 static constexpr UINT DefaultX = 100;
 static constexpr UINT DefaultY = 100;
 static constexpr UINT DefaultWidth = 1200;
 static constexpr UINT DefaultHeight = 800;
+static constexpr UINT SwapchainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
 static HWND g_hwnd{ nullptr };
 static WNDCLASSEXW g_windowClass{};
@@ -16,6 +18,7 @@ static bool g_swapChainOccluded{ false };
 static ID3D11Device* g_d3dDevice = nullptr;
 static ID3D11DeviceContext* g_d3dDeviceContext = nullptr;
 static IDXGISwapChain* g_swapChain = nullptr;
+static HANDLE g_swapChainWaitableObject = nullptr;
 static UINT g_resizeWidth = 0, g_resizeHeight = 0;
 static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 static bool g_msaaEnabled = false;
@@ -113,6 +116,11 @@ extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, i
     *occluded = 0;
     *quit = 0;
 
+    if (g_swapChainWaitableObject)
+    {
+        ::WaitForSingleObject(g_swapChainWaitableObject, INFINITE);
+    }
+
     // Poll and handle messages (inputs, window resize, etc.)
     // See the WndProc() function below for our to dispatch events to the Win32 backend.
     MSG msg;
@@ -144,9 +152,17 @@ extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, i
     if (g_resizeWidth != 0 && g_resizeHeight != 0)
     {
         CleanupRenderTarget();
-        g_swapChain->ResizeBuffers(0, g_resizeWidth, g_resizeHeight, DXGI_FORMAT_UNKNOWN, 0);
+        HRESULT hr = g_swapChain->ResizeBuffers(0, g_resizeWidth, g_resizeHeight, DXGI_FORMAT_UNKNOWN, SwapchainFlags);
+        if (FAILED(hr))
+        {
+            return 1; // Error
+        }
         g_resizeWidth = g_resizeHeight = 0;
-        CreateRenderTarget();
+        hr = CreateRenderTarget();
+        if (FAILED(hr))
+        {
+            return 1; // Error
+        }
     }
 
     // Start the Dear ImGui frame
@@ -154,8 +170,8 @@ extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, i
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
-    // static bool s_showDemoWindow = true;
-    // ImGui::ShowDemoWindow(&s_showDemoWindow);
+    static bool s_showDemoWindow = true;
+    ImGui::ShowDemoWindow(&s_showDemoWindow);
 
     return 0;
 }
@@ -236,19 +252,16 @@ extern "C" CurrentInputTextState __declspec(dllexport) __stdcall GetCurrentInput
 bool CreateDeviceD3D(HWND hWnd)
 {
     // Setup swap chain
-    DXGI_SWAP_CHAIN_DESC sd;
+    DXGI_SWAP_CHAIN_DESC1 sd;
     ZeroMemory(&sd, sizeof(sd));
     sd.BufferCount = 2;
-    sd.BufferDesc.Width = 0;
-    sd.BufferDesc.Height = 0;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    sd.Width = 0;
+    sd.Height = 0;
+    sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.Flags = SwapchainFlags;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = hWnd;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    sd.Scaling = DXGI_SCALING_NONE;
 
     // When MSAA is enabled (by setting this to 2+), the ImGui fringe-based anti-aliasing will be disabled (see where g_msaaEnabled is read).
     // However, the ImGui anti-aliasing looks better than MSAA 8x for the most part. So support for this is only here in case this needs to
@@ -262,14 +275,54 @@ bool CreateDeviceD3D(HWND hWnd)
     //createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
     D3D_FEATURE_LEVEL featureLevel;
     const D3D_FEATURE_LEVEL featureLevelArray[2] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0, };
-    HRESULT res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_swapChain, &g_d3dDevice, &featureLevel, &g_d3dDeviceContext);
+
+    HRESULT res = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &g_d3dDevice, &featureLevel, &g_d3dDeviceContext);
     if (res == DXGI_ERROR_UNSUPPORTED) // Try high-performance WARP software driver if hardware is not available.
     {
-        res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_swapChain, &g_d3dDevice, &featureLevel, &g_d3dDeviceContext);
+        res = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &g_d3dDevice, &featureLevel, &g_d3dDeviceContext);
     }
     if (res != S_OK)
     {
         return false;
+    }
+
+    // TODO: https://github.com/ocornut/imgui/pull/5413/files
+
+    IDXGIDevice* dxgiDevice = nullptr;
+    res = g_d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
+    if (FAILED(res))
+        return false;
+
+    IDXGIAdapter* dxgiAdapter = nullptr;
+    res = dxgiDevice->GetAdapter(&dxgiAdapter);
+    dxgiDevice->Release();
+    if (FAILED(res))
+        return false;
+
+    IDXGIFactory2* dxgiFactory = nullptr;
+    res = dxgiAdapter->GetParent(__uuidof(IDXGIFactory2), (void**)&dxgiFactory);
+    dxgiAdapter->Release();
+    if (FAILED(res))
+        return false;
+
+    res = dxgiFactory->CreateSwapChainForHwnd(g_d3dDevice, hWnd, &sd, nullptr, nullptr, (IDXGISwapChain1**)&g_swapChain);
+    dxgiFactory->Release();
+    if (FAILED(res))
+        return false;
+
+    if (sd.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
+    {
+        // https://github.com/ocornut/imgui/pull/5413/files
+        IDXGISwapChain2* swapChain2 = nullptr;
+        g_swapChain->QueryInterface(IID_PPV_ARGS(&swapChain2));
+        if (swapChain2) {
+            // If your application is CPU or GPU heavy you may decide to increase maximum frame latency to 2. Then the CPU will start work
+            // on the next frame before the GPU finishes the previous frame, allowing CPU and GPU work to overlap more. This increases
+            // throughput at the expense of latency, allowing you more time to render but making your application feel less responsive.
+            swapChain2->SetMaximumFrameLatency(1);
+            g_swapChainWaitableObject = swapChain2->GetFrameLatencyWaitableObject();
+            swapChain2->Release();
+        }
     }
 
     return SUCCEEDED(CreateRenderTarget());
@@ -278,6 +331,7 @@ bool CreateDeviceD3D(HWND hWnd)
 void CleanupDeviceD3D()
 {
     CleanupRenderTarget();
+    if (g_swapChainWaitableObject) { CloseHandle(g_swapChainWaitableObject); g_swapChainWaitableObject = NULL; }
     if (g_swapChain) { g_swapChain->Release(); g_swapChain = nullptr; }
     if (g_d3dDeviceContext) { g_d3dDeviceContext->Release(); g_d3dDeviceContext = nullptr; }
     if (g_d3dDevice) { g_d3dDevice->Release(); g_d3dDevice = nullptr; }
