@@ -21,7 +21,7 @@ $PublishPath = Join-Path $BuildPath "publish"
 
 Remove-Item $BuildPath -Recurse -Force -ErrorAction Ignore
 
-msbuild -m -target:Restore;Publish -p:Configuration=Release -p:Platform=$Platform -p:RuntimeIdentifier=win-$PlatformLower -p:NoWarn=1591 InstantTraceViewerUI.csproj
+msbuild -m "-target:Restore;Publish" -p:Configuration=Release -p:Platform=$Platform -p:RuntimeIdentifier=win-$PlatformLower -p:NoWarn=1591 InstantTraceViewerUI.csproj
 if (!$?) {
     Write-Error "MSBuild failed. Please check the output for errors."
     exit 1
