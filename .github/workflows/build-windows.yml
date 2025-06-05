@@ -23,30 +23,17 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: |
-          8.0.x
-          9.0.x
-
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
     - name: Restore NuGet packages
       run: dotnet restore InstantTraceViewer.sln
 
-    #- name: Publish MSIX
-    #  working-directory: ${{env.GITHUB_WORKSPACE}}
-    #  run: msbuild -m -target:Publish -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:NoWarn=1591 .\src\InstantTraceViewerUI\InstantTraceViewerUI.csproj
-
-    # Run powershell script: src/InstantTraceViewerUI/PackMSIX.ps1
     - name: Pack MSIX
       shell: pwsh
       run: |
         & ./src/InstantTraceViewerUI/PackMSIX.ps1 ${{ matrix.platform }}
       working-directory: ${{ github.workspace }}
-
 
     - name: Upload Instant Trace Viewer Unpackaged
       uses: actions/upload-artifact@v4
