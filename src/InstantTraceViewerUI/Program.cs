@@ -135,10 +135,13 @@ namespace InstantTraceViewerUI
                 // Symbol font is reduced by 2 pixels, otherwise it has full height which looks awkward.
                 AddFontFromBytes(CalcScaledFontSize(Settings.FontSize - 2), symbolFont, true /* merge */, [
                     // Use https://fontawesome.com/v6/search?ic=free to search for icons.
+                    0xE4BF, // "arrows-to-eye"
                     0xE68F, // "thumbtack-slash"
+                    0xF002, // "magnifying-glass"
                     0xF00C, // "check"
                     0xF00D, // "xmark"
                     0xF010, // "magnifying-glass-minus"
+                    0xF00E, // "magnifying-glass-plus"
                     0xF044, // "pen-to-square"
                     0xF04B, // "play"
                     0xF04C, // "pause"
@@ -151,6 +154,7 @@ namespace InstantTraceViewerUI
                     0xF08D, // "thumbtack"
                     0xF0B0, // "filter"
                     0xF0C5, // "copy"
+                    0xF0CE, // "table"
                     0xF062, // "arrow-up"
                     0xF063, // "arrow-down"
                     0xF0FE, // "square-plus"
@@ -174,7 +178,8 @@ namespace InstantTraceViewerUI
             using (Stream s = assembly.GetManifestResourceStream(resourceName))
             {
                 byte[] ret = new byte[s.Length];
-                s.Read(ret, 0, (int)s.Length);
+                int readLength = s.Read(ret, 0, (int)s.Length);
+                Debug.Assert(readLength == s.Length, "Failed to read the entire embedded resource stream.");
                 return ret;
             }
         }
