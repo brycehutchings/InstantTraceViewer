@@ -113,12 +113,16 @@ extern "C" int __declspec(dllexport) __stdcall WindowInitialize(ImGuiContext** i
 // Returns true if frame is being presented and False if frame is not being presented (e.g. window is minimized).
 extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, int* occluded) noexcept
 {
-    *occluded = 0;
+    *occluded = 0;  
     *quit = 0;
 
     if (g_swapChainWaitableObject)
     {
-        ::WaitForSingleObject(g_swapChainWaitableObject, INFINITE);
+        // It has been observed that waiting on the swapchain waitable object can go unsignaled forever when the window is closed, causing the application to hang.
+        // To avoid this, we wait for the swapchain to be signaled with a timeout of 100ms.
+        if (::WaitForSingleObject(g_swapChainWaitableObject, 100 /* 100ms */) == WAIT_TIMEOUT) {
+            assert(false && "Check out the other threads and see why this is happening");
+        }
     }
 
     // Poll and handle messages (inputs, window resize, etc.)
@@ -170,8 +174,8 @@ extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, i
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
-    static bool s_showDemoWindow = true;
-    ImGui::ShowDemoWindow(&s_showDemoWindow);
+    //static bool s_showDemoWindow = true;
+    //ImGui::ShowDemoWindow(&s_showDemoWindow);
 
     return 0;
 }
