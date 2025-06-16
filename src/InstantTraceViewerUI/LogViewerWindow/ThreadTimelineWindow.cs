@@ -191,6 +191,14 @@ namespace InstantTraceViewerUI
                 _endZoomRange = DateTime.MaxValue;
             }
             ImGui.EndDisabled();
+            ImGui.SameLine();
+            ImGui.BeginDisabled(!startWindow.HasValue || !endWindow.HasValue);
+            if (ImGui.Button("\uF0CE Zoom to table view"))
+            {
+                _startZoomRange = startWindow.Value;
+                _endZoomRange = endWindow.Value;
+            }
+            ImGui.EndDisabled();
 
             ImGui.SameLine();
             ImGuiWidgets.HelpIconToolip(
@@ -463,26 +471,6 @@ namespace InstantTraceViewerUI
 
             TimeSpan rangeDuration = endRange - startRange;
             float tickToPixel = trackRegionAvailableWidth / rangeDuration.Ticks;
-            float timelineHeight = ImGui.GetFontSize() * 1; // * 1 because there is just one row of text at the moment.
-            ImGui.Dummy(new Vector2(trackRegionAvailableWidth, timelineHeight));
-            if (ImGui.IsItemVisible())
-            {
-                float lineHeight = ImGui.GetTextLineHeight();
-                Vector4 clipRect = new(timelineTopLeft.X, timelineTopLeft.Y, timelineTopLeft.X + trackRegionAvailableWidth, timelineTopLeft.Y + timelineHeight);
-                var drawAligned = (string text, float xPercent, float y) =>
-                {
-                    float textLength = ImGui.CalcTextSize(text).X;
-                    float x = xPercent * (trackRegionAvailableWidth - textLength);
-                    drawList.AddText(null /* default font  */, 0.0f /* default font size */,
-                        timelineTopLeft + new Vector2(x, y), ImGui.GetColorU32(ImGuiCol.Text), text, 0.0f /* no text wrap */,
-                        ref clipRect);
-                };
-
-                // NOTE: Update timelineHeight coefficient if more lines are added.
-                drawAligned($"\uF060 {FriendlyStringify.ToString(startRange - _latestComputedTracks.StartTraceTable)}", 0.0f, lineHeight * 0);
-                drawAligned($"{FriendlyStringify.ToString(endRange - _latestComputedTracks.StartTraceTable)} \uF061", 1.0f, lineHeight * 0);
-                drawAligned($"[{FriendlyStringify.ToString(rangeDuration)}]", 0.5f, lineHeight * 0);
-            }
 
             // Color background region that is visible in the log viewer.
             if (startWindow.HasValue && endWindow.HasValue && endWindow.Value >= startRange && startWindow.Value <= endRange)
@@ -499,8 +487,7 @@ namespace InstantTraceViewerUI
                 drawList.AddRectFilled(min, max, AppTheme.ThreadTimelineLogViewRegionColor);
             }
 
-            // We want the vertical line for the selected row to be draw over the visible region (previous block of code) but under all of the track bars/ticks
-            // so this is where we have to add the draw call.
+            // We want the vertical line for the selected row to be draw over the visible region (previous block of code) but under all of the track bars/ticks.
             if (lastSelectedVisibleRowIndex.HasValue && _trackAreaWidth.HasValue && _trackAreaLeftScreenPos.HasValue)
             {
                 DateTime timestamp = _latestComputedTracks.TraceTableSnapshot.GetTimestamp(lastSelectedVisibleRowIndex.Value);
@@ -520,6 +507,28 @@ namespace InstantTraceViewerUI
                         new Vector2(xPos - 0.5f + _trackAreaLeftScreenPos.Value, 1000000),
                         color);
                 }
+            }
+
+            // Draw the start/stop and duration of the zoomed region on the timeline.
+            float timelineHeight = ImGui.GetFontSize() * 1; // * 1 because there is just one row of text at the moment.
+            ImGui.Dummy(new Vector2(trackRegionAvailableWidth, timelineHeight));
+            if (ImGui.IsItemVisible())
+            {
+                float lineHeight = ImGui.GetTextLineHeight();
+                Vector4 clipRect = new(timelineTopLeft.X, timelineTopLeft.Y, timelineTopLeft.X + trackRegionAvailableWidth, timelineTopLeft.Y + timelineHeight);
+                var drawAligned = (string text, float xPercent, float y) =>
+                {
+                    float textLength = ImGui.CalcTextSize(text).X;
+                    float x = xPercent * (trackRegionAvailableWidth - textLength);
+                    drawList.AddText(null /* default font  */, 0.0f /* default font size */,
+                        timelineTopLeft + new Vector2(x, y), ImGui.GetColorU32(ImGuiCol.Text), text, 0.0f /* no text wrap */,
+                        ref clipRect);
+                };
+
+                // NOTE: Update timelineHeight coefficient if more lines are added.
+                drawAligned($"\uF060 {FriendlyStringify.ToString(startRange - _latestComputedTracks.StartTraceTable)}", 0.0f, lineHeight * 0);
+                drawAligned($"{FriendlyStringify.ToString(endRange - _latestComputedTracks.StartTraceTable)} \uF061", 1.0f, lineHeight * 0);
+                drawAligned($"[{FriendlyStringify.ToString(rangeDuration)}]", 0.5f, lineHeight * 0);
             }
         }
 
