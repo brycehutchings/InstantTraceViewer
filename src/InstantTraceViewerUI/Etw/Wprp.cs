@@ -262,7 +262,20 @@ namespace InstantTraceViewerUI.Etw
             {
                 string systemCollectorId = (string)systemCollectorNode.Attribute("Value");
                 profile.SystemCollector = globalSystemCollectors.Single(c => c.Id == systemCollectorId);
-                profile.SystemProvider = globalSystemProviders[(string)systemCollectorNode.Element("SystemProviderId").Attribute("Value")];
+
+                var systemProviderId = systemCollectorNode.Element("SystemProviderId");
+                if (systemProviderId != null)
+                {
+                    profile.SystemProvider = globalSystemProviders[(string)systemProviderId.Attribute("Value")];
+                }
+                else
+                {
+                    var systemProvider = systemCollectorNode.Element("SystemProvider");
+                    if (systemProvider != null)
+                    {
+                        profile.SystemProvider = SystemProvider.Parse(systemProvider);
+                    }
+                }
             }
 
             Dictionary<EventCollector, IReadOnlyList<EventProvider>> eventProviders = new();
