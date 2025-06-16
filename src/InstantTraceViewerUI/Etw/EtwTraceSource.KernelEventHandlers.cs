@@ -215,6 +215,8 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
+            // Better for analysis or graphical visualization. Too noisy for logs.
+#if false
             var newRecord = CreateBaseTraceRecord(obj);
 
             // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
@@ -227,6 +229,7 @@ namespace InstantTraceViewerUI.Etw
                 new NamedValue("TimeDateStamp", timeDateStamp.ToString("yyyy-MM-dd HH:mm:ss")),
                 new NamedValue("CheckSum", obj.ImageChecksum)];
             AddEvent(newRecord);
+#endif
         }
 
         private void OnStackWalkStack(StackWalkStackTraceData obj)
