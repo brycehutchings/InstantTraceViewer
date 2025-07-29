@@ -26,7 +26,15 @@
             }
         }
 
+        // This version is 100ns precision and should have no rounding issues (DateTime is like FILETIME which uses 100ns units).
+        // This is needed for comparison to work correctly (e.g. >= includes the datetime in question).
+        public static string ToStringFull(DateTime dateTime, IFormatProvider? formatProvider = null) => dateTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", formatProvider);
+
         public static string ToString(DateTime dateTime, IFormatProvider? formatProvider = null) => dateTime.ToString("yyyy-MM-dd HH:mm:ss.ffffff", formatProvider);
+
+        // This version is 100ns precision and should have no rounding issues (DateTimeOffset is like FILETIME which uses 100ns units).
+        // This is needed for comparison to work correctly (e.g. >= includes the datetime in question).
+        public static string ToStringFull(DateTimeOffset dateTime, IFormatProvider? formatProvider = null) => dateTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", formatProvider);
 
         public static string ToString(DateTimeOffset dateTime, IFormatProvider? formatProvider = null) => dateTime.ToString("yyyy-MM-dd HH:mm:ss.ffffff", formatProvider);
     }
