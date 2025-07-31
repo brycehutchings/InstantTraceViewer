@@ -1,4 +1,6 @@
-﻿namespace InstantTraceViewerTests
+﻿using System.Text.RegularExpressions;
+
+namespace InstantTraceViewerTests
 {
     /// <summary>
     /// Ok so this isn't really a test. I just needed a place to stash a small program to generate a
@@ -21,6 +23,9 @@
 
             List<Tuple<uint, string>> hrMap = new();
             List<Tuple<uint, string>> win32Map = new();
+
+            win32Map.Add(Tuple.Create(0u, "ERROR_SUCCESS"));
+            hrMap.Add(Tuple.Create(0u, $"S_OK"));
 
             foreach (string rawLine in winErrorLines)
             {
@@ -85,6 +90,11 @@
                     }
                 }
 
+                if (errorCode == 0)
+                {
+                    continue; // 0 is manually added above to avoid duplicates for this common value.
+                }
+
                 if (isHResult || errorCode >= 0x80000000)
                 {
                     hrMap.Add(Tuple.Create(errorCode, name));
@@ -93,6 +103,31 @@
                 {
                     win32Map.Add(Tuple.Create(errorCode, name));
                     hrMap.Add(Tuple.Create((uint)unchecked((int)0x80070000 + errorCode), $"HRESULT_FROM_WIN32({name})")); // FACILITY_WIN32 is 7, so we need to add 0x80070000 to the error code to make it an HRESULT.
+                }
+            }
+
+            {
+                string[] d3dErrorLines = File.ReadAllLines(@"C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\um\d3d9helper.h");
+                // Create regex that extracts the name and error code. Example:
+                // #define D3DERR_WRONGTEXTUREFORMAT               MAKE_D3DHRESULT(2072)
+                Regex d3dHresultRegex = new Regex(@"#define\s+(?<name>\w+)\s+MAKE_D3DHRESULT\((?<code>\d+)\)", RegexOptions.Compiled);
+                foreach (string rawLine in d3dErrorLines)
+                {
+                    Match match = d3dHresultRegex.Match(rawLine);
+                    if (!match.Success)
+                    {
+                        continue;
+                    }
+
+                    string name = match.Groups["name"].Value;
+                    if (!uint.TryParse(match.Groups["code"].Value, out uint errorCode))
+                    {
+                        Console.WriteLine("Skipping d3d9helper.h line with unknown error code: " + rawLine);
+                        continue;
+                    }
+
+                    // MAKE_D3DHRESULT maps to MAKE_HRESULT( 1, 0x876, code). For example code 380 becomes 0x8876017C
+                    hrMap.Add(Tuple.Create(errorCode | 0x88760000, $"MAKE_D3DHRESULT({name})"));
                 }
             }
 
