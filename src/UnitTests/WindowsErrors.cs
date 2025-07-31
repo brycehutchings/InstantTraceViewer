@@ -127,7 +127,7 @@ namespace InstantTraceViewerTests
                     }
 
                     // MAKE_D3DHRESULT maps to MAKE_HRESULT( 1, 0x876, code). For example code 380 becomes 0x8876017C
-                    hrMap.Add(Tuple.Create(errorCode | 0x88760000, $"MAKE_D3DHRESULT({name})"));
+                    hrMap.Add(Tuple.Create(errorCode | 0x88760000, name));
                 }
             }
 
