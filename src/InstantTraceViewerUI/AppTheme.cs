@@ -35,6 +35,8 @@ namespace InstantTraceViewerUI
         // This color ends up alphablended over the alternating row colors.
         public static uint MatchingRowBgColor;
 
+        static AppTheme()
+        {
             uint[] highlightRowBgColors = new uint[Enum.GetValues<HighlightRowBgColor>().Length];
             highlightRowBgColors[(int)HighlightRowBgColor.Maroon] = 0xFF000080;
             highlightRowBgColors[(int)HighlightRowBgColor.Brown] = 0xFF24639A;
@@ -60,8 +62,6 @@ namespace InstantTraceViewerUI
             highlightRowBgColors[(int)HighlightRowBgColor.White] = 0xFFFFFFFF;
             HighlightRowBgColors = highlightRowBgColors;
 
-        static AppTheme()
-        {
             UpdateTheme();
         }
 
