@@ -272,8 +272,11 @@ namespace InstantTraceViewerUI
                 List<object> hoveredEvents = new(); // Contains 0 or more 'Bar' and 'InstantEvent' objects.
                 foreach (var trackKey in pinnedTracksSnapshot)
                 {
-                    var track = _latestComputedTracks.Tracks.FirstOrDefault(t => t.UniqueKey == trackKey);
-                    DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
+                    // The track might not be found if a track was pinned but then all of its events were filtered out. Multiple tracks are not expected.
+                    foreach (ComputedTrack track in _latestComputedTracks.Tracks.Where(t => t.UniqueKey == trackKey))
+                    {
+                        DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
+                    }
                 }
 
                 if (pinnedTracksSnapshot.Any())
