@@ -10,7 +10,7 @@ namespace InstantTraceViewerUI
 {
     internal class FiltersEditorWindow
     {
-        private const string WindowName = "Filters Editor";
+        private const string WindowName = "Rules Editor";
 
         private readonly string _name;
         private readonly string _parentWindowId;
