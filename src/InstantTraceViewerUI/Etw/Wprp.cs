@@ -22,6 +22,29 @@ namespace InstantTraceViewerUI.Etw
         Verbose
     }
 
+    internal static class XmlExtensions
+    {
+        public static XElement RequiredElement(this XElement parent, string name)
+        {
+            XElement child = parent.Element(name);
+            if (child == null)
+            {
+                throw new Exception($"Missing required element '{name}' in '{parent.Name}'");
+            }
+            return child;
+        }
+
+        public static XAttribute RequiredAttribute(this XElement element, string name)
+        {
+            XAttribute attr = element.Attribute(name);
+            if (attr == null)
+            {
+                throw new Exception($"Missing required attribute '{name}' in element '{element.Name}'");
+            }
+            return attr;
+        }
+    }
+
     // https://learn.microsoft.com/en-us/windows-hardware/test/wpt/1-collector-definitions
     internal class CollectorBase
     {
@@ -32,8 +55,8 @@ namespace InstantTraceViewerUI.Etw
 
         protected void ParseXml(XElement collectorEl)
         {
-            Id = (string)collectorEl.Attribute("Id");
-            Name = (string)collectorEl.Attribute("Name");
+            Id = (string)collectorEl.RequiredAttribute("Id");
+            Name = (string)collectorEl.RequiredAttribute("Name");
             BufferSize = (uint?)collectorEl.Element("BufferSize")?.Attribute("Value");
             Buffers = (uint?)collectorEl.Element("Buffers")?.Attribute("Value");
         }
@@ -69,10 +92,10 @@ namespace InstantTraceViewerUI.Etw
         {
             return new SystemProvider
             {
-                Id = (string)systemProviderEl.Attribute("Id"),
+                Id = (string)systemProviderEl.RequiredAttribute("Id"),
                 Keywords = systemProviderEl.Elements("Keywords")
                     .SelectMany(k => k.Elements("Keyword")
-                        .Select(k => (string)k.Attribute("Value"))).ToList()
+                        .Select(k => (string)k.RequiredAttribute("Value"))).ToList()
             };
         }
     }
@@ -92,7 +115,7 @@ namespace InstantTraceViewerUI.Etw
                     .Select(k =>
                     {
                         // If starts with 0x then parse as hex, otherwise parse as decimal
-                        string value = (string)k.Attribute("Value");
+                        string value = (string)k.RequiredAttribute("Value");
                         return value.StartsWith("0x") ? Convert.ToUInt64(value, 16) : Convert.ToUInt64(value);
                     })).ToList();
 
@@ -101,8 +124,8 @@ namespace InstantTraceViewerUI.Etw
             // TODO: CaptureStateOnSave, CaptureStateOnStart, EventFilters, EventKey, NonPagedMemory
             return new EventProvider
             {
-                Id = (string)eventProviderEl.Attribute("Id"),
-                Name = (string)eventProviderEl.Attribute("Name"),
+                Id = (string)eventProviderEl.RequiredAttribute("Id"),
+                Name = (string)eventProviderEl.RequiredAttribute("Name"),
                 Level = (uint?)eventProviderEl.Attribute("Level"),
                 Keywords = keywords
             };
@@ -240,11 +263,11 @@ namespace InstantTraceViewerUI.Etw
             Dictionary<string, EventProvider> globalEventProviders)
         {
             WprpProfile profile = new WprpProfile();
-            profile.Id = (string)profileEl.Attribute("Id");
-            profile.Name = (string)profileEl.Attribute("Name");
-            profile.Description = (string)profileEl.Attribute("Description");
-            profile.DetailLevel = Enum.Parse<DetailLevel>((string)profileEl.Attribute("DetailLevel"));
-            profile.LoggingMode = Enum.Parse<LoggingMode>((string)profileEl.Attribute("LoggingMode"));
+            profile.Id = (string)profileEl.RequiredAttribute("Id");
+            profile.Name = (string)profileEl.RequiredAttribute("Name");
+            profile.Description = (string)profileEl.RequiredAttribute("Description");
+            profile.DetailLevel = Enum.Parse<DetailLevel>((string)profileEl.RequiredAttribute("DetailLevel"));
+            profile.LoggingMode = Enum.Parse<LoggingMode>((string)profileEl.RequiredAttribute("LoggingMode"));
 
             string baseProfile = (string)profileEl.Attribute("Base");
             if (!string.IsNullOrEmpty(baseProfile))
@@ -253,20 +276,32 @@ namespace InstantTraceViewerUI.Etw
                 return null; // Skip profiles that inherit from another profile for now.
             }
 
-            var collectorsNode = profileEl.Element("Collectors");
+            var collectorsNode = profileEl.RequiredElement("Collectors");
             // TODO: 'Operation' attribute for Add/Remove/Union
 
             Dictionary<SystemCollector, IReadOnlyList<SystemProvider>> systemProviders = new();
             var systemCollectorNode = collectorsNode.Element("SystemCollectorId");
             if (systemCollectorNode != null)
             {
-                string systemCollectorId = (string)systemCollectorNode.Attribute("Value");
-                profile.SystemCollector = globalSystemCollectors.Single(c => c.Id == systemCollectorId);
+                string systemCollectorId = (string)systemCollectorNode.RequiredAttribute("Value");
+
+                try
+                {
+                    profile.SystemCollector = globalSystemCollectors.Single(c => c.Id == systemCollectorId);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Failed to find SystemCollectorId with Id='{systemCollectorId}' or duplicate Ids exist.", ex);
+                }
 
                 var systemProviderId = systemCollectorNode.Element("SystemProviderId");
                 if (systemProviderId != null)
                 {
-                    profile.SystemProvider = globalSystemProviders[(string)systemProviderId.Attribute("Value")];
+                    if (!globalSystemProviders.TryGetValue((string)systemProviderId.RequiredAttribute("Value"), out SystemProvider systemProvider))
+                    {
+                        throw new Exception($"Failed to find SystemProviderId with Value='{(string)systemProviderId.Attribute("Value")}'");
+                    }
+                    profile.SystemProvider = systemProvider;
                 }
                 else
                 {
@@ -281,16 +316,25 @@ namespace InstantTraceViewerUI.Etw
             Dictionary<EventCollector, IReadOnlyList<EventProvider>> eventProviders = new();
             foreach (var eventCollector in collectorsNode.Elements("EventCollectorId"))
             {
-                string eventCollectorId = (string)eventCollector.Attribute("Value");
-                EventCollector collector = globalEventCollectors.Single(ec => ec.Id == eventCollectorId);
-                var eventProvidersNode = eventCollector.Element("EventProviders");
+                string eventCollectorId = (string)eventCollector.RequiredAttribute("Value");
+                EventCollector collector;
+                try
+                {
+                    collector = globalEventCollectors.Single(ec => ec.Id == eventCollectorId);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Failed to find EventCollectorId with Id='{eventCollectorId}' or duplicate Ids exist.", ex);
+                }
+
+                var eventProvidersNode = eventCollector.RequiredElement("EventProviders");
 
                 List<EventProvider> profileEventProviders = new();
 
                 // EventProviderId refer to the global EventProvider elements outside the current Profile.
                 var eventProviderIdNodes = eventProvidersNode.Elements("EventProviderId");
                 profileEventProviders.AddRange(eventProviderIdNodes.Select(epi =>
-                    globalEventProviders[(string)epi.Attribute("Value")]));
+                    globalEventProviders[(string)epi.RequiredAttribute("Value")]));
 
                 // EventProvider refer to EventProviders inlined in this current Profile.
                 var eventProviderNodes = eventProvidersNode.Elements("EventProvider");
