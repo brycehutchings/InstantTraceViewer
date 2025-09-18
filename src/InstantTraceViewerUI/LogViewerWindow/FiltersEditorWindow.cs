@@ -243,9 +243,9 @@ Examples:
                     ImGui.TableNextColumn();
                     if (rule.Action != TraceRowRuleAction.Exclude) // Exclude rules cannot highlight.
                     {
-                        if (rule.HightlightColor.HasValue)
+                        if (rule.HighlightColor.HasValue)
                         {
-                            ImGuiWidgets.ColorSquare(AppTheme.GetHighlightRowBgColorU32(rule.HightlightColor.Value), verticalOffset: 2);
+                            ImGuiWidgets.ColorSquare(AppTheme.GetHighlightRowBgColorU32(rule.HighlightColor.Value), verticalOffset: 2);
                         }
 
                         ImGui.SameLine();
@@ -258,7 +258,7 @@ Examples:
                         {
                             ImGuiWidgets.AddHighlightRowBgColorMenuItems(selectedColor =>
                             {
-                                rule.HightlightColor = selectedColor;
+                                rule.HighlightColor = selectedColor;
                             });
 
                             ImGui.EndPopup();
@@ -270,7 +270,7 @@ Examples:
                             ImGui.SameLine();
                             if (ImGuiWidgets.UndecoratedButton("\uF00D##RemoveHightlight", "Remove highlight"))
                             {
-                                rule.HightlightColor = null;
+                                rule.HighlightColor = null;
                             }
                         }
                     }
@@ -386,7 +386,7 @@ Examples:
                             sw.WriteLine("Enabled\tAction\tBgColor\tQuery");
                             foreach (IRule filter in rules.Rules)
                             {
-                                sw.WriteLine($"{filter.Enabled}\t{filter.Action}\t{filter.HightlightColor}\t{filter.Query}");
+                                sw.WriteLine($"{filter.Enabled}\t{filter.Action}\t{filter.HighlightColor}\t{filter.Query}");
                             }
                         }
                     }

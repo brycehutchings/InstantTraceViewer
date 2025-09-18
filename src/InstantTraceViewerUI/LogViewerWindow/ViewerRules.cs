@@ -28,7 +28,7 @@ namespace InstantTraceViewerUI
         public TraceTableRowSelector? Predicate { get; }
 
         // Highlight color can be changed directly because it does not affect filtering, unlike the other properties.
-        public HighlightRowBgColor? HightlightColor { get; set;  }
+        public HighlightRowBgColor? HighlightColor { get; set;  }
     }
 
     internal class ViewerRules
@@ -46,7 +46,7 @@ namespace InstantTraceViewerUI
             // Predicate is compiled from the query if successful.
             public TraceTableRowSelector? Predicate { get; set; }
 
-            public HighlightRowBgColor? HightlightColor { get; set; }
+            public HighlightRowBgColor? HighlightColor { get; set; }
         }
 
         private List<Rule> _visibleRules = new();
@@ -85,18 +85,18 @@ namespace InstantTraceViewerUI
                 }
 
                 // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
-                _visibleRules.Insert(0, new Rule { Query = query, Action = ruleAction, HightlightColor = highlightColor });
+                _visibleRules.Insert(0, new Rule { Query = query, Action = ruleAction, HighlightColor = highlightColor });
             }
             else
             {
-                _visibleRules.Add(new Rule { Query = query, Action = ruleAction, HightlightColor = highlightColor });
+                _visibleRules.Add(new Rule { Query = query, Action = ruleAction, HighlightColor = highlightColor });
             }
             GenerationId++;
         }
 
         public void AppendRule(bool enabled, TraceRowRuleAction action, string query, HighlightRowBgColor? highlightColor = null)
         {
-            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action, HightlightColor = highlightColor });
+            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action, HighlightColor = highlightColor });
             GenerationId++;
         }
 
@@ -141,7 +141,7 @@ namespace InstantTraceViewerUI
 
             foreach (var rule in _visibleRules)
             {
-                if (!rule.HightlightColor.HasValue)
+                if (!rule.HighlightColor.HasValue)
                 {
                     continue;
                 }
@@ -158,7 +158,7 @@ namespace InstantTraceViewerUI
 
                 if (rule.Predicate(traceTable, rowIndex))
                 {
-                    return rule.HightlightColor;
+                    return rule.HighlightColor;
                 }
             }
             return null;
