@@ -106,7 +106,11 @@ namespace InstantTraceViewerUI
                 uint colorU32 = AppTheme.GetHighlightRowBgColorU32(color);
 
                 ImGui.SetCursorScreenPos(p);
-                ColorSquare(colorU32, widthMultiplier: 4);
+                ColorSquare(colorU32, 0);
+                ImGui.SameLine();
+
+                uint r = colorU32 & 0xFF, g = (colorU32 >> 8) & 0xFF, b = (colorU32 >> 16) & 0xFF;
+                ImGui.TextUnformatted(color.ToString());
 
                 ImGui.PopID();
             }
