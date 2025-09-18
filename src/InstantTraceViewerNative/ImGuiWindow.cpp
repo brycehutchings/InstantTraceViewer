@@ -119,10 +119,8 @@ extern "C" int __declspec(dllexport) __stdcall WindowBeginNextFrame(int* quit, i
     if (g_swapChainWaitableObject)
     {
         // It has been observed that waiting on the swapchain waitable object can go unsignaled forever when the window is closed, causing the application to hang.
-        // To avoid this, we wait for the swapchain to be signaled with a timeout of 100ms.
-        if (::WaitForSingleObject(g_swapChainWaitableObject, 100 /* 100ms */) == WAIT_TIMEOUT) {
-            assert(false && "Check out the other threads and see why this is happening");
-        }
+        // To avoid this, we wait for the swapchain to be signaled with a timeout of 1000ms.
+        ::WaitForSingleObject(g_swapChainWaitableObject, 1000 /* 1000ms */);
     }
 
     // Poll and handle messages (inputs, window resize, etc.)
