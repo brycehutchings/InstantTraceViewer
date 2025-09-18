@@ -1,4 +1,5 @@
 using InstantTraceViewer;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -8,9 +9,11 @@ namespace InstantTraceViewerUI
     public enum TraceRowRuleAction
     {
         Include,
-        Exclude
+        Exclude,
+        Highlight
     }
 
+    // Properties of interface cannot be changed directly because the generationId is managed outside of the Rules.
     public interface IRule
     {
         public string Query { get; }
@@ -23,6 +26,9 @@ namespace InstantTraceViewerUI
 
         // Predicate is compiled from the query if successful.
         public TraceTableRowSelector? Predicate { get; }
+
+        // Highlight color can be changed directly because it does not affect filtering, unlike the other properties.
+        public HighlightRowBgColor? HightlightColor { get; set;  }
     }
 
     internal class ViewerRules
@@ -30,7 +36,7 @@ namespace InstantTraceViewerUI
         class Rule : IRule
         {
             public required string Query { get; init; }
-            public required TraceRowRuleAction Action { get; init; }
+            public required TraceRowRuleAction Action { get; set; }
 
             public bool Enabled { get; set; } = true;
 
@@ -39,6 +45,8 @@ namespace InstantTraceViewerUI
 
             // Predicate is compiled from the query if successful.
             public TraceTableRowSelector? Predicate { get; set; }
+
+            public HighlightRowBgColor? HightlightColor { get; set; }
         }
 
         private List<Rule> _visibleRules = new();
@@ -66,24 +74,29 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
-        public void AddRule(string query, TraceRowRuleAction ruleAction)
+        public void AddRule(string query, TraceRowRuleAction ruleAction, HighlightRowBgColor? highlightColor = null)
         {
-            if (ruleAction == TraceRowRuleAction.Include)
+            // Include rules go last to ensure anything already excluded stays excluded.
+            if (ruleAction == TraceRowRuleAction.Exclude)
             {
-                // Include rules go last to ensure anything already excluded stays excluded.
-                _visibleRules.Add(new Rule { Query = query, Action = TraceRowRuleAction.Include });
-            }
-            else if (ruleAction == TraceRowRuleAction.Exclude)
-            {
+                if (highlightColor.HasValue)
+                {
+                    throw new ArgumentException("Highlight color cannot be set for exclude rules.");
+                }
+
                 // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
-                _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
+                _visibleRules.Insert(0, new Rule { Query = query, Action = ruleAction, HightlightColor = highlightColor });
+            }
+            else
+            {
+                _visibleRules.Add(new Rule { Query = query, Action = ruleAction, HightlightColor = highlightColor });
             }
             GenerationId++;
         }
 
-        public void AppendRule(bool enabled, TraceRowRuleAction action, string query)
+        public void AppendRule(bool enabled, TraceRowRuleAction action, string query, HighlightRowBgColor? highlightColor = null)
         {
-            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action });
+            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action, HightlightColor = highlightColor });
             GenerationId++;
         }
 
@@ -114,7 +127,42 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
+        public void SetRuleAction(int index, TraceRowRuleAction action)
+        {
+            _visibleRules[index].Action = action;
+            GenerationId++;
+        }
+
         public IReadOnlyList<IRule> Rules => _visibleRules;
+
+        public HighlightRowBgColor? TryGetHighlightColor(ITraceTableSnapshot traceTable, int rowIndex)
+        {
+            EnsureVisibleRulePredicates(traceTable);
+
+            foreach (var rule in _visibleRules)
+            {
+                if (!rule.HightlightColor.HasValue)
+                {
+                    continue;
+                }
+
+                if (rule.Predicate == null)
+                {
+                    continue; // This rule could not be parsed.
+                }
+
+                if (!rule.Enabled)
+                {
+                    continue;
+                }
+
+                if (rule.Predicate(traceTable, rowIndex))
+                {
+                    return rule.HightlightColor;
+                }
+            }
+            return null;
+        }
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {
@@ -128,6 +176,12 @@ namespace InstantTraceViewerUI
             TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
             foreach (var rule in _visibleRules)
             {
+                // Highlighting is handled separately.
+                if (rule.Action == TraceRowRuleAction.Highlight)
+                {
+                    continue;
+                }
+
                 if (rule.Predicate == null)
                 {
                     continue; // This rule could not be parsed.

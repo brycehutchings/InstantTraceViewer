@@ -271,11 +271,17 @@ namespace InstantTraceViewerUI
 
                         if (visibleTraceTable.Schema.ProcessIdColumn != null && visibleTraceTable.GetProcessId(i) == _hoveredProcessId)
                         {
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 0);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, 0);
                         }
                         if (visibleTraceTable.Schema.ThreadIdColumn != null && visibleTraceTable.GetThreadId(i) == _hoveredThreadId)
                         {
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, ImGui.ColorConvertFloat4ToU32(AppTheme.MatchingRowBgColor), 1);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, 1);
+                        }
+
+                        HighlightRowBgColor? highlightColor = _viewerRules.TryGetHighlightColor(visibleTraceTable, i);
+                        if (highlightColor.HasValue)
+                        {
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, AppTheme.GetHighlightRowBgColorU32(highlightColor.Value));
                         }
 
                         Vector4 rowColor = LevelToColor(UnifiedLevel.Info);
@@ -468,6 +474,21 @@ namespace InstantTraceViewerUI
                     _viewerRules.AddRule(newRuleStr, TraceRowRuleAction.Exclude);
                 }
             }
+
+            void AddHighlightRule(IEnumerable<string> newRule)
+            {
+                string newRuleStr = string.Join(' ', newRule);
+
+                if (ImGui.BeginMenu($"Highlight: {newRuleStr}"))
+                {
+                    ImGuiWidgets.AddHighlightRowBgColorMenuItems(selectedColor =>
+                    {
+                        _viewerRules.AddRule(newRuleStr, TraceRowRuleAction.Highlight, selectedColor);
+                    });
+
+                    ImGui.EndMenu();
+                }
+            }
             void AddCustomRule(IEnumerable<string> newRule)
             {
                 string newRuleStr = string.Join(' ', newRule);
@@ -486,28 +507,56 @@ namespace InstantTraceViewerUI
             if (column == visibleTraceTable.Schema.UnifiedLevelColumn)
             {
                 var levelStr = visibleTraceTable.GetColumnValueUnifiedLevel(i, column).ToString();
+                string provStr = null;
+                string[] andProvEquals = null, newRuleGtOrEq = null, newRuleLtOrEq = null;
+                if (visibleTraceTable.Schema.ProviderColumn != null)
+                {
+                    provStr = visibleTraceTable.GetColumnValueString(i, visibleTraceTable.Schema.ProviderColumn, allowMultiline: false);
+                    andProvEquals = [
+                       "AND",
+                        TraceTableRowSelectorSyntax.CreateColumnVariableName(visibleTraceTable.Schema.ProviderColumn),
+                        TraceTableRowSelectorSyntax.EqualsOperatorName,
+                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(provStr)];
+                    newRuleGtOrEq = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, levelStr];
+                    newRuleLtOrEq = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, levelStr];
+                }
 
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
-                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
                 AddIncludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, levelStr]);
+                if (visibleTraceTable.Schema.ProviderColumn != null)
+                {
+                    AddIncludeRule(newRuleGtOrEq.Concat(andProvEquals));
+                }
+
+                ImGui.Separator();
+                AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
                 AddExcludeRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, levelStr]);
 
                 if (visibleTraceTable.Schema.ProviderColumn != null)
                 {
-                    var provStr = visibleTraceTable.GetColumnValueString(i, visibleTraceTable.Schema.ProviderColumn, allowMultiline: false);
-                    string[] andProvEquals = [
-                        "AND",
-                        TraceTableRowSelectorSyntax.CreateColumnVariableName(visibleTraceTable.Schema.ProviderColumn),
-                        TraceTableRowSelectorSyntax.EqualsOperatorName,
-                        TraceTableRowSelectorSyntax.CreateEscapedStringLiteral(provStr)];
+                    AddExcludeRule(newRuleLtOrEq.Concat(andProvEquals));
+                }
 
+                ImGui.Separator();
 
-                    string[] newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, levelStr];
-                    AddIncludeRule(newRule.Concat(andProvEquals));
-                    newRule = [TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, levelStr];
-                    AddExcludeRule(newRule.Concat(andProvEquals));
+                if (ImGui.BeginMenu("Hightlight"))
+                {
+                    // ImGui.Separator();
+                    AddHighlightRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.EqualsOperatorName, levelStr]);
+                    AddHighlightRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.GreaterThanOrEqualOperatorName, levelStr]);
+                    AddHighlightRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, levelStr]);
+                    if (visibleTraceTable.Schema.ProviderColumn != null)
+                    {
+                        AddHighlightRule(newRuleGtOrEq.Concat(andProvEquals));
+                        AddHighlightRule(newRuleLtOrEq.Concat(andProvEquals));
+                    }
 
-                    AddCustomRule(newRule.Concat(andProvEquals));
+                    ImGui.EndMenu();
+                }
+
+                if (visibleTraceTable.Schema.ProviderColumn != null)
+                {
+                    AddCustomRule(newRuleLtOrEq.Concat(andProvEquals));
                 }
                 else
                 {

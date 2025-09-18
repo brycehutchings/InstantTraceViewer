@@ -1,4 +1,5 @@
 ﻿using ImGuiNET;
+using System;
 using System.Numerics;
 
 namespace InstantTraceViewerUI
@@ -11,6 +12,16 @@ namespace InstantTraceViewerUI
         private static int _lastActiveItemFrame = 0;
         private static uint _lastHoveredItem = uint.MaxValue;
         private static int _lastHoveredItemFrame = 0;
+
+        public static void ColorSquare(uint color, int verticalOffset = 2)
+        {
+            float sz = ImGui.GetTextLineHeight();
+            Vector2 p = ImGui.GetCursorScreenPos() + new Vector2(0, verticalOffset);
+            ImGui.GetWindowDrawList().AddRectFilled(p, new Vector2(p.X + sz, p.Y + sz + verticalOffset), color);
+            ImGui.Dummy(new Vector2(sz, sz));
+        }
+
+        public static void ColorSquare(Vector4 color, int verticalOffset = 2) => ColorSquare(ImGui.GetColorU32(color), verticalOffset);
 
         // Renders a button without any background or border. Text color changes instead.
         public static bool UndecoratedButton(string text, string? tooltip = null)
@@ -78,6 +89,33 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.PopID();
+        }
+
+        public static void AddHighlightRowBgColorMenuItems(Action<HighlightRowBgColor> selectionAction)
+        {
+            float sz = ImGui.GetTextLineHeight();
+            foreach (HighlightRowBgColor color in Enum.GetValues<HighlightRowBgColor>())
+            {
+                ImGui.PushID((int)color);
+
+                Vector2 p = ImGui.GetCursorScreenPos();
+
+                if (ImGui.MenuItem(""))
+                {
+                    selectionAction(color);
+                }
+
+                uint colorU32 = AppTheme.GetHighlightRowBgColorU32(color);
+
+                ImGui.SetCursorScreenPos(p);
+                ColorSquare(colorU32, 0);
+                ImGui.SameLine();
+
+                uint r = colorU32 & 0xFF, g = (colorU32 >> 8) & 0xFF, b = (colorU32 >> 16) & 0xFF;
+                ImGui.TextUnformatted($"#{r:X2}{g:X2}{b:X2}");
+
+                ImGui.PopID();
+            }
         }
     }
 }
