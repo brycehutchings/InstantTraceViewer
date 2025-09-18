@@ -191,9 +191,8 @@ namespace InstantTraceViewerUI
 
                 ImGui.PushStyleVar(ImGuiStyleVar.CellPadding, new Vector2(2, 2)); // Tighten spacing
 
-                Vector4? lastColor = null;
-
-                var setColor = (Vector4? color) =>
+                uint? lastColor = null;
+                void SetColor(uint? color)
                 {
                     if (color != lastColor)
                     {
@@ -207,7 +206,7 @@ namespace InstantTraceViewerUI
                         }
                         lastColor = color;
                     }
-                };
+                }
 
                 // Maintain scroll position when the view was rebuilt.
                 if (filteredViewRebuilt)
@@ -284,13 +283,13 @@ namespace InstantTraceViewerUI
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, AppTheme.GetHighlightRowBgColorU32(highlightColor.Value));
                         }
 
-                        Vector4 rowColor = LevelToColor(UnifiedLevel.Info);
+                        uint rowColor = LevelToColor(UnifiedLevel.Info);
                         if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
                         {
                             UnifiedLevel unifiedLevel = visibleTraceTable.GetUnifiedLevel(i);
                             rowColor = LevelToColor(unifiedLevel);
                         }
-                        setColor(rowColor);
+                        SetColor(rowColor);
 
                         ImGui.TableNextColumn();
 
@@ -371,7 +370,7 @@ namespace InstantTraceViewerUI
 
                             if (ImGui.BeginPopup($"tableViewPopup{columnIndex}", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
                             {
-                                setColor(null);
+                                SetColor(null);
 
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
 
@@ -384,7 +383,7 @@ namespace InstantTraceViewerUI
                                 }
                                 ImGui.EndPopup();
 
-                                setColor(rowColor); // Resume color for remainder of row.
+                                SetColor(rowColor); // Resume color for remainder of row.
                             }
 
                             // Double-click on a cell will pop up a read-only edit box so the user can read long content or copy parts of the text.
@@ -403,9 +402,9 @@ namespace InstantTraceViewerUI
                                 {
                                     if (ImGui.BeginPopup("CellContentPopup", ImGuiWindowFlags.NoSavedSettings))
                                     {
-                                        setColor(null); // Clear color back to default
+                                        SetColor(null); // Clear color back to default
                                         RenderCellContentPopup(visibleTraceTable, fullTableRowIndex, column);
-                                        setColor(rowColor); // Resume color
+                                        SetColor(rowColor); // Resume color
                                         ImGui.EndPopup();
                                     }
                                     else
@@ -425,7 +424,7 @@ namespace InstantTraceViewerUI
                 }
                 _tableClipper.End();
 
-                setColor(null);
+                SetColor(null);
 
                 ImGui.EndMultiSelect();
                 ApplyMultiSelectRequests(visibleTraceTable, multiselectIO);
@@ -984,7 +983,7 @@ namespace InstantTraceViewerUI
             return newWindow;
         }
 
-        private static Vector4 LevelToColor(UnifiedLevel level)
+        private static uint LevelToColor(UnifiedLevel level)
         {
             return level == UnifiedLevel.Verbose ? AppTheme.VerboseColor
                    : level == UnifiedLevel.Warning ? AppTheme.WarningColor

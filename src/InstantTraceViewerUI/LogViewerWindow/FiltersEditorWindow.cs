@@ -153,8 +153,8 @@ Examples:
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
                 ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, dpiBase * 3.5f);
                 ImGui.TableSetupColumn("Manage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
-                ImGui.TableSetupColumn("Highlight", ImGuiTableColumnFlags.WidthFixed, dpiBase * 2.0f);
-                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
+                ImGui.TableSetupColumn("Highlight", ImGuiTableColumnFlags.WidthFixed, dpiBase * 4.5f);
+                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, dpiBase * 6.0f);
                 ImGui.TableSetupColumn("Query", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 
@@ -245,7 +245,7 @@ Examples:
                     {
                         if (rule.HightlightColor.HasValue)
                         {
-                            ImGuiWidgets.ColorSquare(AppTheme.GetHighlightRowBgColorU32(rule.HightlightColor.Value));
+                            ImGuiWidgets.ColorSquare(AppTheme.GetHighlightRowBgColorU32(rule.HightlightColor.Value), verticalOffset: 2);
                         }
 
                         ImGui.SameLine();
@@ -277,7 +277,7 @@ Examples:
 
                     ImGui.TableNextColumn();
 
-                    ImGui.SetNextItemWidth(100);
+                    ImGui.SetNextItemWidth(dpiBase * 5);
                     if (ImGui.BeginCombo("##Action", rule.Action.ToString()))
                     {
                         foreach (TraceRowRuleAction action in Enum.GetValues<TraceRowRuleAction>())

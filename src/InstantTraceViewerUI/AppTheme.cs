@@ -22,11 +22,11 @@ namespace InstantTraceViewerUI
 
     internal static class AppTheme
     {
-        public static Vector4 InfoColor;
-        public static Vector4 VerboseColor;
-        public static Vector4 WarningColor;
-        public static Vector4 ErrorColor;
-        public static Vector4 FatalColor;
+        public static uint InfoColor;
+        public static uint VerboseColor;
+        public static uint WarningColor;
+        public static uint ErrorColor;
+        public static uint FatalColor;
 
         private static IReadOnlyList<uint> HighlightRowBgColors;
 
@@ -45,8 +45,6 @@ namespace InstantTraceViewerUI
 
         public static void UpdateTheme()
         {
-            float highlightRowBgColorValue;
-
             // Adjust the dark theme to match VSCode/VS/Teams color. Instead of harsh pure black background, a dark gray is used.
             if (Settings.Theme == ImGuiTheme.Dark)
             {
@@ -65,8 +63,6 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(1, 1, 1, 0.03f);
 
                 ThreadTimelineLogViewRegionColor = 0xFF404040;
-
-                highlightRowBgColorValue = 0.4f; // Highlight colors need to be darker so the bright text is visible.
             }
             else
             {
@@ -76,25 +72,24 @@ namespace InstantTraceViewerUI
                 ImGui.GetStyle().Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(0.3f, 0.3f, 0.3f, 0.045f);
 
                 ThreadTimelineLogViewRegionColor = 0xFFC0C0C0;
-
-                highlightRowBgColorValue = 0.75f; // Highlight colors need to be brighter so the dark text is visible.
             }
 
-            // FIXME: Red is too similar to error text.
             int highlightRowBgColorCount = Enum.GetValues<HighlightRowBgColor>().Length;
             HighlightRowBgColors = Enumerable.Range(0, highlightRowBgColorCount).Select(i =>
             {
                 int hue = i * (360 / highlightRowBgColorCount);
-                ImGui.ColorConvertHSVtoRGB(hue / 360.0f, 1.0f /* saturation */, highlightRowBgColorValue, out float r, out float g, out float b);
+
+                // Beware: Higher brightness that 0.6 causes the red color to be too hard to read with error text (ErrorColor).
+                ImGui.ColorConvertHSVtoRGB((hue % 360) / 360.0f, 1.0f /* saturation */, 0.6f /* value/brightness */, out float r, out float g, out float b);
                 return ImGui.GetColorU32(new Vector4(r, g, b, 1.0f));
             }).ToArray();
 
-            InfoColor = ImGui.GetStyle().Colors[(int)ImGuiCol.Text];
-            VerboseColor = InterpolateColor(0.4f, ImGuiCol.Text, ImGuiCol.WindowBg);
+            InfoColor = ImGui.ColorConvertFloat4ToU32(ImGui.GetStyle().Colors[(int)ImGuiCol.Text]);
+            VerboseColor = ImGui.ColorConvertFloat4ToU32(InterpolateColor(0.4f, ImGuiCol.Text, ImGuiCol.WindowBg));
             MatchingRowBgColor = ImGui.ColorConvertFloat4ToU32(AdjustColorAlpha(ImGuiCol.TableRowBgAlt, 3.0f));
-            WarningColor = new Vector4(1.0f, 0.65f, 0.0f, 1.0f);      // Orange
-            ErrorColor = new Vector4(0.9f, 0.0f, 0.0f, 1.0f);         // Red
-            FatalColor = new Vector4(0.70f, 0.0f, 0.0f, 1.0f);        // Dark Red
+            WarningColor = 0xff00a6e6;  // Orange
+            ErrorColor = 0xff0000e6;    // Red
+            FatalColor = 0xff0000b3;    // Dark Red
         }
 
         private static Vector4 InterpolateColor(float t, ImGuiCol startColor, ImGuiCol endColor)
