@@ -821,6 +821,16 @@ namespace InstantTraceViewerUI
                     }
                 }
 
+                ImGui.Separator();
+                if (ImGui.MenuItem($"Go to previously highlighted row", "Alt+;"))
+                {
+                    setScrollIndex = FindNextHighlightedRow(visibleTraceTable, findForward: false);
+                }
+                if (ImGui.MenuItem($"Go to next highlighted row", "Alt+'"))
+                {
+                    setScrollIndex = FindNextHighlightedRow(visibleTraceTable, findForward: true);
+                }
+
                 ImGui.EndPopup();
             }
 
@@ -973,6 +983,15 @@ namespace InstantTraceViewerUI
                     setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: true);
                 }
             }
+
+            if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Semicolon, ImGuiInputFlags.Repeat))
+            {
+                setScrollIndex = FindNextHighlightedRow(visibleTraceTable, findForward: false);
+            }
+            if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Apostrophe, ImGuiInputFlags.Repeat))
+            {
+                setScrollIndex = FindNextHighlightedRow(visibleTraceTable, findForward: true);
+            }
         }
 
         private LogViewerWindow Clone()
@@ -1035,6 +1054,9 @@ namespace InstantTraceViewerUI
 
         private int? FindNextError(FilteredTraceTableSnapshot visibleTraceTable, string text, bool findForward)
             => FindNextRow(visibleTraceTable, (visibleTraceTable, i) => visibleTraceTable.GetUnifiedLevel(i) >= UnifiedLevel.Error, findForward);
+
+        private int? FindNextHighlightedRow(FilteredTraceTableSnapshot visibleTraceTable, bool findForward)
+            => FindNextRow(visibleTraceTable, (visibleTraceTable, i) => _viewerRules.TryGetHighlightColor(visibleTraceTable.FullTable, visibleTraceTable.GetFullTableRowIndex(i)).HasValue, findForward);
 
         private int? FindNextRow(FilteredTraceTableSnapshot visibleTraceTable, Func<FilteredTraceTableSnapshot, int, bool> predicate, bool findForward)
         {
