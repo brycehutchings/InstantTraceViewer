@@ -268,7 +268,7 @@ Examples:
                         {
                             // Also allow highlight to be removed. It's optional for include rules.
                             ImGui.SameLine();
-                            if (ImGuiWidgets.UndecoratedButton("\uF00D##RemoveHightlight", "Remove highlight"))
+                            if (ImGuiWidgets.UndecoratedButton("\uF00D##RemoveHighlight", "Remove highlight"))
                             {
                                 rule.HighlightColor = null;
                             }
