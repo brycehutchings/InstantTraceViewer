@@ -760,7 +760,7 @@ namespace InstantTraceViewerUI
                 if (itvfMru.Count > 0)
                 {
                     ImGui.Separator();
-                    if (ImGui.BeginMenu("Recent .ITVF files"))
+                    if (ImGui.BeginMenu("Recent ITVF files"))
                     {
                         foreach (var file in itvfMru)
                         {
