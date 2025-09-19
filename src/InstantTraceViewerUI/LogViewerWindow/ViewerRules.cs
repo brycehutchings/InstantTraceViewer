@@ -35,17 +35,13 @@ namespace InstantTraceViewerUI
     {
         class Rule : IRule
         {
-            public required string Query { get; init; }
+            public required string Query { get; set; }
             public required TraceRowRuleAction Action { get; set; }
-
             public bool Enabled { get; set; } = true;
-
             // The result of parsing the query.
             public TraceTableRowSelectorParseResults ParseResult { get; set; }
-
             // Predicate is compiled from the query if successful.
             public TraceTableRowSelector? Predicate { get; set; }
-
             public HighlightRowBgColor? HighlightColor { get; set; }
         }
 
@@ -102,8 +98,7 @@ namespace InstantTraceViewerUI
 
         public void UpdateRule(int index, string query)
         {
-            Rule oldRule = _visibleRules[index];
-            _visibleRules[index] = new Rule { Query = query, Action = oldRule.Action, Enabled = oldRule.Enabled };
+            _visibleRules[index].Query = query;
             GenerationId++;
         }
 
