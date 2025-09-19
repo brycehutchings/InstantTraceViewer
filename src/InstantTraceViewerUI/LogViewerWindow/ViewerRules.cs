@@ -2,6 +2,7 @@ using InstantTraceViewer;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace InstantTraceViewerUI
@@ -28,7 +29,7 @@ namespace InstantTraceViewerUI
         public TraceTableRowSelector? Predicate { get; }
 
         // Highlight color can be changed directly because it does not affect filtering, unlike the other properties.
-        public HighlightRowBgColor? HighlightColor { get; set;  }
+        public HighlightRowBgColor? HighlightColor { get; set; }
     }
 
     internal class ViewerRules
@@ -229,6 +230,61 @@ namespace InstantTraceViewerUI
 
             _visibleRulePredicatesRuleGenerationId = GenerationId;
             _visibleRulePredicatesTableGenerationId = traceTable.GenerationId;
+        }
+
+        public void Import(IUiCommands uiCommands, string file)
+        {
+            Settings.AddRecentlyUsedItvf(file);
+
+            try
+            {
+                using TsvTableSource tsv = new TsvTableSource(file, firstRowIsHeader: true, readInBackground: false);
+                ITraceTableSnapshot tsvSnapshot = tsv.CreateSnapshot();
+                TraceSourceSchemaColumn enabledColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Enabled");
+                TraceSourceSchemaColumn actionColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Action");
+                TraceSourceSchemaColumn bgColorColumn = tsvSnapshot.Schema.Columns.SingleOrDefault(c => c.Name == "BgColor");
+                TraceSourceSchemaColumn queryColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Query");
+                for (int i = 0; i < tsvSnapshot.RowCount; i++)
+                {
+                    string enabledStr = tsvSnapshot.GetColumnValueString(i, enabledColumn);
+                    string actionStr = tsvSnapshot.GetColumnValueString(i, actionColumn);
+                    string bgColorStr = bgColorColumn != null ? tsvSnapshot.GetColumnValueString(i, bgColorColumn) : null;
+                    string query = tsvSnapshot.GetColumnValueString(i, queryColumn);
+                    if (string.IsNullOrWhiteSpace(enabledStr) && string.IsNullOrWhiteSpace(actionStr) && string.IsNullOrWhiteSpace(query))
+                    {
+                        continue; // Ignore empty lines.
+                    }
+
+                    AppendRule(
+                        bool.Parse(enabledStr),
+                        Enum.Parse<TraceRowRuleAction>(actionStr),
+                        query,
+                        Enum.TryParse<HighlightRowBgColor>(bgColorStr, out var highlightColor) ? highlightColor : null);
+                }
+            }
+            catch (Exception ex)
+            {
+                uiCommands.ShowMessageBox("Failed to open .ITVF file.\n\n" + ex.Message, "Error", isError: true);
+            }
+        }
+
+        public void Export(IUiCommands uiCommands, string file)
+        {
+            Settings.AddRecentlyUsedItvf(file);
+
+            try
+            {
+                using StreamWriter sw = new StreamWriter(file);
+                sw.WriteLine("Enabled\tAction\tBgColor\tQuery");
+                foreach (IRule filter in Rules)
+                {
+                    sw.WriteLine($"{filter.Enabled}\t{filter.Action}\t{filter.HighlightColor}\t{filter.Query}");
+                }
+            }
+            catch (Exception ex)
+            {
+                uiCommands.ShowMessageBox("Failed to save .ITVF file.\n\n" + ex.Message, "Error", isError: true);
+            }
         }
     }
 }

@@ -756,6 +756,24 @@ namespace InstantTraceViewerUI
                     _viewerRules.ClearRules();
                 }
 
+                IReadOnlyList<string> itvfMru = Settings.GetRecentlyOpenedItfv();
+                if (itvfMru.Count > 0)
+                {
+                    ImGui.Separator();
+                    if (ImGui.BeginMenu("Recent .ITVF files"))
+                    {
+                        foreach (var file in itvfMru)
+                        {
+                            if (ImGui.MenuItem($"Import {file}"))
+                            {
+                                _viewerRules.Import(uiCommands, file);
+                            }
+                        }
+
+                        ImGui.EndMenu();
+                    }
+                }
+
                 ImGui.Separator();
 
                 bool applyFiltering = _viewerRules.ApplyFiltering;

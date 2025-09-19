@@ -158,6 +158,16 @@ namespace InstantTraceViewerUI
             return GetMru("RecentlyOpenedWprp");
         }
 
+        public static void AddRecentlyUsedItvf(string file)
+        {
+            AddMru("RecentlyOpenedItfv", file);
+        }
+
+        public static IReadOnlyList<string> GetRecentlyOpenedItfv()
+        {
+            return GetMru("RecentlyOpenedItfv");
+        }
+
         public static IReadOnlyList<string> GetMru(string settingsName)
         {
             var recentlyOpenedStr = Key.GetValue(settingsName, "") as string;
