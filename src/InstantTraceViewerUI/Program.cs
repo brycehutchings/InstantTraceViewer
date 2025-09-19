@@ -140,8 +140,8 @@ namespace InstantTraceViewerUI
                     0xF002, // "magnifying-glass"
                     0xF00C, // "check"
                     0xF00D, // "xmark"
-                    0xF010, // "magnifying-glass-minus"
                     0xF00E, // "magnifying-glass-plus"
+                    0xF010, // "magnifying-glass-minus"
                     0xF044, // "pen-to-square"
                     0xF04B, // "play"
                     0xF04C, // "pause"
@@ -161,6 +161,7 @@ namespace InstantTraceViewerUI
                     0xF12D, // "eraser"
                     0xF2ED, // "trash-can"
                     0xF31E, // "maximize"
+                    0xF53F, // "palette"
                     0xF78C, // "minimize"
                 ]);
             }

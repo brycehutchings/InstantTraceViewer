@@ -1,6 +1,8 @@
 using InstantTraceViewer;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace InstantTraceViewerUI
@@ -8,9 +10,11 @@ namespace InstantTraceViewerUI
     public enum TraceRowRuleAction
     {
         Include,
-        Exclude
+        Exclude,
+        Highlight
     }
 
+    // Properties of interface cannot be changed directly because the generationId is managed outside of the Rules.
     public interface IRule
     {
         public string Query { get; }
@@ -23,22 +27,23 @@ namespace InstantTraceViewerUI
 
         // Predicate is compiled from the query if successful.
         public TraceTableRowSelector? Predicate { get; }
+
+        // Highlight color can be changed directly because it does not affect filtering, unlike the other properties.
+        public HighlightRowBgColor? HighlightColor { get; set; }
     }
 
     internal class ViewerRules
     {
         class Rule : IRule
         {
-            public required string Query { get; init; }
-            public required TraceRowRuleAction Action { get; init; }
-
+            public required string Query { get; set; }
+            public required TraceRowRuleAction Action { get; set; }
             public bool Enabled { get; set; } = true;
-
             // The result of parsing the query.
             public TraceTableRowSelectorParseResults ParseResult { get; set; }
-
             // Predicate is compiled from the query if successful.
             public TraceTableRowSelector? Predicate { get; set; }
+            public HighlightRowBgColor? HighlightColor { get; set; }
         }
 
         private List<Rule> _visibleRules = new();
@@ -66,31 +71,35 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
-        public void AddRule(string query, TraceRowRuleAction ruleAction)
+        public void AddRule(string query, TraceRowRuleAction ruleAction, HighlightRowBgColor? highlightColor = null)
         {
-            if (ruleAction == TraceRowRuleAction.Include)
+            // Include rules go last to ensure anything already excluded stays excluded.
+            if (ruleAction == TraceRowRuleAction.Exclude)
             {
-                // Include rules go last to ensure anything already excluded stays excluded.
-                _visibleRules.Add(new Rule { Query = query, Action = TraceRowRuleAction.Include });
-            }
-            else if (ruleAction == TraceRowRuleAction.Exclude)
-            {
+                if (highlightColor.HasValue)
+                {
+                    throw new ArgumentException("Highlight color cannot be set for exclude rules.");
+                }
+
                 // Exclude rules go first to ensure they exclude things that might be matched by a preexisting include rule.
-                _visibleRules.Insert(0, new Rule { Query = query, Action = TraceRowRuleAction.Exclude });
+                _visibleRules.Insert(0, new Rule { Query = query, Action = ruleAction, HighlightColor = highlightColor });
+            }
+            else
+            {
+                _visibleRules.Add(new Rule { Query = query, Action = ruleAction, HighlightColor = highlightColor });
             }
             GenerationId++;
         }
 
-        public void AppendRule(bool enabled, TraceRowRuleAction action, string query)
+        public void AppendRule(bool enabled, TraceRowRuleAction action, string query, HighlightRowBgColor? highlightColor = null)
         {
-            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action });
+            _visibleRules.Add(new Rule { Query = query, Enabled = enabled, Action = action, HighlightColor = highlightColor });
             GenerationId++;
         }
 
         public void UpdateRule(int index, string query)
         {
-            Rule oldRule = _visibleRules[index];
-            _visibleRules[index] = new Rule { Query = query, Action = oldRule.Action, Enabled = oldRule.Enabled };
+            _visibleRules[index].Query = query;
             GenerationId++;
         }
 
@@ -114,7 +123,42 @@ namespace InstantTraceViewerUI
             GenerationId++;
         }
 
+        public void SetRuleAction(int index, TraceRowRuleAction action)
+        {
+            _visibleRules[index].Action = action;
+            GenerationId++;
+        }
+
         public IReadOnlyList<IRule> Rules => _visibleRules;
+
+        public HighlightRowBgColor? TryGetHighlightColor(ITraceTableSnapshot traceTable, int rowIndex)
+        {
+            EnsureVisibleRulePredicates(traceTable);
+
+            foreach (var rule in _visibleRules)
+            {
+                if (!rule.HighlightColor.HasValue)
+                {
+                    continue;
+                }
+
+                if (rule.Predicate == null)
+                {
+                    continue; // This rule could not be parsed.
+                }
+
+                if (!rule.Enabled)
+                {
+                    continue;
+                }
+
+                if (rule.Predicate(traceTable, rowIndex))
+                {
+                    return rule.HighlightColor;
+                }
+            }
+            return null;
+        }
 
         public TraceRowRuleAction GetVisibleAction(ITraceTableSnapshot traceTable, int unfilteredRowIndex)
         {
@@ -128,6 +172,12 @@ namespace InstantTraceViewerUI
             TraceRowRuleAction defaultAction = TraceRowRuleAction.Include;
             foreach (var rule in _visibleRules)
             {
+                // Highlighting is handled separately.
+                if (rule.Action == TraceRowRuleAction.Highlight)
+                {
+                    continue;
+                }
+
                 if (rule.Predicate == null)
                 {
                     continue; // This rule could not be parsed.
@@ -180,6 +230,61 @@ namespace InstantTraceViewerUI
 
             _visibleRulePredicatesRuleGenerationId = GenerationId;
             _visibleRulePredicatesTableGenerationId = traceTable.GenerationId;
+        }
+
+        public void Import(IUiCommands uiCommands, string file)
+        {
+            Settings.AddRecentlyUsedItvf(file);
+
+            try
+            {
+                using TsvTableSource tsv = new TsvTableSource(file, firstRowIsHeader: true, readInBackground: false);
+                ITraceTableSnapshot tsvSnapshot = tsv.CreateSnapshot();
+                TraceSourceSchemaColumn enabledColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Enabled");
+                TraceSourceSchemaColumn actionColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Action");
+                TraceSourceSchemaColumn bgColorColumn = tsvSnapshot.Schema.Columns.SingleOrDefault(c => c.Name == "BgColor");
+                TraceSourceSchemaColumn queryColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Query");
+                for (int i = 0; i < tsvSnapshot.RowCount; i++)
+                {
+                    string enabledStr = tsvSnapshot.GetColumnValueString(i, enabledColumn);
+                    string actionStr = tsvSnapshot.GetColumnValueString(i, actionColumn);
+                    string bgColorStr = bgColorColumn != null ? tsvSnapshot.GetColumnValueString(i, bgColorColumn) : null;
+                    string query = tsvSnapshot.GetColumnValueString(i, queryColumn);
+                    if (string.IsNullOrWhiteSpace(enabledStr) && string.IsNullOrWhiteSpace(actionStr) && string.IsNullOrWhiteSpace(query))
+                    {
+                        continue; // Ignore empty lines.
+                    }
+
+                    AppendRule(
+                        bool.Parse(enabledStr),
+                        Enum.Parse<TraceRowRuleAction>(actionStr),
+                        query,
+                        Enum.TryParse<HighlightRowBgColor>(bgColorStr, out var highlightColor) ? highlightColor : null);
+                }
+            }
+            catch (Exception ex)
+            {
+                uiCommands.ShowMessageBox("Failed to open .ITVF file.\n\n" + ex.Message, "Error", isError: true);
+            }
+        }
+
+        public void Export(IUiCommands uiCommands, string file)
+        {
+            Settings.AddRecentlyUsedItvf(file);
+
+            try
+            {
+                using StreamWriter sw = new StreamWriter(file);
+                sw.WriteLine("Enabled\tAction\tBgColor\tQuery");
+                foreach (IRule filter in Rules)
+                {
+                    sw.WriteLine($"{filter.Enabled}\t{filter.Action}\t{filter.HighlightColor}\t{filter.Query}");
+                }
+            }
+            catch (Exception ex)
+            {
+                uiCommands.ShowMessageBox("Failed to save .ITVF file.\n\n" + ex.Message, "Error", isError: true);
+            }
         }
     }
 }

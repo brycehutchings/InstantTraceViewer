@@ -683,7 +683,7 @@ namespace InstantTraceViewerUI
 
                     drawList.AddTriangleFilled(tickTop, tickBottomRight, tickBottomLeft, tickColor);
 
-                    Vector4? levelMarkerColor = mostSevereTickLevel switch
+                    uint? levelMarkerColor = mostSevereTickLevel switch
                     {
                         UnifiedLevel.Fatal => AppTheme.FatalColor,
                         UnifiedLevel.Error => AppTheme.ErrorColor,
@@ -694,7 +694,7 @@ namespace InstantTraceViewerUI
                     if (levelMarkerColor.HasValue)
                     {
                         Vector2 levelMarkerBottomRight = tickBottomRight + new Vector2(0, tickLevelHeight);
-                        drawList.AddRectFilled(tickBottomLeft, levelMarkerBottomRight, ImGui.ColorConvertFloat4ToU32(levelMarkerColor.Value));
+                        drawList.AddRectFilled(tickBottomLeft, levelMarkerBottomRight, levelMarkerColor.Value);
                     }
 
                     overlapsPreviousEventCounter = 0;

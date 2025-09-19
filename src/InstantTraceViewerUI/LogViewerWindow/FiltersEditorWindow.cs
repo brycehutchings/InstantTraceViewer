@@ -10,7 +10,7 @@ namespace InstantTraceViewerUI
 {
     internal class FiltersEditorWindow
     {
-        private const string WindowName = "Filters Editor";
+        private const string WindowName = "Rules Editor";
 
         private readonly string _name;
         private readonly string _parentWindowId;
@@ -69,7 +69,6 @@ namespace InstantTraceViewerUI
             uint addRuleId = ImGui.GetItemID();
 
             ImGui.BeginDisabled(_addRuleLastParseResult.Expression == null);
-            ImGui.SameLine();
             if (ImGui.Button("Add Include"))
             {
                 rules.AddRule(_addRuleInputText, TraceRowRuleAction.Include);
@@ -78,6 +77,11 @@ namespace InstantTraceViewerUI
             if (ImGui.Button("Add Exclude"))
             {
                 rules.AddRule(_addRuleInputText, TraceRowRuleAction.Exclude);
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Add Highlight"))
+            {
+                rules.AddRule(_addRuleInputText, TraceRowRuleAction.Highlight);
             }
             ImGui.EndDisabled();
             ImGui.SameLine();
@@ -140,7 +144,7 @@ Examples:
             // Size table to fit the window but with room for one rows of buttons at the bottom.
             float buttonHeight = ImGui.GetFrameHeightWithSpacing();
             Vector2 tableSize = new Vector2(-1, -buttonHeight);
-            if (ImGui.BeginTable("Rules", 4,
+            if (ImGui.BeginTable("Rules", 5,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
                 ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Sortable, tableSize))
             {
@@ -149,7 +153,8 @@ Examples:
                 ImGui.TableSetupScrollFreeze(0, 1); // Top row is always visible.
                 ImGui.TableSetupColumn("Enabled", ImGuiTableColumnFlags.WidthFixed, dpiBase * 3.5f);
                 ImGui.TableSetupColumn("Manage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
-                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, dpiBase * 5.0f);
+                ImGui.TableSetupColumn("Highlight", ImGuiTableColumnFlags.WidthFixed, dpiBase * 4.5f);
+                ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, dpiBase * 6.0f);
                 ImGui.TableSetupColumn("Query", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 
@@ -236,7 +241,55 @@ Examples:
                     }
 
                     ImGui.TableNextColumn();
-                    ImGui.TextUnformatted(rule.Action.ToString());
+                    if (rule.Action != TraceRowRuleAction.Exclude) // Exclude rules cannot highlight.
+                    {
+                        if (rule.HighlightColor.HasValue)
+                        {
+                            ImGuiWidgets.ColorSquare(AppTheme.GetHighlightRowBgColorU32(rule.HighlightColor.Value), verticalOffset: 2);
+                        }
+
+                        ImGui.SameLine();
+                        if (ImGuiWidgets.UndecoratedButton("\uF53F", "Pick highlight color"))
+                        {
+                            ImGui.OpenPopup($"pickHighlightColor");
+                        }
+
+                        if (ImGui.BeginPopup($"pickHighlightColor", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoSavedSettings))
+                        {
+                            ImGuiWidgets.AddHighlightRowBgColorMenuItems(selectedColor =>
+                            {
+                                rule.HighlightColor = selectedColor;
+                            });
+
+                            ImGui.EndPopup();
+                        }
+
+                        if (rule.Action == TraceRowRuleAction.Include)
+                        {
+                            // Also allow highlight to be removed. It's optional for include rules.
+                            ImGui.SameLine();
+                            if (ImGuiWidgets.UndecoratedButton("\uF00D##RemoveHighlight", "Remove highlight"))
+                            {
+                                rule.HighlightColor = null;
+                            }
+                        }
+                    }
+
+                    ImGui.TableNextColumn();
+
+                    ImGui.SetNextItemWidth(dpiBase * 5);
+                    if (ImGui.BeginCombo("##Action", rule.Action.ToString()))
+                    {
+                        foreach (TraceRowRuleAction action in Enum.GetValues<TraceRowRuleAction>())
+                        {
+                            if (ImGui.Selectable(action.ToString(), rule.Action == action))
+                            {
+                                rules.SetRuleAction(i, action);
+                            }
+                        }
+                        ImGui.EndCombo();
+                    }
+
                     ImGui.TableNextColumn();
 
                     if (_editingRule == rule)
@@ -279,35 +332,12 @@ Examples:
 
                 if (ImGui.Button("Import"))
                 {
-                    IReadOnlyList<string> files = FileDialog.OpenMultipleFiles("Instant Trace Viewer Filters (*.itvf)|*.itvf",
+                    IReadOnlyList<string> files = FileDialog.OpenMultipleFiles("Instant Trace Viewer Rules (*.itvf)|*.itvf",
                         Settings.InstantTraceViewerFiltersLocation,
                         s => Settings.InstantTraceViewerFiltersLocation = s);
                     foreach (string file in files)
                     {
-                        try
-                        {
-                            using TsvTableSource tsv = new TsvTableSource(file, firstRowIsHeader: true, readInBackground: false);
-                            ITraceTableSnapshot tsvSnapshot = tsv.CreateSnapshot();
-                            TraceSourceSchemaColumn enabledColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Enabled");
-                            TraceSourceSchemaColumn actionColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Action");
-                            TraceSourceSchemaColumn queryColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Query");
-                            for (int i = 0; i < tsvSnapshot.RowCount; i++)
-                            {
-                                string enabledStr = tsvSnapshot.GetColumnValueString(i, enabledColumn);
-                                string actionStr = tsvSnapshot.GetColumnValueString(i, actionColumn);
-                                string query = tsvSnapshot.GetColumnValueString(i, queryColumn);
-                                if (string.IsNullOrWhiteSpace(enabledStr) && string.IsNullOrWhiteSpace(actionStr) && string.IsNullOrWhiteSpace(query))
-                                {
-                                    continue; // Ignore empty lines.
-                                }
-
-                                rules.AppendRule(bool.Parse(enabledStr), Enum.Parse<TraceRowRuleAction>(actionStr), query);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            uiCommands.ShowMessageBox("Failed to open .ITVF file.\n\n" + ex.Message, "Error", isError: true);
-                        }
+                        rules.Import(uiCommands, file);
                     }
                 }
 
@@ -315,25 +345,14 @@ Examples:
 
                 if (ImGui.Button("Export"))
                 {
-                    try
+                    string file = FileDialog.SaveFile("Instant Trace Viewer Rules (*.itvf)|*.itvf",
+                        Settings.InstantTraceViewerFiltersLocation,
+                        ".itvf",
+                        s => Settings.InstantTraceViewerFiltersLocation = s);
+                    if (file != null)
                     {
-                        string file = FileDialog.SaveFile("Instant Trace Viewer Filters (*.itvf)|*.itvf",
-                            Settings.InstantTraceViewerFiltersLocation,
-                            ".itvf",
-                            s => Settings.InstantTraceViewerFiltersLocation = s);
-                        if (file != null)
-                        {
-                            using StreamWriter sw = new StreamWriter(file);
-                            sw.WriteLine("Enabled\tAction\tQuery");
-                            foreach (IRule filter in rules.Rules)
-                            {
-                                sw.WriteLine($"{filter.Enabled}\t{filter.Action}\t{filter.Query}");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        uiCommands.ShowMessageBox("Failed to save .ITVF file.\n\n" + ex.Message, "Error", isError: true);
+                        Settings.AddRecentlyUsedItvf(file);
+                        rules.Export(uiCommands, file);
                     }
                 }
 
