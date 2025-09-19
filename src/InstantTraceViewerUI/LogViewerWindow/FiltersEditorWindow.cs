@@ -343,13 +343,13 @@ Examples:
                             ITraceTableSnapshot tsvSnapshot = tsv.CreateSnapshot();
                             TraceSourceSchemaColumn enabledColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Enabled");
                             TraceSourceSchemaColumn actionColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Action");
-                            TraceSourceSchemaColumn bgColorColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "BgColor");
+                            TraceSourceSchemaColumn bgColorColumn = tsvSnapshot.Schema.Columns.SingleOrDefault(c => c.Name == "BgColor");
                             TraceSourceSchemaColumn queryColumn = tsvSnapshot.Schema.Columns.Single(c => c.Name == "Query");
                             for (int i = 0; i < tsvSnapshot.RowCount; i++)
                             {
                                 string enabledStr = tsvSnapshot.GetColumnValueString(i, enabledColumn);
                                 string actionStr = tsvSnapshot.GetColumnValueString(i, actionColumn);
-                                string bgColorStr = tsvSnapshot.GetColumnValueString(i, bgColorColumn);
+                                string bgColorStr = bgColorColumn != null ? tsvSnapshot.GetColumnValueString(i, bgColorColumn) : null;
                                 string query = tsvSnapshot.GetColumnValueString(i, queryColumn);
                                 if (string.IsNullOrWhiteSpace(enabledStr) && string.IsNullOrWhiteSpace(actionStr) && string.IsNullOrWhiteSpace(query))
                                 {
