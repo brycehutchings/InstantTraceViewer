@@ -72,7 +72,7 @@
         public required string Name { get; init; }
 
         /// <summary>
-        /// Size is multipled by the current font height in pixels.
+        /// Size is multiplied by the current font height in pixels.
         /// Returns null when the column size is stretched (this is only recommended for the message).
         /// </summary>
         public float? DefaultColumnSize { get; init; }
@@ -81,6 +81,8 @@
         /// Set to true to have the log viewer colorize the column
         /// </summary>
         public bool Colorize { get; init; } = false;
+
+        public bool IsVisible { get; set; } = true;
     }
 
     public class TraceTableSchema

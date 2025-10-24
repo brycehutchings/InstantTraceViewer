@@ -258,9 +258,9 @@ namespace InstantTraceViewerUI
 
                 while (_tableClipper.Step())
                 {
-                    for (int i = _tableClipper.DisplayStart; i < _tableClipper.DisplayEnd; i++)
+                    for (int rowIdx = _tableClipper.DisplayStart; rowIdx < _tableClipper.DisplayEnd; rowIdx++)
                     {
-                        int fullTableRowIndex = visibleTraceTable.GetFullTableRowIndex(i);
+                        int fullTableRowIndex = visibleTraceTable.GetFullTableRowIndex(rowIdx);
 
                         ImGui.PushID(fullTableRowIndex);
 
@@ -268,16 +268,16 @@ namespace InstantTraceViewerUI
 
                         float rowYOffset = ImGui.GetCursorPosY();
 
-                        if (visibleTraceTable.Schema.ProcessIdColumn != null && visibleTraceTable.GetProcessId(i) == _hoveredProcessId)
+                        if (visibleTraceTable.Schema.ProcessIdColumn != null && visibleTraceTable.GetProcessId(rowIdx) == _hoveredProcessId)
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, 0);
                         }
-                        if (visibleTraceTable.Schema.ThreadIdColumn != null && visibleTraceTable.GetThreadId(i) == _hoveredThreadId)
+                        if (visibleTraceTable.Schema.ThreadIdColumn != null && visibleTraceTable.GetThreadId(rowIdx) == _hoveredThreadId)
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, 1);
                         }
 
-                        HighlightRowBgColor? highlightColor = _viewerRules.TryGetHighlightColor(visibleTraceTable, i);
+                        HighlightRowBgColor? highlightColor = _viewerRules.TryGetHighlightColor(visibleTraceTable, rowIdx);
                         if (highlightColor.HasValue)
                         {
                             ImGui.TableSetBgColor(ImGuiTableBgTarget.RowBg0, AppTheme.GetHighlightRowBgColorU32(highlightColor.Value));
@@ -286,7 +286,7 @@ namespace InstantTraceViewerUI
                         uint rowColor = LevelToColor(UnifiedLevel.Info);
                         if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
                         {
-                            UnifiedLevel unifiedLevel = visibleTraceTable.GetUnifiedLevel(i);
+                            UnifiedLevel unifiedLevel = visibleTraceTable.GetUnifiedLevel(rowIdx);
                             rowColor = LevelToColor(unifiedLevel);
                         }
                         SetColor(rowColor);
@@ -295,22 +295,14 @@ namespace InstantTraceViewerUI
 
                         // We must store the index instead of the id for the multiselect system so that when we handle selection ranges, we can
                         // look up the ids which might be sparse.
-                        ImGui.SetNextItemSelectionUserData(i);
-
-                        // Create an empty selectable that spans the full row to enable row selection.
-                        bool isSelected = _selectedFullTableRowIndices.Contains(fullTableRowIndex);
-                        if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
-                        {
-                            _lastSelectedVisibleRowIndex = i;
-                            _lastSelectedFullTableRowIndex = fullTableRowIndex;
-                        }
+                        ImGui.SetNextItemSelectionUserData(rowIdx);
 
                         // The list clipper will prevent rows that aren't visible from being processed EXCEPT for the first row, which it always processes
                         // to determine row height (all rows must have the same height). So we use IsItemVisible to determine if actually visible.
                         if (ImGui.IsItemVisible())
                         {
                             // Don't bother to scroll to the selected index if it's already in view.
-                            if (i == setScrollIndex)
+                            if (rowIdx == setScrollIndex)
                             {
                                 setScrollIndex = null;
                             }
@@ -326,41 +318,64 @@ namespace InstantTraceViewerUI
                             }
                             if (_topmostRenderedVisibleRowIndex == null)
                             {
-                                _topmostRenderedVisibleRowIndex = i;
+                                _topmostRenderedVisibleRowIndex = rowIdx;
                             }
 
-                            _bottommostRenderedVisibleRowIndex = i; // Each visible row stomps on the previous value so that the last one wins.
+                            _bottommostRenderedVisibleRowIndex = rowIdx; // Each visible row stomps on the previous value so that the last one wins.
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
-                        bool isRowHovered = ImGui.IsItemHovered();
-                        int hoveredCol = ImGui.TableGetHoveredColumn();
-
-                        if (isRowHovered)
-                        {
-                            if (visibleTraceTable.Schema.ProcessIdColumn != null && hoveredCol == 0)
-                            {
-                                newHoveredProcessId = visibleTraceTable.GetProcessId(i);
-                            }
-                            else if (visibleTraceTable.Schema.ThreadIdColumn != null && hoveredCol == 1)
-                            {
-                                newHoveredThreadId = visibleTraceTable.GetThreadId(i);
-                            }
-                        }
+                        bool isRowHovered = false;
+                        int hoveredCol = -1;
 
                         int columnIndex = 0;
+                        bool addedRowSelection = false;
+                        bool isFirstColumn = true;
                         foreach (var column in visibleTraceTable.Schema.Columns)
                         {
-                            if (columnIndex == 0)
+                            if (!isFirstColumn)
                             {
-                                ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
-                            }
-                            else
-                            {
+                                columnIndex++;
                                 ImGui.TableNextColumn();
                             }
+                            isFirstColumn = false;
 
-                            string displayText = visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false).Replace('\n', ' ');
+                            column.IsVisible = (ImGui.TableGetColumnFlags() & ImGuiTableColumnFlags.IsVisible) != 0;
+                            if (!column.IsVisible)
+                            {
+                                continue;
+                            }
+
+                            if (!addedRowSelection)
+                            {
+                                // Create an empty selectable that spans the full row to enable row selection.
+                                bool isSelected = _selectedFullTableRowIndices.Contains(fullTableRowIndex);
+                                if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
+                                {
+                                    _lastSelectedVisibleRowIndex = rowIdx;
+                                    _lastSelectedFullTableRowIndex = fullTableRowIndex;
+                                }
+
+                                isRowHovered = ImGui.IsItemHovered();
+                                hoveredCol = ImGui.TableGetHoveredColumn();
+
+                                if (isRowHovered)
+                                {
+                                    if (visibleTraceTable.Schema.ProcessIdColumn != null && hoveredCol == 0)
+                                    {
+                                        newHoveredProcessId = visibleTraceTable.GetProcessId(rowIdx);
+                                    }
+                                    else if (visibleTraceTable.Schema.ThreadIdColumn != null && hoveredCol == 1)
+                                    {
+                                        newHoveredThreadId = visibleTraceTable.GetThreadId(rowIdx);
+                                    }
+                                }
+
+                                addedRowSelection = true;
+                                ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
+                            }
+
+                            string displayText = visibleTraceTable.GetColumnValueString(rowIdx, column, allowMultiline: false).Replace('\n', ' ');
                             ImGui.TextUnformatted(displayText);
 
                             if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnIndex)
@@ -374,7 +389,7 @@ namespace InstantTraceViewerUI
 
                                 string displayTextTruncated = displayText.Length > 48 ? displayText.Substring(0, 48) + "..." : displayText;
 
-                                AddIncludeExcludeRuleMenuItems(visibleTraceTable, i, column, displayTextTruncated);
+                                AddIncludeExcludeRuleMenuItems(visibleTraceTable, rowIdx, column, displayTextTruncated);
 
                                 ImGui.Separator();
                                 if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
@@ -415,8 +430,6 @@ namespace InstantTraceViewerUI
                                     }
                                 }
                             }
-
-                            columnIndex++;
                         }
 
                         ImGui.PopID(); // Trace row id
@@ -1038,6 +1051,11 @@ namespace InstantTraceViewerUI
                 bool isFirstColumn = true;
                 foreach (var column in visibleTraceTable.Schema.Columns)
                 {
+                    if (!column.IsVisible)
+                    {
+                        continue;
+                    }
+
                     if (!isFirstColumn)
                     {
                         copyText.Append('\t');
