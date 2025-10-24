@@ -328,17 +328,14 @@ namespace InstantTraceViewerUI
                         bool isRowHovered = false;
                         int hoveredCol = -1;
 
-                        int columnIndex = 0;
                         bool addedRowSelection = false;
-                        bool isFirstColumn = true;
-                        foreach (var column in visibleTraceTable.Schema.Columns)
+                        for (int columnIndex = 0; columnIndex < visibleTraceTable.Schema.Columns.Count; columnIndex++)
                         {
-                            if (!isFirstColumn)
+                            var column = visibleTraceTable.Schema.Columns[columnIndex];
+                            if (columnIndex > 0)
                             {
-                                columnIndex++;
                                 ImGui.TableNextColumn();
                             }
-                            isFirstColumn = false;
 
                             column.IsVisible = (ImGui.TableGetColumnFlags() & ImGuiTableColumnFlags.IsVisible) != 0;
                             if (!column.IsVisible)
