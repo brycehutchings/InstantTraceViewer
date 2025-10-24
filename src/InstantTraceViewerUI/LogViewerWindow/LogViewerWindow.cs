@@ -342,12 +342,19 @@ namespace InstantTraceViewerUI
 
                         int columnIndex = 0;
                         bool addedRowSelection = false;
+                        bool isFirstColumn = true;
                         foreach (var column in visibleTraceTable.Schema.Columns)
                         {
+                            if (!isFirstColumn)
+                            {
+                                columnIndex++;
+                                ImGui.TableNextColumn();
+                            }
+                            isFirstColumn = false;
+
                             column.IsVisible = (ImGui.TableGetColumnFlags() & ImGuiTableColumnFlags.IsVisible) != 0;
                             if (!column.IsVisible)
                             {
-                                ImGui.TableNextColumn();
                                 continue;
                             }
 
@@ -362,10 +369,6 @@ namespace InstantTraceViewerUI
                                 }
                                 addedRowSelection = true;
                                 ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
-                            }
-                            else
-                            {
-                                ImGui.TableNextColumn();
                             }
 
                             string displayText = visibleTraceTable.GetColumnValueString(rowIdx, column, allowMultiline: false).Replace('\n', ' ');
@@ -423,8 +426,6 @@ namespace InstantTraceViewerUI
                                     }
                                 }
                             }
-
-                            columnIndex++;
                         }
 
                         ImGui.PopID(); // Trace row id
