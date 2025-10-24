@@ -325,20 +325,8 @@ namespace InstantTraceViewerUI
                         }
 
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
-                        bool isRowHovered = ImGui.IsItemHovered();
-                        int hoveredCol = ImGui.TableGetHoveredColumn();
-
-                        if (isRowHovered)
-                        {
-                            if (visibleTraceTable.Schema.ProcessIdColumn != null && hoveredCol == 0)
-                            {
-                                newHoveredProcessId = visibleTraceTable.GetProcessId(rowIdx);
-                            }
-                            else if (visibleTraceTable.Schema.ThreadIdColumn != null && hoveredCol == 1)
-                            {
-                                newHoveredThreadId = visibleTraceTable.GetThreadId(rowIdx);
-                            }
-                        }
+                        bool isRowHovered = false;
+                        int hoveredCol = -1;
 
                         int columnIndex = 0;
                         bool addedRowSelection = false;
@@ -367,6 +355,22 @@ namespace InstantTraceViewerUI
                                     _lastSelectedVisibleRowIndex = rowIdx;
                                     _lastSelectedFullTableRowIndex = fullTableRowIndex;
                                 }
+
+                                isRowHovered = ImGui.IsItemHovered();
+                                hoveredCol = ImGui.TableGetHoveredColumn();
+
+                                if (isRowHovered)
+                                {
+                                    if (visibleTraceTable.Schema.ProcessIdColumn != null && hoveredCol == 0)
+                                    {
+                                        newHoveredProcessId = visibleTraceTable.GetProcessId(rowIdx);
+                                    }
+                                    else if (visibleTraceTable.Schema.ThreadIdColumn != null && hoveredCol == 1)
+                                    {
+                                        newHoveredThreadId = visibleTraceTable.GetThreadId(rowIdx);
+                                    }
+                                }
+
                                 addedRowSelection = true;
                                 ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
                             }
