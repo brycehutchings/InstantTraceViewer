@@ -122,7 +122,6 @@ namespace InstantTraceViewerUI
                 ColorSquare(colorU32, tooltip: colorName);
                 ImGui.SameLine();
 
-                uint r = colorU32 & 0xFF, g = (colorU32 >> 8) & 0xFF, b = (colorU32 >> 16) & 0xFF;
                 ImGui.TextUnformatted(colorName);
 
                 ImGui.PopID();
