@@ -69,13 +69,17 @@ namespace InstantTraceViewerUI.Etw
 
         private bool isDisposed;
 
-        public EtwTraceSource(TraceEventSession etwSession, bool kernelProcessThreadProviderEnabled, string displayName, int sessionNum = -1)
+        // Stores the original profile for pause/resume functionality
+        private readonly EtwSessionProfile? _profile;
+
+        public EtwTraceSource(TraceEventSession etwSession, bool kernelProcessThreadProviderEnabled, string displayName, EtwSessionProfile? profile = null, int sessionNum = -1)
         {
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
+            _profile = profile;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -166,6 +170,7 @@ namespace InstantTraceViewerUI.Etw
 
                 foreach (var provider in profile.Providers)
                 {
+                    // Make sure to keep in sync with TogglePause() method
                     etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
                 }
 
@@ -177,7 +182,7 @@ namespace InstantTraceViewerUI.Etw
                 // var profileSources = TraceEventProfileSources.GetInfo();
                 // TraceEventProfileSources.Set(profileSources["Timer"].ID, profileSources["Timer"].Interval);
 
-                return new EtwTraceSource(etwSession, kernelProcessThreadProviderEnabled, profile.DisplayName, sessionNum);
+                return new EtwTraceSource(etwSession, kernelProcessThreadProviderEnabled, profile.DisplayName, profile, sessionNum);
             }
             catch
             {
@@ -227,6 +232,33 @@ namespace InstantTraceViewerUI.Etw
         public void TogglePause()
         {
             IsPaused = !IsPaused;
+
+            if (_etwSession == null || _profile == null)
+            {
+                return; // Can't control collection for file-based sources or without a profile
+            }
+
+            // It looks like we can't disable kernel providers once enabled, but that is OK because we still want the process/thread events to flow in for name lookups.
+            foreach (var provider in _profile.Providers)
+            {
+                try
+                {
+                    if (IsPaused)
+                    {
+                        _etwSession.DisableProvider(provider.Name);
+                    }
+                    else
+                    {
+                        _etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // It's not critical if we fail to toggle collection since we also check the IsPaused flag everywhere.
+                    Trace.WriteLine($"Failed to toggle ETW session providers: {ex}");
+                    Debug.Fail($"Failed to toggle ETW session providers: {ex.Message}"); // To check if this actually happens in practice when testing.
+                }
+            }
         }
 
         // ETW data streams in very quickly, so no need to indicate to user that it is loading.

@@ -2,7 +2,6 @@ using ImGuiNET;
 using InstantTraceViewer;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Numerics;
 
@@ -245,7 +244,10 @@ Examples:
                     {
                         if (rule.HighlightColor.HasValue)
                         {
-                            ImGuiWidgets.ColorSquare(AppTheme.GetHighlightRowBgColorU32(rule.HighlightColor.Value), verticalOffset: 2);
+                            ImGuiWidgets.ColorSquare(
+                                AppTheme.GetHighlightRowBgColorU32(rule.HighlightColor.Value),
+                                tooltip: AppTheme.GetHighlightRowBgColorName(rule.HighlightColor.Value),
+                                verticalOffset: 2);
                         }
 
                         ImGui.SameLine();

@@ -1,6 +1,7 @@
 ﻿using ImGuiNET;
 using System;
 using System.Numerics;
+using System.Reflection;
 
 namespace InstantTraceViewerUI
 {
@@ -13,12 +14,17 @@ namespace InstantTraceViewerUI
         private static uint _lastHoveredItem = uint.MaxValue;
         private static int _lastHoveredItemFrame = 0;
 
-        public static void ColorSquare(uint color, int verticalOffset = 0, float widthMultiplier = 1)
+        public static void ColorSquare(uint color, string? tooltip = null, int verticalOffset = 0, float widthMultiplier = 1)
         {
             float sz = ImGui.GetTextLineHeight();
             Vector2 p = ImGui.GetCursorScreenPos() + new Vector2(0, verticalOffset);
             ImGui.GetWindowDrawList().AddRectFilled(p, new Vector2(p.X + sz * widthMultiplier, p.Y + sz + verticalOffset), color);
             ImGui.Dummy(new Vector2(sz * widthMultiplier, sz));
+
+            if (!string.IsNullOrEmpty(tooltip) && ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal))
+            {
+                ImGui.SetTooltip(tooltip);
+            }
         }
 
         // Renders a button without any background or border. Text color changes instead.
@@ -94,6 +100,12 @@ namespace InstantTraceViewerUI
             float sz = ImGui.GetTextLineHeight();
             foreach (HighlightRowBgColor color in Enum.GetValues<HighlightRowBgColor>())
             {
+                // Skip if color value has Obsolete attribute
+                if (typeof(HighlightRowBgColor).GetField(color.ToString())!.GetCustomAttribute<ObsoleteAttribute>() != null)
+                {
+                    continue;
+                }
+
                 ImGui.PushID((int)color);
 
                 Vector2 p = ImGui.GetCursorScreenPos();
@@ -104,13 +116,13 @@ namespace InstantTraceViewerUI
                 }
 
                 uint colorU32 = AppTheme.GetHighlightRowBgColorU32(color);
+                string colorName = AppTheme.GetHighlightRowBgColorName(color);
 
                 ImGui.SetCursorScreenPos(p);
-                ColorSquare(colorU32, 0);
+                ColorSquare(colorU32, tooltip: colorName);
                 ImGui.SameLine();
 
-                uint r = colorU32 & 0xFF, g = (colorU32 >> 8) & 0xFF, b = (colorU32 >> 16) & 0xFF;
-                ImGui.TextUnformatted(color.ToString());
+                ImGui.TextUnformatted(colorName);
 
                 ImGui.PopID();
             }
