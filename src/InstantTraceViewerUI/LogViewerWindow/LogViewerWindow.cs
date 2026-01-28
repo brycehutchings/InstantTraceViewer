@@ -761,11 +761,6 @@ namespace InstantTraceViewerUI
                     _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
                 }
 
-                if (ImGui.MenuItem($"Clear rules", _viewerRules.Rules.Count > 0))
-                {
-                    _viewerRules.ClearRules();
-                }
-
                 IReadOnlyList<string> itvfMru = Settings.GetRecentlyOpenedItfv();
                 if (itvfMru.Count > 0)
                 {
