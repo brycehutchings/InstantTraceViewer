@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
@@ -51,9 +51,9 @@
     <PackageReference Include="AdvancedSharpAdbClient" Version="3.3.13" />
     <PackageReference Include="Google.Protobuf" Version="3.30.2" />
     <PackageReference Include="Google.Protobuf.Tools" Version="3.30.2" />
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.19" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
-    <PackageReference Include="System.IO.Hashing" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.29" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7463" />
+    <PackageReference Include="System.IO.Hashing" Version="10.0.2" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
