@@ -53,6 +53,10 @@ namespace InstantTraceViewer
             {
                 return "0x" + valueUlong.ToString("X8", FormatProvider);
             }
+            else if (value is uint valueUInt)
+            {
+                return "0x" + valueUInt.ToString("X8", FormatProvider);
+            }
             else if (value is int valueInt)
             {
                 if (valueInt != 0 && name == "IPv4Address")
@@ -61,18 +65,19 @@ namespace InstantTraceViewer
                 }
                 else if (string.Equals(name, "hresult", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(name, "hr", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(name, "ntstatus", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(name, "ntstatus", StringComparison.OrdinalIgnoreCase) ||
+                    name?.Contains("flags", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    return $"0x{valueInt:X8}";
+                    return "0x" + valueInt.ToString("X8", FormatProvider);
                 }
 
                 return valueInt.ToString(FormatProvider);
             }
             else if (value is long valueLong)
             {
-                if (name == "objectId")
+                if (name == "objectId" || name?.Contains("flags", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    return "0x" + valueLong.ToString("X8");
+                    return "0x" + valueLong.ToString("X8", FormatProvider);
                 }
 
                 return valueLong.ToString(FormatProvider);
