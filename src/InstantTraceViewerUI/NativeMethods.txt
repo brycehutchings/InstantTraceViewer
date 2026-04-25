@@ -1,4 +1,17 @@
 // Window/message APIs for Win32ImGuiHost
+D3D11CreateDevice
+D3D11_SDK_VERSION
+IDI_APPLICATION
+IDXGIDevice
+IDXGIAdapter
+IDXGIFactory2
+IDXGISwapChain1
+IDXGISwapChain2
+ID3D11Device
+ID3D11DeviceContext
+ID3D11RenderTargetView
+ID3D11Texture2D
+DXGI_STATUS_OCCLUDED
 CreateWindowEx
 RegisterClassEx
 UnregisterClass

@@ -54,8 +54,6 @@
     <!-- Hexa.NET.ImGui 2.2.4 = Dear ImGui 1.91.6. Backends supplies managed ImGui_ImplWin32 / ImGui_ImplDX11. -->
     <PackageReference Include="Hexa.NET.ImGui" Version="2.2.7" />
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.15" />
-    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
-    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -84,10 +82,6 @@
     <EmbeddedResource Include="Assets\Fonts\Font Awesome 6 Free-Solid-900.otf">
       <LogicalName>Font Awesome 6 Free-Solid-900.otf</LogicalName>
     </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Common\Common.csproj" />
   </ItemGroup>
 
   <Target Name="GenerateProto" BeforeTargets="PrepareForBuild" Inputs="Perfetto\Protobuf\perfetto_trace.proto" Outputs="Perfetto\Protobuf\PerfettoTrace.cs">

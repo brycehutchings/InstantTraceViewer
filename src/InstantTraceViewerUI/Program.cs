@@ -16,10 +16,7 @@ namespace InstantTraceViewerUI
 
         public static unsafe int Main(string[] args)
         {
-            if (Win32ImGuiHost.WindowInitialize(out nint imguiContext) != 0)
-            {
-                return 1;
-            }
+            Win32ImGuiHost.WindowInitialize(out nint imguiContext);
 
             ImGui.SetCurrentContext(new ImGuiContextPtr((ImGuiContext*)imguiContext));
 
@@ -52,17 +49,14 @@ namespace InstantTraceViewerUI
                         lastThemeSet = Settings.Theme;
                     }
 
-                    if (Win32ImGuiHost.WindowBeginNextFrame(out int quit, out int occluded) != 0)
+                    Win32ImGuiHost.WindowBeginNextFrame(out bool quit, out bool occluded);
+
+                    if (quit)
                     {
                         break;
                     }
 
-                    if (quit != 0)
-                    {
-                        break;
-                    }
-
-                    if (occluded != 0)
+                    if (occluded)
                     {
                         System.Threading.Thread.Sleep(10);
                         continue;
@@ -86,10 +80,7 @@ namespace InstantTraceViewerUI
                         break;
                     }
 
-                    if (Win32ImGuiHost.WindowEndNextFrame() != 0)
-                    {
-                        break;
-                    }
+                    Win32ImGuiHost.WindowEndNextFrame();
                 }
             }
 

@@ -2,21 +2,22 @@ using System;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D11;
 using Hexa.NET.ImGui.Backends.Win32;
-using SharpGen.Runtime;
-using Vortice.Direct3D;
-using Vortice.Direct3D11;
-using Vortice.DXGI;
-using Vortice.Mathematics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Direct3D;
+using Windows.Win32.Graphics.Direct3D11;
+using Windows.Win32.Graphics.Dxgi;
+using Windows.Win32.Graphics.Dxgi.Common;
+using Windows.Win32.System.Com;
 using Windows.Win32.UI.WindowsAndMessaging;
-using VID3D11Device = Vortice.Direct3D11.ID3D11Device;
-using VID3D11DeviceContext = Vortice.Direct3D11.ID3D11DeviceContext;
-using VID3D11RenderTargetView = Vortice.Direct3D11.ID3D11RenderTargetView;
-using VID3D11Texture2D = Vortice.Direct3D11.ID3D11Texture2D;
-using VD3D11 = Vortice.Direct3D11.D3D11;
 using BID3D11Device = Hexa.NET.ImGui.Backends.D3D11.ID3D11Device;
 using BID3D11DeviceContext = Hexa.NET.ImGui.Backends.D3D11.ID3D11DeviceContext;
+using WID3D11Device = Windows.Win32.Graphics.Direct3D11.ID3D11Device;
+using WID3D11DeviceContext = Windows.Win32.Graphics.Direct3D11.ID3D11DeviceContext;
+using WID3D11RenderTargetView = Windows.Win32.Graphics.Direct3D11.ID3D11RenderTargetView;
+using WID3D11Texture2D = Windows.Win32.Graphics.Direct3D11.ID3D11Texture2D;
 
 namespace InstantTraceViewerUI
 {
@@ -31,43 +32,42 @@ namespace InstantTraceViewerUI
         private const uint DefaultWidth = 1200;
         private const uint DefaultHeight = 800;
 
-        private const SwapChainFlags SwapchainFlags =
-            SwapChainFlags.AllowModeSwitch | SwapChainFlags.FrameLatencyWaitableObject;
+        private const DXGI_SWAP_CHAIN_FLAG SwapchainFlags =
+            DXGI_SWAP_CHAIN_FLAG.DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
         private const string WindowClassName = "Instant Trace Viewer";
         private const string WindowTitle = "Instant Trace Viewer";
 
         private static HWND s_hwnd;
 
-        public static IntPtr MainWindowHandle => (IntPtr)s_hwnd.Value;
-        private static WNDPROC? s_wndProc; // Held to prevent GC collection of the delegate.
+        public static IntPtr MainWindowHandle => (IntPtr)s_hwnd;
         private static ushort s_classAtom;
         private static bool s_swapChainOccluded;
 
-        private static VID3D11Device? s_device;
-        private static VID3D11DeviceContext? s_context;
-        private static IDXGISwapChain1? s_swapChain;
-        private static IntPtr s_swapChainWaitableObject;
-        private static VID3D11RenderTargetView? s_renderTargetView;
+        private static WID3D11Device* s_device;
+        private static WID3D11DeviceContext* s_context;
+        private static IDXGISwapChain1* s_swapChain;
+        private static HANDLE s_swapChainWaitableObject;
+        private static WID3D11RenderTargetView* s_renderTargetView;
         private static uint s_resizeWidth;
         private static uint s_resizeHeight;
 
-        // Forwarded by the WndProc callback so that ImGuiImplWin32 sees its messages.
-        // ImGuiImplWin32.WndProcHandler signature uses IntPtr WPARAM / LPARAM.
-
-        public static int WindowInitialize(out IntPtr imguiContext)
+        /// <summary>
+        /// Creates the application window, the D3D11 device + swap chain, and the ImGui context
+        /// (with the Win32 + D3D11 backends initialized). Must be called once before any other method.
+        /// </summary>
+        /// <param name="imguiContext">Out: the newly created ImGui context handle, suitable for ImGui.SetCurrentContext.</param>
+        public static void WindowInitialize(out IntPtr imguiContext)
         {
             imguiContext = IntPtr.Zero;
             if (!s_hwnd.IsNull)
             {
-                return 1;
+                throw new InvalidOperationException("Window is already initialized.");
             }
 
             HMODULE hInstance = PInvoke.GetModuleHandle((PCWSTR)null);
-            HICON hIcon = PInvoke.LoadIcon(hInstance, (PCWSTR)(char*)32512); // App icon embedded by dotnet at ID 32512.
-            HCURSOR hCursor = PInvoke.LoadCursor((HINSTANCE)IntPtr.Zero, PInvoke.IDC_ARROW);
-
-            s_wndProc = WndProc;
+            HICON hIcon = PInvoke.LoadIcon(hInstance, PInvoke.IDI_APPLICATION);
+            HCURSOR hCursor = PInvoke.LoadCursor(HINSTANCE.Null, PInvoke.IDC_ARROW);
 
             fixed (char* classNamePtr = WindowClassName)
             {
@@ -75,7 +75,7 @@ namespace InstantTraceViewerUI
                 {
                     cbSize = (uint)sizeof(WNDCLASSEXW),
                     style = WNDCLASS_STYLES.CS_CLASSDC,
-                    lpfnWndProc = s_wndProc,
+                    lpfnWndProc = &WndProc,
                     hInstance = hInstance,
                     hIcon = hIcon,
                     hCursor = hCursor,
@@ -86,25 +86,21 @@ namespace InstantTraceViewerUI
 
             if (s_classAtom == 0)
             {
-                return 1;
+                throw new InvalidOperationException("Failed to register window class.");
             }
 
-            fixed (char* classNamePtr = WindowClassName)
-            fixed (char* titlePtr = WindowTitle)
-            {
-                s_hwnd = PInvoke.CreateWindowEx(
-                    0,
-                    classNamePtr,
-                    titlePtr,
-                    WINDOW_STYLE.WS_OVERLAPPEDWINDOW,
-                    (int)DefaultX, (int)DefaultY, (int)DefaultWidth, (int)DefaultHeight,
-                    HWND.Null, (HMENU)IntPtr.Zero, hInstance, null);
-            }
+            s_hwnd = PInvoke.CreateWindowEx(
+                0,
+                WindowClassName,
+                WindowTitle,
+                WINDOW_STYLE.WS_OVERLAPPEDWINDOW,
+                (int)DefaultX, (int)DefaultY, (int)DefaultWidth, (int)DefaultHeight,
+                HWND.Null, HMENU.Null, hInstance, null);
 
             if (s_hwnd.IsNull)
             {
                 PInvoke.UnregisterClass(WindowClassName, hInstance);
-                return 1;
+                throw new InvalidOperationException("Failed to create application window.");
             }
 
             // Scale window size by the monitor DPI.
@@ -117,13 +113,17 @@ namespace InstantTraceViewerUI
                     SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
             }
 
-            if (!CreateDeviceD3D())
+            try
+            {
+                CreateDeviceD3D();
+            }
+            catch
             {
                 CleanupDeviceD3D();
                 PInvoke.DestroyWindow(s_hwnd);
                 PInvoke.UnregisterClass(WindowClassName, hInstance);
                 s_hwnd = HWND.Null;
-                return 1;
+                throw;
             }
 
             PInvoke.ShowWindow(s_hwnd, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
@@ -139,24 +139,30 @@ namespace InstantTraceViewerUI
             io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
             io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
 
-            ImGuiImplWin32.Init((IntPtr)s_hwnd.Value);
+            ImGuiImplWin32.Init((IntPtr)s_hwnd);
             ImGuiImplD3D11.Init(
-                new ID3D11DevicePtr((BID3D11Device*)s_device!.NativePointer),
-                new ID3D11DeviceContextPtr((BID3D11DeviceContext*)s_context!.NativePointer));
+                new ID3D11DevicePtr((BID3D11Device*)s_device),
+                new ID3D11DeviceContextPtr((BID3D11DeviceContext*)s_context));
 
             imguiContext = (IntPtr)ctx.Handle;
-            return 0;
         }
 
-        public static int WindowBeginNextFrame(out int quit, out int occluded)
+        /// <summary>
+        /// Pumps Win32 messages, applies any pending swap-chain resize, and starts a new ImGui frame.
+        /// Call once per iteration of the main loop, then issue ImGui draw calls, then call <see cref="WindowEndNextFrame"/>.
+        /// Also blocks (with a 1s timeout) on the swap chain's frame-latency waitable object to pace rendering to the display.
+        /// </summary>
+        /// <param name="quit">Out: true if a WM_QUIT was received and the app should exit.</param>
+        /// <param name="occluded">Out: true if the swap chain is currently occluded (e.g. minimized / locked screen) and the caller should idle this frame.</param>
+        public static void WindowBeginNextFrame(out bool quit, out bool occluded)
         {
-            quit = 0;
-            occluded = 0;
+            quit = false;
+            occluded = false;
 
-            if (s_swapChainWaitableObject != IntPtr.Zero)
+            if (!s_swapChainWaitableObject.IsNull)
             {
                 // Avoid hang on close: wait with a 1000 ms timeout.
-                PInvoke.WaitForSingleObject(new HANDLE(s_swapChainWaitableObject), 1000);
+                PInvoke.WaitForSingleObject(s_swapChainWaitableObject, 1000);
             }
 
             MSG msg;
@@ -166,22 +172,22 @@ namespace InstantTraceViewerUI
                 PInvoke.DispatchMessage(&msg);
                 if (msg.message == PInvoke.WM_QUIT)
                 {
-                    quit = 1;
+                    quit = true;
                 }
             }
 
-            if (quit != 0)
+            if (quit)
             {
-                return 0;
+                return;
             }
 
             if (s_swapChainOccluded)
             {
-                Result presentResult = s_swapChain!.Present(0, PresentFlags.Test);
-                if (presentResult.Code == unchecked((int)0x087A0001) /* DXGI_STATUS_OCCLUDED */)
+                HRESULT presentResult = s_swapChain->Present(0, DXGI_PRESENT.DXGI_PRESENT_TEST);
+                if (presentResult == HRESULT.DXGI_STATUS_OCCLUDED)
                 {
-                    occluded = 1;
-                    return 0;
+                    occluded = true;
+                    return;
                 }
             }
 
@@ -190,35 +196,34 @@ namespace InstantTraceViewerUI
             if (s_resizeWidth != 0 && s_resizeHeight != 0)
             {
                 CleanupRenderTarget();
-                Result hr = s_swapChain!.ResizeBuffers(0, s_resizeWidth, s_resizeHeight, Format.Unknown, SwapchainFlags);
-                if (hr.Failure)
-                {
-                    return 1;
-                }
+                s_swapChain->ResizeBuffers(0, s_resizeWidth, s_resizeHeight, DXGI_FORMAT.DXGI_FORMAT_UNKNOWN, (uint)SwapchainFlags);
                 s_resizeWidth = s_resizeHeight = 0;
-                if (!CreateRenderTarget())
-                {
-                    return 1;
-                }
+                CreateRenderTarget();
             }
 
             ImGuiImplD3D11.NewFrame();
             ImGuiImplWin32.NewFrame();
             ImGui.NewFrame();
-            return 0;
         }
 
-        public static int WindowEndNextFrame()
+        /// <summary>
+        /// Renders the ImGui draw data to the back buffer, renders any secondary viewports (if multi-viewport is enabled),
+        /// and presents with vsync. Must be paired with <see cref="WindowBeginNextFrame"/>.
+        /// </summary>
+        public static void WindowEndNextFrame()
         {
             ImGui.Render();
 
-            Color4 clearColor = new(
+            float[] clearColor =
+            {
                 0.45f * 1.00f,
                 0.55f * 1.00f,
                 0.60f * 1.00f,
-                1.00f);
-            s_context!.OMSetRenderTargets(s_renderTargetView!);
-            s_context.ClearRenderTargetView(s_renderTargetView!, clearColor);
+                1.00f,
+            };
+            WID3D11RenderTargetView* renderTargetView = s_renderTargetView;
+            s_context->OMSetRenderTargets(1, &renderTargetView, null);
+            s_context->ClearRenderTargetView(s_renderTargetView, clearColor);
 
             ImGuiImplD3D11.RenderDrawData(ImGui.GetDrawData());
 
@@ -228,11 +233,15 @@ namespace InstantTraceViewerUI
                 ImGui.RenderPlatformWindowsDefault();
             }
 
-            Result hr = s_swapChain!.Present(1, PresentFlags.None);
-            s_swapChainOccluded = hr.Code == unchecked((int)0x087A0001) /* DXGI_STATUS_OCCLUDED */;
-            return hr.Success ? 0 : 1;
+            HRESULT hr = s_swapChain->Present(1, 0);
+            s_swapChainOccluded = hr == HRESULT.DXGI_STATUS_OCCLUDED;
+            hr.ThrowOnFailure();
         }
 
+        /// <summary>
+        /// Tears down the ImGui backends and context, releases the D3D11 device + swap chain,
+        /// destroys the window, and unregisters the window class. Safe to call once at shutdown.
+        /// </summary>
         public static void WindowCleanup()
         {
             ImGuiImplD3D11.Shutdown();
@@ -252,6 +261,10 @@ namespace InstantTraceViewerUI
             }
         }
 
+        /// <summary>
+        /// Re-uploads the ImGui font atlas to the GPU. Call this after changing fonts (e.g. font size or family)
+        /// while the application is running, after rebuilding the atlas via ImGui's font APIs.
+        /// </summary>
         public static void RebuildFontAtlas()
         {
             // Equivalent to ImGui_ImplDX11_CreateDeviceObjects() in the native code: rebuilds the font texture on the GPU.
@@ -259,95 +272,160 @@ namespace InstantTraceViewerUI
             ImGuiImplD3D11.CreateDeviceObjects();
         }
 
-        private static bool CreateDeviceD3D()
+        /// <summary>
+        /// Creates the D3D11 device + immediate context (Hardware, falling back to WARP) and a flip-discard
+        /// swap chain bound to the application window. Also queries for IDXGISwapChain2 to enable the
+        /// frame-latency waitable object used by <see cref="WindowBeginNextFrame"/> for smoother pacing.
+        /// </summary>
+        private static void CreateDeviceD3D()
         {
-            FeatureLevel[] featureLevels = { FeatureLevel.Level_11_0, FeatureLevel.Level_10_0 };
-
-            DeviceCreationFlags flags = DeviceCreationFlags.None;
-            // flags |= DeviceCreationFlags.Debug;
-
-            Result hr = VD3D11.D3D11CreateDevice(
-                adapter: null, DriverType.Hardware, flags, featureLevels,
-                out s_device, out FeatureLevel _, out s_context);
-            if (hr.Failure)
+            ReadOnlySpan<D3D_FEATURE_LEVEL> featureLevels = stackalloc[]
             {
-                hr = VD3D11.D3D11CreateDevice(
-                    adapter: null, DriverType.Warp, flags, featureLevels,
-                    out s_device, out FeatureLevel _, out s_context);
-            }
-            if (hr.Failure)
-            {
-                return false;
-            }
-
-            using IDXGIDevice dxgiDevice = s_device!.QueryInterface<IDXGIDevice>();
-            using IDXGIAdapter adapter = dxgiDevice.GetAdapter();
-            using IDXGIFactory2 factory = adapter.GetParent<IDXGIFactory2>();
-
-            SwapChainDescription1 sd = new()
-            {
-                Width = 0,
-                Height = 0,
-                Format = Format.R8G8B8A8_UNorm,
-                Stereo = false,
-                SampleDescription = new SampleDescription(1, 0),
-                BufferUsage = Usage.RenderTargetOutput,
-                BufferCount = 2,
-                Scaling = Scaling.None,
-                SwapEffect = SwapEffect.FlipDiscard,
-                AlphaMode = AlphaMode.Unspecified,
-                Flags = SwapchainFlags,
+                D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0,
+                D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_10_0,
             };
 
-            IDXGISwapChain1 swapChain = factory.CreateSwapChainForHwnd(s_device, s_hwnd, sd);
-            s_swapChain = swapChain;
+            const D3D11_CREATE_DEVICE_FLAG flags = 0;
 
-            // Frame-latency waitable swap chain (https://github.com/ocornut/imgui/pull/5413).
-            using (IDXGISwapChain2? swapChain2 = swapChain.QueryInterfaceOrNull<IDXGISwapChain2>())
+            WID3D11Device* device = null;
+            WID3D11DeviceContext* context = null;
+            HRESULT hr = default;
+            foreach (D3D_DRIVER_TYPE driverType in new[] { D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_WARP })
             {
-                if (swapChain2 != null)
+                hr = PInvoke.D3D11CreateDevice(
+                    pAdapter: null,
+                    DriverType: driverType,
+                    Software: HMODULE.Null,
+                    Flags: flags,
+                    pFeatureLevels: featureLevels,
+                    SDKVersion: PInvoke.D3D11_SDK_VERSION,
+                    ppDevice: &device,
+                    pFeatureLevel: out _,
+                    ppImmediateContext: &context);
+                if (hr.Succeeded)
                 {
-                    swapChain2.MaximumFrameLatency = 1;
-                    s_swapChainWaitableObject = swapChain2.FrameLatencyWaitableObject;
+                    break;
                 }
             }
+            hr.ThrowOnFailure();
 
-            return CreateRenderTarget();
+            s_device = device;
+            s_context = context;
+
+            IDXGIDevice* dxgiDevice = null;
+            IDXGIAdapter* adapter = null;
+            IDXGIFactory2* factory = null;
+            try
+            {
+                ((IUnknown*)s_device)->QueryInterface(out dxgiDevice).ThrowOnFailure();
+                dxgiDevice->GetAdapter(&adapter);
+
+                Guid factoryIid = IDXGIFactory2.IID_Guid;
+                adapter->GetParent(in factoryIid, out void* factoryPtr);
+                factory = (IDXGIFactory2*)factoryPtr;
+
+                DXGI_SWAP_CHAIN_DESC1 sd = new()
+                {
+                    Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+                    SampleDesc = new DXGI_SAMPLE_DESC { Count = 1 },
+                    BufferUsage = DXGI_USAGE.DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                    BufferCount = 2,
+                    Scaling = DXGI_SCALING.DXGI_SCALING_NONE,
+                    SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD,
+                    Flags = SwapchainFlags,
+                };
+
+                IDXGISwapChain1* swapChain = null;
+                factory->CreateSwapChainForHwnd((IUnknown*)s_device, s_hwnd, &sd, null, null, &swapChain);
+                s_swapChain = swapChain;
+
+                // Frame-latency waitable swap chain (https://github.com/ocornut/imgui/pull/5413).
+                IDXGISwapChain2* swapChain2 = null;
+                if (((IUnknown*)s_swapChain)->QueryInterface(out swapChain2).Succeeded)
+                {
+                    swapChain2->SetMaximumFrameLatency(1);
+                    s_swapChainWaitableObject = swapChain2->GetFrameLatencyWaitableObject();
+                    SafeRelease(ref swapChain2);
+                }
+            }
+            finally
+            {
+                SafeRelease(ref factory);
+                SafeRelease(ref adapter);
+                SafeRelease(ref dxgiDevice);
+            }
+
+            CreateRenderTarget();
         }
 
-        private static bool CreateRenderTarget()
+        /// <summary>
+        /// Creates the render-target view bound to the swap chain's back buffer.
+        /// Called during initial setup and after every swap-chain resize.
+        /// </summary>
+        private static void CreateRenderTarget()
         {
-            using VID3D11Texture2D backBuffer = s_swapChain!.GetBuffer<VID3D11Texture2D>(0);
-            s_renderTargetView = s_device!.CreateRenderTargetView(backBuffer);
-            return s_renderTargetView != null;
+            WID3D11Texture2D* backBuffer = null;
+            try
+            {
+                Guid textureIid = ID3D11Texture2D.IID_Guid;
+                s_swapChain->GetBuffer(0, in textureIid, out void* surface);
+                backBuffer = (WID3D11Texture2D*)surface;
+
+                WID3D11RenderTargetView* renderTargetView = null;
+                s_device->CreateRenderTargetView((ID3D11Resource*)backBuffer, null, &renderTargetView);
+                s_renderTargetView = renderTargetView;
+            }
+            finally
+            {
+                SafeRelease(ref backBuffer);
+            }
         }
 
+        /// <summary>
+        /// Releases the current render-target view. Called before swap-chain resize and on shutdown.
+        /// </summary>
         private static void CleanupRenderTarget()
         {
-            s_renderTargetView?.Dispose();
-            s_renderTargetView = null;
+            SafeRelease(ref s_renderTargetView);
         }
 
+        /// <summary>
+        /// Releases all D3D11 / DXGI resources: render target, frame-latency waitable handle, swap chain,
+        /// device context, and device.
+        /// </summary>
         private static void CleanupDeviceD3D()
         {
             CleanupRenderTarget();
-            if (s_swapChainWaitableObject != IntPtr.Zero)
+            if (!s_swapChainWaitableObject.IsNull)
             {
-                PInvoke.CloseHandle(new HANDLE(s_swapChainWaitableObject));
-                s_swapChainWaitableObject = IntPtr.Zero;
+                PInvoke.CloseHandle(s_swapChainWaitableObject);
+                s_swapChainWaitableObject = HANDLE.Null;
             }
-            s_swapChain?.Dispose();
-            s_swapChain = null;
-            s_context?.Dispose();
-            s_context = null;
-            s_device?.Dispose();
-            s_device = null;
+            SafeRelease(ref s_swapChain);
+            SafeRelease(ref s_context);
+            SafeRelease(ref s_device);
         }
 
+        private static void SafeRelease<T>(ref T* p) where T : unmanaged
+        {
+            if (p != null)
+            {
+                ((IUnknown*)p)->Release();
+                p = null;
+            }
+        }
+
+        /// <summary>
+        /// Window procedure for the application window. First forwards the message to the ImGui Win32 backend
+        /// (so it can update its input state); if ImGui doesn't claim the message, handles WM_SIZE (queues a swap-chain resize),
+        /// suppresses the SC_KEYMENU system command (to disable the ALT application menu), and posts a quit on WM_DESTROY.
+        /// All other messages fall through to DefWindowProc.
+        /// </summary>
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
         private static LRESULT WndProc(HWND hWnd, uint msg, WPARAM wParam, LPARAM lParam)
         {
             // Forward to ImGui first.
-            IntPtr handled = ImGuiImplWin32.WndProcHandler((IntPtr)hWnd.Value, msg, (UIntPtr)wParam.Value, (IntPtr)lParam.Value);
+            IntPtr handled = ImGuiImplWin32.WndProcHandler((IntPtr)hWnd, msg, (UIntPtr)wParam, (IntPtr)lParam);
             if (handled != IntPtr.Zero)
             {
                 return new LRESULT((nint)handled);
@@ -356,16 +434,17 @@ namespace InstantTraceViewerUI
             switch (msg)
             {
                 case PInvoke.WM_SIZE:
-                    if ((nuint)wParam.Value == PInvoke.SIZE_MINIMIZED)
+                    if ((nuint)wParam == PInvoke.SIZE_MINIMIZED)
                     {
                         return new LRESULT(0);
                     }
-                    s_resizeWidth = (uint)((ulong)lParam.Value & 0xFFFF);
-                    s_resizeHeight = (uint)(((ulong)lParam.Value >> 16) & 0xFFFF);
+                    nint lp = (nint)lParam;
+                    s_resizeWidth = (uint)(ushort)lp;
+                    s_resizeHeight = (uint)(ushort)(lp >> 16);
                     return new LRESULT(0);
 
                 case PInvoke.WM_SYSCOMMAND:
-                    if (((nuint)wParam.Value & 0xFFF0) == PInvoke.SC_KEYMENU)
+                    if (((nuint)wParam & 0xFFF0) == PInvoke.SC_KEYMENU)
                     {
                         return new LRESULT(0); // Disable ALT application menu.
                     }
