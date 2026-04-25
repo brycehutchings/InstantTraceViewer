@@ -13,7 +13,7 @@ namespace InstantTraceViewerUI
     {
         private const int BufferLength = 8192;
 
-        public static unsafe string OpenFile(string filter, string initialDirectory, Action<string> persistDirectory)
+        public static unsafe string OpenFile(string filter, string initialDirectory)
         {
             char[] buffer = new char[BufferLength];
             string reformattedFilter = ReformatFilter(filter);
@@ -37,13 +37,11 @@ namespace InstantTraceViewerUI
                     return null;
                 }
 
-                string outFile = new(bufferPtr);
-                persistDirectory(Path.GetDirectoryName(outFile));
-                return outFile;
+                return new string(bufferPtr);
             }
         }
 
-        public static unsafe IReadOnlyList<string> OpenMultipleFiles(string filter, string initialDirectory, Action<string> persistDirectory)
+        public static unsafe IReadOnlyList<string> OpenMultipleFiles(string filter, string initialDirectory)
         {
             char[] buffer = new char[BufferLength];
             string reformattedFilter = ReformatFilter(filter);
@@ -85,18 +83,16 @@ namespace InstantTraceViewerUI
 
                 if (paths.Count == 1)
                 {
-                    persistDirectory(Path.GetDirectoryName(paths[0]));
                     return paths;
                 }
 
                 // First entry is the directory, rest are file names.
                 string directoryName = paths[0];
-                persistDirectory(directoryName);
                 return paths.Skip(1).Select(p => Path.Combine(directoryName, p)).ToList();
             }
         }
 
-        public static unsafe string SaveFile(string filter, string initialDirectory, string defaultExtension, Action<string> persistDirectory)
+        public static unsafe string SaveFile(string filter, string initialDirectory, string defaultExtension)
         {
             char[] buffer = new char[BufferLength];
             string reformattedFilter = ReformatFilter(filter);
@@ -125,7 +121,6 @@ namespace InstantTraceViewerUI
                 {
                     outFile = Path.ChangeExtension(outFile, defaultExtension);
                 }
-                persistDirectory(Path.GetDirectoryName(outFile));
                 return outFile;
             }
         }

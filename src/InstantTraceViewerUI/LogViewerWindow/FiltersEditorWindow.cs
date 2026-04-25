@@ -2,6 +2,7 @@ using Hexa.NET.ImGui;
 using InstantTraceViewer;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 
@@ -335,8 +336,11 @@ Examples:
                 if (ImGui.Button("Import"))
                 {
                     IReadOnlyList<string> files = FileDialog.OpenMultipleFiles("Instant Trace Viewer Rules (*.itvf)|*.itvf",
-                        Settings.InstantTraceViewerFiltersLocation,
-                        s => Settings.InstantTraceViewerFiltersLocation = s);
+                        Settings.InstantTraceViewerFiltersLocation);
+                    if (files.Count > 0)
+                    {
+                        Settings.InstantTraceViewerFiltersLocation = Path.GetDirectoryName(files[0]);
+                    }
                     foreach (string file in files)
                     {
                         rules.Import(uiCommands, file);
@@ -349,10 +353,10 @@ Examples:
                 {
                     string file = FileDialog.SaveFile("Instant Trace Viewer Rules (*.itvf)|*.itvf",
                         Settings.InstantTraceViewerFiltersLocation,
-                        ".itvf",
-                        s => Settings.InstantTraceViewerFiltersLocation = s);
+                        ".itvf");
                     if (file != null)
                     {
+                        Settings.InstantTraceViewerFiltersLocation = Path.GetDirectoryName(file);
                         Settings.AddRecentlyUsedItvf(file);
                         rules.Export(uiCommands, file);
                     }

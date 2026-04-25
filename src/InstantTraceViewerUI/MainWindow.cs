@@ -250,10 +250,10 @@ namespace InstantTraceViewerUI
                     {
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp",
-                            Settings.WprpOpenLocation,
-                            (s) => Settings.WprpOpenLocation = s);
+                            Settings.WprpOpenLocation);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.WprpOpenLocation = Path.GetDirectoryName(file);
                             Settings.AddRecentlyOpenedWprp(file);
 
                             try
@@ -279,10 +279,10 @@ namespace InstantTraceViewerUI
 
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile($"ETL Trace Files ({joinedExts})|{joinedExts}",
-                            Settings.EtlOpenLocation,
-                            (s) => Settings.EtlOpenLocation = s);
+                            Settings.EtlOpenLocation);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.EtlOpenLocation = Path.GetDirectoryName(file);
                             try
                             {
                                 var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
@@ -358,10 +358,10 @@ namespace InstantTraceViewerUI
                         {
                             // TODO: This blocks the render thread
                             string file = FileDialog.OpenFile("Comma-Separated Values Files (*.csv)|*.csv",
-                                Settings.CsvOpenLocation,
-                                (s) => Settings.CsvOpenLocation = s);
+                                Settings.CsvOpenLocation);
                             if (!string.IsNullOrEmpty(file))
                             {
+                                Settings.CsvOpenLocation = Path.GetDirectoryName(file);
                                 try
                                 {
                                     var csvTableSource = new CsvTableSource(file, withHeader, readInBackground: true);
@@ -409,10 +409,10 @@ namespace InstantTraceViewerUI
                         {
                             // TODO: This blocks the render thread
                             string file = FileDialog.OpenFile("Tab-separated values file (*.tsv)|*.tsv",
-                                Settings.TsvOpenLocation,
-                                (s) => Settings.TsvOpenLocation = s);
+                                Settings.TsvOpenLocation);
                             if (!string.IsNullOrEmpty(file))
                             {
+                                Settings.TsvOpenLocation = Path.GetDirectoryName(file);
                                 try
                                 {
                                     var tsvTableSource = new TsvTableSource(file, withHeader, readInBackground: true);
@@ -508,10 +508,10 @@ namespace InstantTraceViewerUI
                     {
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile("Perfetto capture file (*.perfetto-trace; *.perfetto_trace; *.perfetto_trace.gz)|*.perfetto-trace;*.perfetto_trace;*.perfetto_trace.gz",
-                            Settings.PerfettoOpenLocation,
-                            (s) => Settings.PerfettoOpenLocation = s);
+                            Settings.PerfettoOpenLocation);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.PerfettoOpenLocation = Path.GetDirectoryName(file);
                             try
                             {
                                 var tsvTableSource = new Perfetto.PerfettoTraceSource(file);
