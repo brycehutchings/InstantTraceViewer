@@ -48,12 +48,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AdvancedSharpAdbClient" Version="3.3.13" />
-    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
-    <PackageReference Include="Google.Protobuf.Tools" Version="3.30.2" />
-    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.29" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7463" />
-    <PackageReference Include="System.IO.Hashing" Version="10.0.2" />
+    <PackageReference Include="AdvancedSharpAdbClient" Version="3.6.16" />
+    <PackageReference Include="Google.Protobuf" Version="3.35.0-rc1" />
+    <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.2" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.1721" />
+    <PackageReference Include="System.IO.Hashing" Version="11.0.0-preview.3.26207.106" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
