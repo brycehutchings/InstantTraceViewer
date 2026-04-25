@@ -1,4 +1,4 @@
-using ImGuiNET;
+using Hexa.NET.ImGui;
 using InstantTraceViewer;
 using System;
 using System.Collections.Generic;
@@ -365,7 +365,7 @@ Examples:
 
         private static void RenderParsingError(uint inputTextId, string inputText, TraceTableRowSelectorParseResults parseResults, Vector2 inputScreenPos)
         {
-            NativeInterop.CurrentInputTextState inputState = NativeInterop.GetCurrentInputTextState();
+            ImGuiWidgets.CurrentInputTextState inputState = ImGuiWidgets.GetCurrentInputTextState();
 
             // Don't use the input state to align the error message unless it is in focus so that we have the correct ScrollX.
             bool inputStateUsable = inputState.Id == inputTextId;

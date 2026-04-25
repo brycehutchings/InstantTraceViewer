@@ -3,99 +3,130 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.Controls.Dialogs;
 
 namespace InstantTraceViewerUI
 {
     internal static class FileDialog
     {
-        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode)]
-        public static unsafe extern int OpenFileDialog(string filter, string initialDirectory, char* outFileBuffer, int outFileBufferLength, int multiSelect);
+        private const int BufferLength = 8192;
 
-        [DllImport("InstantTraceViewerNative.dll", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode)]
-        public static unsafe extern int SaveFileDialog(string filter, string initialDirectory, char* outFileBuffer, int outFileBufferLength);
-
-        public static string OpenFile(string filter, string initialDirectory, Action<string> persistDirectory)
+        public static unsafe string OpenFile(string filter, string initialDirectory, Action<string> persistDirectory)
         {
-            string outFileBuffer = new string('\0', 8192);
-            unsafe
+            char[] buffer = new char[BufferLength];
+            string reformattedFilter = ReformatFilter(filter);
+            fixed (char* bufferPtr = buffer)
+            fixed (char* filterPtr = reformattedFilter)
+            fixed (char* initialDirPtr = initialDirectory)
             {
-                fixed (char* outFilePtr = outFileBuffer)
+                OPENFILENAMEW ofn = new()
                 {
-                    if (OpenFileDialog(ReformatFilter(filter), initialDirectory, outFilePtr, outFileBuffer.Length, 0) != 0)
-                    {
-                        return null;
-                    }
+                    lStructSize = (uint)Marshal.SizeOf<OPENFILENAMEW>(),
+                    hwndOwner = new HWND(Win32ImGuiHost.MainWindowHandle),
+                    lpstrFilter = filterPtr,
+                    lpstrInitialDir = initialDirPtr,
+                    lpstrFile = bufferPtr,
+                    nMaxFile = BufferLength,
+                    Flags = OPEN_FILENAME_FLAGS.OFN_NOCHANGEDIR | OPEN_FILENAME_FLAGS.OFN_FILEMUSTEXIST | OPEN_FILENAME_FLAGS.OFN_EXPLORER,
+                };
 
-                    string outFileTrimmed = new string(outFilePtr); // Trim off null terminators
-                    persistDirectory(Path.GetDirectoryName(outFileTrimmed));
-                    return outFileTrimmed;
+                if (!PInvoke.GetOpenFileName(ref ofn))
+                {
+                    return null;
                 }
+
+                string outFile = new(bufferPtr);
+                persistDirectory(Path.GetDirectoryName(outFile));
+                return outFile;
             }
         }
 
-        public static IReadOnlyList<string> OpenMultipleFiles(string filter, string initialDirectory, Action<string> persistDirectory)
+        public static unsafe IReadOnlyList<string> OpenMultipleFiles(string filter, string initialDirectory, Action<string> persistDirectory)
         {
-            string outFileBuffer = new string('\0', 8192);
-            unsafe
+            char[] buffer = new char[BufferLength];
+            string reformattedFilter = ReformatFilter(filter);
+            fixed (char* bufferPtr = buffer)
+            fixed (char* filterPtr = reformattedFilter)
+            fixed (char* initialDirPtr = initialDirectory)
             {
-                fixed (char* outFilePtr = outFileBuffer)
+                OPENFILENAMEW ofn = new()
                 {
-                    if (OpenFileDialog(ReformatFilter(filter), initialDirectory, outFilePtr, outFileBuffer.Length, 1 /* multiselect */) != 0)
-                    {
-                        return Array.Empty<string>();
-                    }
+                    lStructSize = (uint)Marshal.SizeOf<OPENFILENAMEW>(),
+                    hwndOwner = new HWND(Win32ImGuiHost.MainWindowHandle),
+                    lpstrFilter = filterPtr,
+                    lpstrInitialDir = initialDirPtr,
+                    lpstrFile = bufferPtr,
+                    nMaxFile = BufferLength,
+                    Flags = OPEN_FILENAME_FLAGS.OFN_NOCHANGEDIR | OPEN_FILENAME_FLAGS.OFN_FILEMUSTEXIST | OPEN_FILENAME_FLAGS.OFN_EXPLORER | OPEN_FILENAME_FLAGS.OFN_ALLOWMULTISELECT,
+                };
 
-                    // Break the buffer which is null separated into individual strings
-                    List<string> paths = new List<string>();
-                    int start = 0;
-                    for (int i = 0; i < outFileBuffer.Length; i++)
+                if (!PInvoke.GetOpenFileName(ref ofn))
+                {
+                    return Array.Empty<string>();
+                }
+
+                // Buffer is null-separated; double-null terminates the list.
+                List<string> paths = new();
+                int start = 0;
+                for (int i = 0; i < BufferLength; i++)
+                {
+                    if (buffer[i] == '\0')
                     {
-                        if (outFileBuffer[i] == '\0')
+                        if (i == start)
                         {
-                            if (i == start)
-                            {
-                                break; // Double null terminator indicates the end of the list.
-                            }
-                            paths.Add(outFileBuffer.Substring(start, i - start));
-                            start = i + 1;
+                            break;
                         }
+                        paths.Add(new string(buffer, start, i - start));
+                        start = i + 1;
                     }
-
-                    if (paths.Count == 1)
-                    {
-                        persistDirectory(Path.GetDirectoryName(paths[0]));
-                        return paths;
-                    }
-
-                    // When there are multiple files selected, the first one is the directory and the rest are just filenames.
-                    string directoryName = paths[0];
-                    persistDirectory(directoryName);
-                    return paths.Slice(1, paths.Count - 1).Select(p => Path.Combine(directoryName, p)).ToList();
                 }
+
+                if (paths.Count == 1)
+                {
+                    persistDirectory(Path.GetDirectoryName(paths[0]));
+                    return paths;
+                }
+
+                // First entry is the directory, rest are file names.
+                string directoryName = paths[0];
+                persistDirectory(directoryName);
+                return paths.Skip(1).Select(p => Path.Combine(directoryName, p)).ToList();
             }
         }
 
-        public static string SaveFile(string filter, string initialDirectory, string defaultExtension, Action<string> persistDirectory)
+        public static unsafe string SaveFile(string filter, string initialDirectory, string defaultExtension, Action<string> persistDirectory)
         {
-            string outFileBuffer = new string('\0', 8192);
-            unsafe
+            char[] buffer = new char[BufferLength];
+            string reformattedFilter = ReformatFilter(filter);
+            fixed (char* bufferPtr = buffer)
+            fixed (char* filterPtr = reformattedFilter)
+            fixed (char* initialDirPtr = initialDirectory)
             {
-                fixed (char* outFilePtr = outFileBuffer)
+                OPENFILENAMEW ofn = new()
                 {
-                    if (SaveFileDialog(ReformatFilter(filter), initialDirectory, outFilePtr, outFileBuffer.Length) != 0)
-                    {
-                        return null;
-                    }
+                    lStructSize = (uint)Marshal.SizeOf<OPENFILENAMEW>(),
+                    hwndOwner = new HWND(Win32ImGuiHost.MainWindowHandle),
+                    lpstrFilter = filterPtr,
+                    lpstrInitialDir = initialDirPtr,
+                    lpstrFile = bufferPtr,
+                    nMaxFile = BufferLength,
+                    Flags = OPEN_FILENAME_FLAGS.OFN_NOCHANGEDIR | OPEN_FILENAME_FLAGS.OFN_OVERWRITEPROMPT | OPEN_FILENAME_FLAGS.OFN_EXPLORER,
+                };
 
-                    string outFileTrimmed = new string(outFilePtr); // Trim off null terminators
-                    if (!Path.HasExtension(outFileTrimmed))
-                    {
-                        outFileTrimmed = Path.ChangeExtension(outFileTrimmed, defaultExtension);
-                    }
-
-                    persistDirectory(Path.GetDirectoryName(outFileTrimmed));
-                    return outFileTrimmed;
+                if (!PInvoke.GetSaveFileName(ref ofn))
+                {
+                    return null;
                 }
+
+                string outFile = new(bufferPtr);
+                if (!Path.HasExtension(outFile))
+                {
+                    outFile = Path.ChangeExtension(outFile, defaultExtension);
+                }
+                persistDirectory(Path.GetDirectoryName(outFile));
+                return outFile;
             }
         }
 

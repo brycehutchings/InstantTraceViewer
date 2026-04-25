@@ -1,0 +1,36 @@
+// Window/message APIs for Win32ImGuiHost
+CreateWindowEx
+RegisterClassEx
+UnregisterClass
+DestroyWindow
+ShowWindow
+UpdateWindow
+DefWindowProc
+PeekMessage
+TranslateMessage
+DispatchMessage
+PostQuitMessage
+LoadIcon
+LoadCursor
+GetModuleHandle
+GetDpiForWindow
+SetWindowPos
+WaitForSingleObject
+CloseHandle
+IDC_ARROW
+
+// Window messages and constants
+WM_SIZE
+WM_QUIT
+WM_SYSCOMMAND
+WM_DESTROY
+SIZE_MINIMIZED
+SC_KEYMENU
+
+// File dialogs
+GetOpenFileName
+GetSaveFileName
+CommDlgExtendedError
+
+// Packaging detection (NativeInterop.cs)
+GetCurrentPackageFullName

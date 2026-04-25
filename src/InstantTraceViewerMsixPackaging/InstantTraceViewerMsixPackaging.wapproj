@@ -34,6 +34,7 @@
     <EntryPointProjectUniqueName>..\InstantTraceViewerUI\InstantTraceViewerUI.csproj</EntryPointProjectUniqueName>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <AppxBundle>Never</AppxBundle>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
   </PropertyGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">

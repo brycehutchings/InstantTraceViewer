@@ -2,20 +2,26 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
-using ImGuiNET;
+using System.Runtime.InteropServices;
+using Hexa.NET.ImGui;
 
 namespace InstantTraceViewerUI
 {
     internal class Program
     {
-        public static int Main(string[] args)
+        // Hexa.NET.ImGui's bundled cimgui.dll is built with IMGUI_ENABLE_FREETYPE, but the
+        // managed binding doesn't expose the builder factory. Import it directly.
+        [DllImport("cimgui", CallingConvention = CallingConvention.Cdecl, EntryPoint = "ImGuiFreeType_GetBuilderForFreeType")]
+        private static extern unsafe ImFontBuilderIO* ImGuiFreeType_GetBuilderForFreeType();
+
+        public static unsafe int Main(string[] args)
         {
-            if (NativeInterop.WindowInitialize(out nint imguiContext) != 0)
+            if (Win32ImGuiHost.WindowInitialize(out nint imguiContext) != 0)
             {
                 return 1;
             }
 
-            ImGui.SetCurrentContext(imguiContext);
+            ImGui.SetCurrentContext(new ImGuiContextPtr((ImGuiContext*)imguiContext));
 
             FontType? lastSetFont = null;
             int? lastSetFontSize = null;
@@ -46,7 +52,7 @@ namespace InstantTraceViewerUI
                         lastThemeSet = Settings.Theme;
                     }
 
-                    if (NativeInterop.WindowBeginNextFrame(out int quit, out int occluded) != 0)
+                    if (Win32ImGuiHost.WindowBeginNextFrame(out int quit, out int occluded) != 0)
                     {
                         break;
                     }
@@ -80,14 +86,14 @@ namespace InstantTraceViewerUI
                         break;
                     }
 
-                    if (NativeInterop.WindowEndNextFrame() != 0)
+                    if (Win32ImGuiHost.WindowEndNextFrame() != 0)
                     {
                         break;
                     }
                 }
             }
 
-            NativeInterop.WindowCleanup();
+            Win32ImGuiHost.WindowCleanup();
 
             return 0;
         }
@@ -95,7 +101,7 @@ namespace InstantTraceViewerUI
         private static float GetDpiScale()
         {
             // For now, use the scale of the primary monitor
-            ImPtrVector<ImGuiPlatformMonitorPtr> monitors = ImGui.GetPlatformIO().Monitors;
+            ImVector<ImGuiPlatformMonitor> monitors = ImGui.GetPlatformIO().Monitors;
             return monitors.Size > 0 ? monitors[0].DpiScale : 1.0f;
         }
 
@@ -108,6 +114,10 @@ namespace InstantTraceViewerUI
 
             bool needsRebuild = ImGui.GetIO().Fonts.TexID != nint.Zero;
             ImGui.GetIO().Fonts.Clear();
+
+            // Use FreeType for higher-quality glyph rasterization than the default stb_truetype.
+            ImFontAtlasPtr atlas = ImGui.GetIO().Fonts;
+            atlas.FontBuilderIO = ImGuiFreeType_GetBuilderForFreeType();
 
             FontType font = Settings.Font;
             if (font == FontType.ProggyClean)
@@ -169,7 +179,7 @@ namespace InstantTraceViewerUI
             if (needsRebuild)
             {
                 ImGui.GetIO().Fonts.Build();
-                NativeInterop.RebuildFontAtlas(); // Reupload the font texture to the GPU
+                Win32ImGuiHost.RebuildFontAtlas(); // Reupload the font texture to the GPU
             }
         }
 
@@ -189,24 +199,24 @@ namespace InstantTraceViewerUI
         {
             // Note this ImVector is leaked but that is OK because ImGui needs the memory kept alive for the lifetime of the font atlas.
             // It's a small amount of memory to leak and only when the user changes font settings.
-            ImVector glyphRangesVector = new ImVector();
+            ImVector<uint> glyphRangesVector = default;
             if (glyphRanges != null)
             {
-                ImFontGlyphRangesBuilderPtr builder = ImGuiNative.ImFontGlyphRangesBuilder_ImFontGlyphRangesBuilder();
+                ImFontGlyphRangesBuilderPtr builder = ImGui.ImFontGlyphRangesBuilder();
                 foreach (var glyphRange in glyphRanges)
                 {
                     builder.AddChar(glyphRange);
                 }
-                builder.BuildRanges(out glyphRangesVector);
+                builder.BuildRanges(ref glyphRangesVector);
             }
 
-            ImFontConfigPtr fontCfg = ImGuiNative.ImFontConfig_ImFontConfig();
+            ImFontConfigPtr fontCfg = ImGui.ImFontConfig();
             fontCfg.MergeMode = mergeMode;
             fontCfg.FontDataOwnedByAtlas = false;
-            fontCfg.GlyphRanges = glyphRangesVector.Data;
+            fontCfg.GlyphRanges = (uint*)glyphRangesVector.Data;
             fixed (byte* fontDataPtr = fontData)
             {
-                ImGui.GetIO().Fonts.AddFontFromMemoryTTF((nint)fontDataPtr, fontData.Length, scaledFontSize, fontCfg);
+                ImGui.GetIO().Fonts.AddFontFromMemoryTTF(fontDataPtr, fontData.Length, scaledFontSize, fontCfg);
             }
         }
     }

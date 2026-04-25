@@ -1,11 +1,11 @@
-﻿/*
+/*
  * --- FUTURE WORK/IDEAS
  * 0. Highlight thread row (or process row if collapsed) of last selected event to make it easier to find.
  * 1. Inline thread timeline in log viewer with only pinned threads. Context menu item for thread cell to pin.
  * 2. Click-drag to select time range and show duration. Allow zoom to it.
  * 3. Option to aggregate by Provider instead of Pid/Tid?
  */
-using ImGuiNET;
+using Hexa.NET.ImGui;
 using System;
 using System.Numerics;
 using InstantTraceViewer;
@@ -17,7 +17,7 @@ using System.IO.Hashing;
 
 namespace InstantTraceViewerUI
 {
-    internal class ThreadTimelineWindow
+    internal unsafe class ThreadTimelineWindow
     {
         private const string PopupName = "Thread Timeline";
 
@@ -726,7 +726,7 @@ namespace InstantTraceViewerUI
                 }
                 if (ImGui.IsKeyDown(ImGuiKey.ModShift) && ImGui.IsMouseDown(ImGuiMouseButton.Left))
                 {
-                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEW);
+                    ImGui.SetMouseCursor(ImGuiMouseCursor.ResizeEw);
                     panAmountPixels = ImGui.GetIO().MouseDelta.X;
                 }
                 else
@@ -892,8 +892,10 @@ namespace InstantTraceViewerUI
         private static uint DarkenColor(uint originalColor)
         {
             Vector4 originalColorVec = ImGui.ColorConvertU32ToFloat4(originalColor);
-            ImGui.ColorConvertRGBtoHSV(originalColorVec.X, originalColorVec.Y, originalColorVec.Z, out float h, out float s, out float v);
-            ImGui.ColorConvertHSVtoRGB(h, s, v * 0.8f /* darken by 20% */, out float r, out float g, out float b);
+            float h = 0, s = 0, v = 0;
+            ImGui.ColorConvertRGBtoHSV(originalColorVec.X, originalColorVec.Y, originalColorVec.Z, ref h, ref s, ref v);
+            float r = 0, g = 0, b = 0;
+            ImGui.ColorConvertHSVtoRGB(h, s, v * 0.8f /* darken by 20% */, ref r, ref g, ref b);
             return ImGui.ColorConvertFloat4ToU32(new Vector4(r, g, b, originalColorVec.W));
         }
 
@@ -920,7 +922,8 @@ namespace InstantTraceViewerUI
             uint value = 60 + (hash % 20);
 
             // Convert HSL to RGB
-            ImGui.ColorConvertHSVtoRGB(hue / 360.0f, saturation / 100.0f, value / 100.0f, out float r, out float g, out float b);
+            float r = 0, g = 0, b = 0;
+            ImGui.ColorConvertHSVtoRGB(hue / 360.0f, saturation / 100.0f, value / 100.0f, ref r, ref g, ref b);
 
             return ImGui.GetColorU32(new Vector4(r, g, b, 1.0f));
         }
