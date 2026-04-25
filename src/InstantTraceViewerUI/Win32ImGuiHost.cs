@@ -53,19 +53,16 @@ namespace InstantTraceViewerUI
         private static uint s_resizeHeight;
 
         /// <summary>
-        /// Creates the application window, the D3D11 device + swap chain, and the ImGui context
-        /// (with the Win32 + D3D11 backends initialized). Must be called once before any other method.
+        /// Creates the application window and the D3D11 device + swap chain. Must be called once before any other method.
         /// </summary>
-        /// <param name="imguiContext">Out: the newly created ImGui context handle, suitable for ImGui.SetCurrentContext.</param>
-        public static void WindowInitialize(out IntPtr imguiContext)
+        public static void WindowInitialize()
         {
-            imguiContext = IntPtr.Zero;
             if (!s_hwnd.IsNull)
             {
                 throw new InvalidOperationException("Window is already initialized.");
             }
 
-            HMODULE hInstance = PInvoke.GetModuleHandle((PCWSTR)null);
+            HINSTANCE hInstance = (HINSTANCE)PInvoke.GetModuleHandle((PCWSTR)null);
             HICON hIcon = PInvoke.LoadIcon(hInstance, PInvoke.IDI_APPLICATION);
             HCURSOR hCursor = PInvoke.LoadCursor(HINSTANCE.Null, PInvoke.IDC_ARROW);
 
@@ -76,7 +73,7 @@ namespace InstantTraceViewerUI
                     cbSize = (uint)sizeof(WNDCLASSEXW),
                     style = WNDCLASS_STYLES.CS_CLASSDC,
                     lpfnWndProc = &WndProc,
-                    hInstance = hInstance,
+                    hInstance = HINSTANCE.Null,
                     hIcon = hIcon,
                     hCursor = hCursor,
                     lpszClassName = classNamePtr,
@@ -90,16 +87,16 @@ namespace InstantTraceViewerUI
             }
 
             s_hwnd = PInvoke.CreateWindowEx(
-                0,
+                default,
                 WindowClassName,
                 WindowTitle,
                 WINDOW_STYLE.WS_OVERLAPPEDWINDOW,
                 (int)DefaultX, (int)DefaultY, (int)DefaultWidth, (int)DefaultHeight,
-                HWND.Null, HMENU.Null, hInstance, null);
+                HWND.Null, null, null, null);
 
             if (s_hwnd.IsNull)
             {
-                PInvoke.UnregisterClass(WindowClassName, hInstance);
+                PInvoke.UnregisterClass(WindowClassName, null);
                 throw new InvalidOperationException("Failed to create application window.");
             }
 
@@ -121,30 +118,35 @@ namespace InstantTraceViewerUI
             {
                 CleanupDeviceD3D();
                 PInvoke.DestroyWindow(s_hwnd);
-                PInvoke.UnregisterClass(WindowClassName, hInstance);
+                PInvoke.UnregisterClass(WindowClassName, null);
                 s_hwnd = HWND.Null;
                 throw;
             }
 
             PInvoke.ShowWindow(s_hwnd, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
             PInvoke.UpdateWindow(s_hwnd);
+        }
 
-            ImGuiContextPtr ctx = ImGui.CreateContext();
-            ImGui.SetCurrentContext(ctx);
+        /// <summary>
+        /// Binds the existing ImGui context to the Win32 + D3D11 backends used by this host.
+        /// </summary>
+        public static void InitializeImGuiBackends(ImGuiContextPtr ctx)
+        {
             ImGuiImplWin32.SetCurrentContext(ctx);
-
-            ImGuiIOPtr io = ImGui.GetIO();
-            io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
-            io.ConfigFlags |= ImGuiConfigFlags.NavEnableGamepad;
-            io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
-            io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
 
             ImGuiImplWin32.Init((IntPtr)s_hwnd);
             ImGuiImplD3D11.Init(
                 new ID3D11DevicePtr((BID3D11Device*)s_device),
                 new ID3D11DeviceContextPtr((BID3D11DeviceContext*)s_context));
+        }
 
-            imguiContext = (IntPtr)ctx.Handle;
+        /// <summary>
+        /// Shuts down the ImGui Win32 + D3D11 backends. Must be called before destroying the ImGui context.
+        /// </summary>
+        public static void ShutdownImGuiBackends()
+        {
+            ImGuiImplD3D11.Shutdown();
+            ImGuiImplWin32.Shutdown();
         }
 
         /// <summary>
@@ -239,15 +241,11 @@ namespace InstantTraceViewerUI
         }
 
         /// <summary>
-        /// Tears down the ImGui backends and context, releases the D3D11 device + swap chain,
-        /// destroys the window, and unregisters the window class. Safe to call once at shutdown.
+        /// Releases the D3D11 device + swap chain, destroys the window, and unregisters the window class.
+        /// Safe to call once at shutdown after the ImGui backends have been shut down.
         /// </summary>
         public static void WindowCleanup()
         {
-            ImGuiImplD3D11.Shutdown();
-            ImGuiImplWin32.Shutdown();
-            ImGui.DestroyContext();
-
             CleanupDeviceD3D();
             if (!s_hwnd.IsNull)
             {
@@ -256,7 +254,7 @@ namespace InstantTraceViewerUI
             }
             if (s_classAtom != 0)
             {
-                PInvoke.UnregisterClass(WindowClassName, PInvoke.GetModuleHandle((PCWSTR)null));
+                PInvoke.UnregisterClass(WindowClassName, null);
                 s_classAtom = 0;
             }
         }

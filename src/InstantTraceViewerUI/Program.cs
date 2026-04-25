@@ -14,11 +14,19 @@ namespace InstantTraceViewerUI
         [DllImport("cimgui", CallingConvention = CallingConvention.Cdecl, EntryPoint = "ImGuiFreeType_GetBuilderForFreeType")]
         private static extern unsafe ImFontBuilderIO* ImGuiFreeType_GetBuilderForFreeType();
 
-        public static unsafe int Main(string[] args)
+        public static int Main(string[] args)
         {
-            Win32ImGuiHost.WindowInitialize(out nint imguiContext);
+            Win32ImGuiHost.WindowInitialize();
 
-            ImGui.SetCurrentContext(new ImGuiContextPtr((ImGuiContext*)imguiContext));
+            ImGuiContextPtr imguiContext = ImGui.CreateContext();
+            ImGui.SetCurrentContext(imguiContext);
+            Win32ImGuiHost.InitializeImGuiBackends(imguiContext);
+
+            ImGuiIOPtr io = ImGui.GetIO();
+            io.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
+            io.ConfigFlags |= ImGuiConfigFlags.NavEnableGamepad;
+            io.ConfigFlags |= ImGuiConfigFlags.DockingEnable;
+            io.ConfigFlags |= ImGuiConfigFlags.ViewportsEnable;
 
             FontType? lastSetFont = null;
             int? lastSetFontSize = null;
@@ -84,6 +92,8 @@ namespace InstantTraceViewerUI
                 }
             }
 
+            Win32ImGuiHost.ShutdownImGuiBackends();
+            ImGui.DestroyContext();
             Win32ImGuiHost.WindowCleanup();
 
             return 0;
