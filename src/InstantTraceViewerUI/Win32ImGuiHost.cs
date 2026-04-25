@@ -105,9 +105,12 @@ namespace InstantTraceViewerUI
             if (dpi != 0)
             {
                 float scale = dpi / 96.0f;
-                PInvoke.SetWindowPos(s_hwnd, HWND.Null, 0, 0,
+                if (!PInvoke.SetWindowPos(s_hwnd, HWND.Null, 0, 0,
                     (int)(DefaultWidth * scale), (int)(DefaultHeight * scale),
-                    SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+                    SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE))
+                {
+                    throw new InvalidOperationException("Failed to scale window size for monitor DPI.");
+                }
             }
 
             try
@@ -191,6 +194,7 @@ namespace InstantTraceViewerUI
                     occluded = true;
                     return;
                 }
+                presentResult.ThrowOnFailure();
             }
 
             s_swapChainOccluded = false;
