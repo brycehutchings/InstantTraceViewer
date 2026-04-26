@@ -31,6 +31,7 @@ namespace InstantTraceViewerUI
         private const uint DefaultY = 100;
         private const uint DefaultWidth = 1200;
         private const uint DefaultHeight = 800;
+        private const uint WM_DPICHANGED = 0x02E0;
 
         private const DXGI_SWAP_CHAIN_FLAG SwapchainFlags =
             DXGI_SWAP_CHAIN_FLAG.DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
@@ -51,6 +52,17 @@ namespace InstantTraceViewerUI
         private static WID3D11RenderTargetView* s_renderTargetView;
         private static uint s_resizeWidth;
         private static uint s_resizeHeight;
+
+        public static float GetDpiScale()
+        {
+            if (s_hwnd.IsNull)
+            {
+                return 1.0f;
+            }
+
+            uint dpi = PInvoke.GetDpiForWindow(s_hwnd);
+            return dpi != 0 ? dpi / 96.0f : 1.0f;
+        }
 
         /// <summary>
         /// Creates the application window and the D3D11 device + swap chain. Must be called once before any other method.
@@ -101,10 +113,9 @@ namespace InstantTraceViewerUI
             }
 
             // Scale window size by the monitor DPI.
-            uint dpi = PInvoke.GetDpiForWindow(s_hwnd);
-            if (dpi != 0)
+            float scale = GetDpiScale();
+            if (scale != 1.0f)
             {
-                float scale = dpi / 96.0f;
                 if (!PInvoke.SetWindowPos(s_hwnd, HWND.Null, 0, 0,
                     (int)(DefaultWidth * scale), (int)(DefaultHeight * scale),
                     SET_WINDOW_POS_FLAGS.SWP_NOMOVE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE))
@@ -137,7 +148,7 @@ namespace InstantTraceViewerUI
         {
             ImGuiImplWin32.SetCurrentContext(ctx);
 
-            ImGuiImplWin32.Init((IntPtr)s_hwnd);
+            ImGuiImplWin32.Init(s_hwnd.Value);
             ImGuiImplD3D11.Init(
                 new ID3D11DevicePtr((BID3D11Device*)s_device),
                 new ID3D11DeviceContextPtr((BID3D11DeviceContext*)s_context));
@@ -261,17 +272,6 @@ namespace InstantTraceViewerUI
                 PInvoke.UnregisterClass(WindowClassName, null);
                 s_classAtom = 0;
             }
-        }
-
-        /// <summary>
-        /// Re-uploads the ImGui font atlas to the GPU. Call this after changing fonts (e.g. font size or family)
-        /// while the application is running, after rebuilding the atlas via ImGui's font APIs.
-        /// </summary>
-        public static void RebuildFontAtlas()
-        {
-            // Equivalent to ImGui_ImplDX11_CreateDeviceObjects() in the native code: rebuilds the font texture on the GPU.
-            ImGuiImplD3D11.InvalidateDeviceObjects();
-            ImGuiImplD3D11.CreateDeviceObjects();
         }
 
         /// <summary>
@@ -443,6 +443,18 @@ namespace InstantTraceViewerUI
                     nint lp = (nint)lParam;
                     s_resizeWidth = (uint)(ushort)lp;
                     s_resizeHeight = (uint)(ushort)(lp >> 16);
+                    return new LRESULT(0);
+
+                case WM_DPICHANGED:
+                    RECT* suggestedRect = (RECT*)(nint)lParam;
+                    PInvoke.SetWindowPos(
+                        hWnd,
+                        HWND.Null,
+                        suggestedRect->left,
+                        suggestedRect->top,
+                        suggestedRect->right - suggestedRect->left,
+                        suggestedRect->bottom - suggestedRect->top,
+                        SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
                     return new LRESULT(0);
 
                 case PInvoke.WM_SYSCOMMAND:

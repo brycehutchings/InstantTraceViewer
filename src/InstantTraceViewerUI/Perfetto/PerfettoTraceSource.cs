@@ -465,6 +465,7 @@ namespace InstantTraceViewerUI.Perfetto
                     AndroidLogId.LidStats => Source.LogcatStats,
                     AndroidLogId.LidSecurity => Source.LogcatSecurity,
                     AndroidLogId.LidKernel => Source.LogcatKernel,
+                    _ => throw new NotImplementedException($"Unknown AndroidLogId: {evt.LogId}"),
                 };
                 record.Priority = evt.Prio switch
                 {
@@ -474,6 +475,7 @@ namespace InstantTraceViewerUI.Perfetto
                     AndroidLogPriority.PrioWarn => Priority.Warning,
                     AndroidLogPriority.PrioError => Priority.Error,
                     AndroidLogPriority.PrioFatal => Priority.Fatal,
+                    _ => throw new NotImplementedException($"Unknown AndroidLogPriority: {evt.Prio}"),
                 };
                 record.Pid = pid;
                 record.Tid = tid;

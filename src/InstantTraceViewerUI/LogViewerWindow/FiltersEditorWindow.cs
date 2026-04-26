@@ -62,7 +62,7 @@ namespace InstantTraceViewerUI
         private unsafe void DrawCurrentRules(IUiCommands uiCommands, ViewerRules rules)
         {
             Vector2 inputScreenPos = ImGui.GetCursorScreenPos();
-            if (ImGui.InputText("##AddRule", ref _addRuleInputText, 1024) || _addRuleLastParseResult == null)
+            if (ImGui.InputText("##AddRule", ref _addRuleInputText, ImGuiWidgets.GetInputTextBufferSize(_addRuleInputText, 1024)) || _addRuleLastParseResult == null)
             {
                 _addRuleLastParseResult = _parser.Parse(_addRuleInputText);
             }
@@ -298,7 +298,7 @@ Examples:
                     if (_editingRule == rule)
                     {
                         inputScreenPos = ImGui.GetCursorScreenPos();
-                        if (ImGui.InputText("##EditRule", ref _editRuleInputText, 1024) || _editRuleLastParseResult == null)
+                        if (ImGui.InputText("##EditRule", ref _editRuleInputText, ImGuiWidgets.GetInputTextBufferSize(_editRuleInputText, 1024)) || _editRuleLastParseResult == null)
                         {
                             _editRuleLastParseResult = _parser.Parse(_editRuleInputText);
                         }

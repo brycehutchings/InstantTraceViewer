@@ -51,9 +51,8 @@
     <PackageReference Include="AdvancedSharpAdbClient" Version="3.6.16" />
     <PackageReference Include="Google.Protobuf" Version="3.35.0-rc1" />
     <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
-    <!-- Hexa.NET.ImGui 2.2.4 = Dear ImGui 1.91.6. Backends supplies managed ImGui_ImplWin32 / ImGui_ImplDX11. -->
-    <PackageReference Include="Hexa.NET.ImGui" Version="2.2.7" />
-    <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.15" />
+    <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
+    <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

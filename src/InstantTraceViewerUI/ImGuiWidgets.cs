@@ -1,4 +1,5 @@
 using Hexa.NET.ImGui;
+using HexaGen.Runtime;
 using System;
 using System.Numerics;
 using System.Reflection;
@@ -30,6 +31,11 @@ namespace InstantTraceViewerUI
                 Id = textState.ID,
                 ScrollX = textState.Scroll.X,
             };
+        }
+
+        public static nuint GetInputTextBufferSize(string text, int minimumSize)
+        {
+            return (nuint)Math.Max(minimumSize, Utils.GetByteCountUTF8(text) + 1);
         }
 
         // It seems the only way to test hover/active state with non-internal API is to

@@ -657,7 +657,7 @@ namespace InstantTraceViewerUI
             ImGui.InputTextMultiline(
                 "##Message",
                 ref message,
-                0,
+                ImGuiWidgets.GetInputTextBufferSize(message, 1),
                 new Vector2(
                     Math.Clamp(maxLineLength + 40, 200, 800),
                     ImGui.GetTextLineHeight() * Math.Min(32, lines.Length) + 10),
@@ -887,7 +887,7 @@ namespace InstantTraceViewerUI
             {
                 ImGui.SetKeyboardFocusHere();
             }
-            if (ImGui.InputTextWithHint("##Find", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll))
+            if (ImGui.InputTextWithHint("##Find", "Find...", ref _findBuffer, ImGuiWidgets.GetInputTextBufferSize(_findBuffer, 1024), ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll))
             {
                 // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
                 ImGui.SetKeyboardFocusHere(-1);
