@@ -7,3 +7,4 @@ ARM64/
 *.pubxml.user
 *.wapproj.user
 *.csproj.user
+src/InstantTraceViewerMsixPackaging/InstantTraceViewerMsixPackaging.assets.cache

@@ -246,6 +246,7 @@ namespace InstantTraceViewerUI.Etw
                     etwSessionProfile.Providers.Add(new EtwSessionEnabledProvider
                     {
                         Name = eventProvider.Name,
+                        Description = eventProvider.Id,
                         Level = level,
                         MatchAnyKeyword = matchAnyKeywords,
                     });

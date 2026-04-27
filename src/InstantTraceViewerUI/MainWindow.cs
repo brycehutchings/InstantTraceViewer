@@ -40,6 +40,7 @@ namespace InstantTraceViewerUI
         private MessageBoxData? _messageBox = null;
 
         private Etw.OpenActiveSession _openActiveSession = new();
+        private List<Etw.StartRealTimeSessionWindow> _startRealTimeSessionWindows = new();
         private List<LogViewerWindow> _logViewerWindows = new();
         private List<LogViewerWindow> _pendingNewLogViewWindows = new();
         private bool _showOpenActiveSession;
@@ -117,6 +118,15 @@ namespace InstantTraceViewerUI
             if (_showOpenActiveSession)
             {
                 _openActiveSession.DrawWindow(this, ref _showOpenActiveSession);
+            }
+
+            for (int i = 0; i < _startRealTimeSessionWindows.Count; i++)
+            {
+                if (!_startRealTimeSessionWindows[i].DrawWindow(this))
+                {
+                    _startRealTimeSessionWindows.RemoveAt(i);
+                    i--;
+                }
             }
 
             DrawMessageBox();
@@ -246,6 +256,11 @@ namespace InstantTraceViewerUI
                 ImGui.SetNextItemShortcut((int)(ImGuiKey.E | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Etw"))
                 {
+                    if (ImGui.MenuItem("Start real-time..."))
+                    {
+                        _startRealTimeSessionWindows.Add(new Etw.StartRealTimeSessionWindow());
+                    }
+
                     if (ImGui.MenuItem("Open WPRP file (real-time)..."))
                     {
                         // TODO: This blocks the render thread

@@ -9,6 +9,9 @@ namespace InstantTraceViewerUI.Etw
         // This may be a GUID or special provider string.
         public required string Name { get; set; }
 
+        // This is not fed to the ETW session. It is only used for display purposes in the "Start real-time" configuration window.
+        public required string Description { get; set; }
+
         public TraceEventLevel Level { get; set; } = TraceEventLevel.Verbose;
 
         public ulong MatchAnyKeyword { get; set; } = ulong.MaxValue;
