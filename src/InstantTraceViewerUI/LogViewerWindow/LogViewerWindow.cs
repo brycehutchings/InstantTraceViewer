@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Text;
-using ImGuiNET;
+using Hexa.NET.ImGui;
 using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
@@ -13,7 +13,7 @@ namespace InstantTraceViewerUI
     {
         private static readonly MinUniqueId MinUniqueIdPool = new();
 
-        private readonly ImGuiListClipperPtr _tableClipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
+        private readonly ImGuiListClipperPtr _tableClipper = ImGui.ImGuiListClipper();
         private readonly SharedTraceSource _traceSource;
         private readonly int _windowId;
         private readonly string _windowIdString;
@@ -240,7 +240,7 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                ImGuiMultiSelectIOPtr multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
+                ImGuiMultiSelectIOPtr multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2D);
                 ApplyMultiSelectRequests(visibleTraceTable, multiselectIO);
 
                 _topmostRenderedFullTableRowIndex = null;
@@ -657,7 +657,7 @@ namespace InstantTraceViewerUI
             ImGui.InputTextMultiline(
                 "##Message",
                 ref message,
-                0,
+                ImGuiWidgets.GetInputTextBufferSize(message, 1),
                 new Vector2(
                     Math.Clamp(maxLineLength + 40, 200, 800),
                     ImGui.GetTextLineHeight() * Math.Min(32, lines.Length) + 10),
@@ -669,10 +669,10 @@ namespace InstantTraceViewerUI
             bool lastSelectedRowUnselected = false, lastSelectedRowSelected = false;
             for (int reqIdx = 0; reqIdx < multiselectIO.Requests.Size; reqIdx++)
             {
-                ImGuiSelectionRequestPtr req = multiselectIO.Requests[reqIdx];
+                ImGuiSelectionRequest req = multiselectIO.Requests[reqIdx];
                 if (req.Type == ImGuiSelectionRequestType.SetAll)
                 {
-                    if (!req.Selected)
+                    if (req.Selected == 0)
                     {
                         // This is an optimization to unselect everything without iterating over all rows.
                         _selectedFullTableRowIndices.Clear();
@@ -691,7 +691,7 @@ namespace InstantTraceViewerUI
                 for (long i = startIndex; i <= endIndex; i++)
                 {
                     int fullTableRowIndex = visibleTraceTable.GetFullTableRowIndex((int)i);
-                    if (req.Selected)
+                    if (req.Selected != 0)
                     {
                         _selectedFullTableRowIndices.Add(fullTableRowIndex);
                         lastSelectedRowSelected |= (fullTableRowIndex == _lastSelectedFullTableRowIndex);
@@ -883,11 +883,11 @@ namespace InstantTraceViewerUI
             bool findRequested = false;
             ImGui.SameLine();
             ImGui.PushItemWidth(300);
-            if (ImGui.Shortcut(ImGuiKey.F | ImGuiKey.ModCtrl))
+            if (ImGui.Shortcut((int)(ImGuiKey.F | ImGuiKey.ModCtrl)))
             {
                 ImGui.SetKeyboardFocusHere();
             }
-            if (ImGui.InputTextWithHint("##Find", "Find...", ref _findBuffer, 1024, ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll))
+            if (ImGui.InputTextWithHint("##Find", "Find...", ref _findBuffer, ImGuiWidgets.GetInputTextBufferSize(_findBuffer, 1024), ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll))
             {
                 // Focus goes somewhere else when enter is pressed but we want to keep focus so the user can keep pressing enter to go to the next match.
                 ImGui.SetKeyboardFocusHere(-1);
@@ -956,39 +956,39 @@ namespace InstantTraceViewerUI
             // Handle hotkeys for menu bar here. They can't be nested inside the 'if's.
             //
 
-            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.C))
+            if (ImGui.Shortcut((int)(ImGuiKey.ModCtrl | ImGuiKey.C)))
             {
                 CopySelectedRows(visibleTraceTable);
             }
 
-            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.E))
+            if (ImGui.Shortcut((int)(ImGuiKey.ModCtrl | ImGuiKey.E)))
             {
                 _filtersEditorWindow = new FiltersEditorWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
             }
 
-            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.S))
+            if (ImGui.Shortcut((int)(ImGuiKey.ModCtrl | ImGuiKey.S)))
             {
                 _spamFilterWindow = new SpamFilterWindow(_traceSource.TraceSource.DisplayName, _windowIdString);
             }
 
-            if (ImGui.Shortcut(ImGuiKey.ModCtrl | ImGuiKey.H))
+            if (ImGui.Shortcut((int)(ImGuiKey.ModCtrl | ImGuiKey.H)))
             {
                 _viewerRules.ApplyFiltering = !_viewerRules.ApplyFiltering;
             }
 
-            if (_lastSelectedVisibleRowIndex.HasValue && ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.LeftArrow))
+            if (_lastSelectedVisibleRowIndex.HasValue && ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.LeftArrow)))
             {
                 setScrollIndex = _lastSelectedVisibleRowIndex;
             }
 
             if (visibleTraceTable.Schema.UnifiedLevelColumn != null)
             {
-                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Comma, ImGuiInputFlags.Repeat))
+                if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.Comma), ImGuiInputFlags.Repeat))
                 {
                     setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: false);
                 }
 
-                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Period, ImGuiInputFlags.Repeat))
+                if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.Period), ImGuiInputFlags.Repeat))
                 {
                     setScrollIndex = FindNextError(visibleTraceTable, _findBuffer, findForward: true);
                 }
@@ -997,21 +997,21 @@ namespace InstantTraceViewerUI
             if (visibleTraceTable.Schema.ThreadIdColumn != null && _lastSelectedVisibleRowIndex.HasValue)
             {
                 int lastSelectedRowThreadId = visibleTraceTable.GetThreadId(_lastSelectedVisibleRowIndex.Value);
-                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.LeftBracket, ImGuiInputFlags.Repeat))
+                if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.LeftBracket), ImGuiInputFlags.Repeat))
                 {
                     setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: false);
                 }
-                if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.RightBracket, ImGuiInputFlags.Repeat))
+                if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.RightBracket), ImGuiInputFlags.Repeat))
                 {
                     setScrollIndex = FindNextThreadRow(visibleTraceTable, lastSelectedRowThreadId, findForward: true);
                 }
             }
 
-            if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Semicolon, ImGuiInputFlags.Repeat))
+            if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.Semicolon), ImGuiInputFlags.Repeat))
             {
                 setScrollIndex = FindNextHighlightedRow(visibleTraceTable, findForward: false);
             }
-            if (ImGui.Shortcut(ImGuiKey.ModAlt | ImGuiKey.Apostrophe, ImGuiInputFlags.Repeat))
+            if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.Apostrophe), ImGuiInputFlags.Repeat))
             {
                 setScrollIndex = FindNextHighlightedRow(visibleTraceTable, findForward: true);
             }

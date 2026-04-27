@@ -1,4 +1,4 @@
-﻿using ImGuiNET;
+using Hexa.NET.ImGui;
 using InstantTraceViewer;
 using System;
 using System.Collections.Generic;
@@ -124,14 +124,14 @@ namespace InstantTraceViewerUI
                         ImGuiTableSortSpecsPtr sortSpecs = ImGui.TableGetSortSpecs();
                         for (int i = 0; i < sortSpecs.SpecsCount; i++)
                         {
-                            var spec = new ImGuiTableColumnSortSpecsPtr(sortSpecs.NativePtr->Specs + i);
+                            var spec = new ImGuiTableColumnSortSpecsPtr(sortSpecs.Handle->Specs + i);
                             sortedCountsEnumerable = currentAdapter.ImGuiSort(spec, sortedCountsEnumerable);
                         }
 
                         sortedCounts = sortedCountsEnumerable.ToList();
                     }
 
-                    var multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2d);
+                    var multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2D);
                     var applyMultiselectRequests = () =>
                     {
                         for (int reqIdx = 0; reqIdx < multiselectIO.Requests.Size; reqIdx++)
@@ -149,7 +149,7 @@ namespace InstantTraceViewerUI
                             long endIndex = Math.Max(req.RangeFirstItem, req.RangeLastItem);
                             for (long i = startIndex; i <= endIndex; i++)
                             {
-                                sortedCounts[(int)i].Selected = req.Selected;
+                                sortedCounts[(int)i].Selected = req.Selected != 0;
                             }
                         }
                     };

@@ -1,17 +1,9 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.11.35303.130
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "InstantTraceViewerUI", "src\InstantTraceViewerUI\InstantTraceViewerUI.csproj", "{D1A11562-46EF-450F-886E-C52ED17B4ACB}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "InstantTraceViewerNative", "src\InstantTraceViewerNative\InstantTraceViewerNative.vcxproj", "{D864832D-A0C0-40BD-BF5A-95260C8D8255}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ImGui.NET", "ThirdParty\ImGuiNET\src\ImGui.NET\ImGui.NET.csproj", "{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}"
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cimgui", "src\cimgui\cimgui.vcxproj", "{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ThirdParty", "ThirdParty", "{B61309BA-937A-440D-9F54-5FFAF28690CF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "src\Common\Common.csproj", "{71623D59-D203-42CE-817A-919A139A8DF7}"
 EndProject
@@ -40,30 +32,6 @@ Global
 		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|ARM64.Build.0 = Release|ARM64
 		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|x64.ActiveCfg = Release|x64
 		{D1A11562-46EF-450F-886E-C52ED17B4ACB}.Release|x64.Build.0 = Release|x64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Debug|ARM64.ActiveCfg = Debug|ARM64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Debug|ARM64.Build.0 = Debug|ARM64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Debug|x64.ActiveCfg = Debug|x64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Debug|x64.Build.0 = Debug|x64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Release|ARM64.ActiveCfg = Release|ARM64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Release|ARM64.Build.0 = Release|ARM64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Release|x64.ActiveCfg = Release|x64
-		{D864832D-A0C0-40BD-BF5A-95260C8D8255}.Release|x64.Build.0 = Release|x64
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Debug|ARM64.ActiveCfg = Debug|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Debug|ARM64.Build.0 = Debug|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Debug|x64.Build.0 = Debug|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Release|ARM64.ActiveCfg = Release|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Release|ARM64.Build.0 = Release|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Release|x64.ActiveCfg = Release|Any CPU
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290}.Release|x64.Build.0 = Release|Any CPU
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Debug|ARM64.ActiveCfg = Debug|ARM64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Debug|ARM64.Build.0 = Debug|ARM64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Debug|x64.ActiveCfg = Debug|x64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Debug|x64.Build.0 = Debug|x64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|ARM64.ActiveCfg = Release|ARM64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|ARM64.Build.0 = Release|ARM64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|x64.ActiveCfg = Release|x64
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36}.Release|x64.Build.0 = Release|x64
 		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|ARM64.ActiveCfg = Debug|Any CPU
 		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|ARM64.Build.0 = Debug|Any CPU
 		{71623D59-D203-42CE-817A-919A139A8DF7}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -95,10 +63,6 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{6CB1E9A4-E653-4DAE-8B95-33F7C4C95290} = {B61309BA-937A-440D-9F54-5FFAF28690CF}
-		{B04BD567-3EBA-45F0-B5E5-9C0DB5C5BB36} = {B61309BA-937A-440D-9F54-5FFAF28690CF}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {453D1701-DF5F-4879-8661-B5652FBB9813}

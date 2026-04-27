@@ -1,4 +1,5 @@
-﻿using ImGuiNET;
+using Hexa.NET.ImGui;
+using HexaGen.Runtime;
 using System;
 using System.Numerics;
 using System.Reflection;
@@ -7,6 +8,36 @@ namespace InstantTraceViewerUI
 {
     internal static class ImGuiWidgets
     {
+        public struct CurrentInputTextState
+        {
+            public uint Id;
+            public float ScrollX;
+        }
+
+        /// <summary>
+        /// Reads ImGui internals not exposed by the public ImGui API.
+        /// </summary>
+        public static unsafe CurrentInputTextState GetCurrentInputTextState()
+        {
+            ImGuiContextPtr ctx = ImGui.GetCurrentContext();
+            if (ctx.Handle == null)
+            {
+                return default;
+            }
+
+            ImGuiInputTextStatePtr textState = new(&ctx.Handle->InputTextState);
+            return new CurrentInputTextState
+            {
+                Id = textState.ID,
+                ScrollX = textState.Scroll.X,
+            };
+        }
+
+        public static nuint GetInputTextBufferSize(string text, int minimumSize)
+        {
+            return (nuint)Math.Max(minimumSize, Utils.GetByteCountUTF8(text) + 1);
+        }
+
         // It seems the only way to test hover/active state with non-internal API is to
         // call IsItemActive/IsItemHovered and store the result for the next frame.
         private static uint _lastActiveItem = uint.MaxValue;

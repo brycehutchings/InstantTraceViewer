@@ -1,7 +1,8 @@
-using ImGuiNET;
+using Hexa.NET.ImGui;
 using InstantTraceViewer;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 
@@ -61,7 +62,7 @@ namespace InstantTraceViewerUI
         private unsafe void DrawCurrentRules(IUiCommands uiCommands, ViewerRules rules)
         {
             Vector2 inputScreenPos = ImGui.GetCursorScreenPos();
-            if (ImGui.InputText("##AddRule", ref _addRuleInputText, 1024) || _addRuleLastParseResult == null)
+            if (ImGui.InputText("##AddRule", ref _addRuleInputText, ImGuiWidgets.GetInputTextBufferSize(_addRuleInputText, 1024)) || _addRuleLastParseResult == null)
             {
                 _addRuleLastParseResult = _parser.Parse(_addRuleInputText);
             }
@@ -297,7 +298,7 @@ Examples:
                     if (_editingRule == rule)
                     {
                         inputScreenPos = ImGui.GetCursorScreenPos();
-                        if (ImGui.InputText("##EditRule", ref _editRuleInputText, 1024) || _editRuleLastParseResult == null)
+                        if (ImGui.InputText("##EditRule", ref _editRuleInputText, ImGuiWidgets.GetInputTextBufferSize(_editRuleInputText, 1024)) || _editRuleLastParseResult == null)
                         {
                             _editRuleLastParseResult = _parser.Parse(_editRuleInputText);
                         }
@@ -335,8 +336,11 @@ Examples:
                 if (ImGui.Button("Import"))
                 {
                     IReadOnlyList<string> files = FileDialog.OpenMultipleFiles("Instant Trace Viewer Rules (*.itvf)|*.itvf",
-                        Settings.InstantTraceViewerFiltersLocation,
-                        s => Settings.InstantTraceViewerFiltersLocation = s);
+                        Settings.InstantTraceViewerFiltersLocation);
+                    if (files.Count > 0)
+                    {
+                        Settings.InstantTraceViewerFiltersLocation = Path.GetDirectoryName(files[0]);
+                    }
                     foreach (string file in files)
                     {
                         rules.Import(uiCommands, file);
@@ -349,10 +353,10 @@ Examples:
                 {
                     string file = FileDialog.SaveFile("Instant Trace Viewer Rules (*.itvf)|*.itvf",
                         Settings.InstantTraceViewerFiltersLocation,
-                        ".itvf",
-                        s => Settings.InstantTraceViewerFiltersLocation = s);
+                        ".itvf");
                     if (file != null)
                     {
+                        Settings.InstantTraceViewerFiltersLocation = Path.GetDirectoryName(file);
                         Settings.AddRecentlyUsedItvf(file);
                         rules.Export(uiCommands, file);
                     }
@@ -365,7 +369,7 @@ Examples:
 
         private static void RenderParsingError(uint inputTextId, string inputText, TraceTableRowSelectorParseResults parseResults, Vector2 inputScreenPos)
         {
-            NativeInterop.CurrentInputTextState inputState = NativeInterop.GetCurrentInputTextState();
+            ImGuiWidgets.CurrentInputTextState inputState = ImGuiWidgets.GetCurrentInputTextState();
 
             // Don't use the input state to align the error message unless it is in focus so that we have the correct ScrollX.
             bool inputStateUsable = inputState.Id == inputTextId;

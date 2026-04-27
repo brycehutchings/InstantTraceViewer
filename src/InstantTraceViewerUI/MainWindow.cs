@@ -7,8 +7,10 @@ using System.Net.Sockets;
 using System.Numerics;
 using AdvancedSharpAdbClient;
 using AdvancedSharpAdbClient.Models;
-using ImGuiNET;
+using Hexa.NET.ImGui;
 using InstantTraceViewer;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace InstantTraceViewerUI
 {
@@ -21,6 +23,14 @@ namespace InstantTraceViewerUI
 
     internal class MainWindow : IDisposable, IUiCommands
     {
+        private static readonly bool s_isPackaged = GetIsPackaged();
+
+        private static bool GetIsPackaged()
+        {
+            uint length = 0;
+            return (WIN32_ERROR)PInvoke.GetCurrentPackageFullName(ref length, null) != WIN32_ERROR.APPMODEL_ERROR_NO_PACKAGE;
+        }
+
         private readonly AdbClient _adbClient = new AdbClient();
         private IReadOnlyList<DeviceData> _adbDevices = null;
         private Exception _adbDevicesException = null;
@@ -156,13 +166,13 @@ namespace InstantTraceViewerUI
         {
             if (ImGui.BeginMainMenuBar())
             {
-                ImGui.SetNextItemShortcut(ImGuiKey.F | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                ImGui.SetNextItemShortcut((int)(ImGuiKey.F | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("File"))
                 {
                     if (ImGui.BeginMenu("Settings"))
                     {
                         // AppxManifest for MSIX will handle associating the app with all supported file extensions.
-                        if (!Win32Native.IsPackaged)
+                        if (!s_isPackaged)
                         {
                             if (ImGui.MenuItem("Associate with .etl extension"))
                             {
@@ -233,17 +243,17 @@ namespace InstantTraceViewerUI
                     ImGui.EndMenu();
                 }
 
-                ImGui.SetNextItemShortcut(ImGuiKey.E | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                ImGui.SetNextItemShortcut((int)(ImGuiKey.E | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Etw"))
                 {
                     if (ImGui.MenuItem("Open WPRP file (real-time)..."))
                     {
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp",
-                            Settings.WprpOpenLocation,
-                            (s) => Settings.WprpOpenLocation = s);
+                            Settings.WprpOpenLocation);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.WprpOpenLocation = Path.GetDirectoryName(file);
                             Settings.AddRecentlyOpenedWprp(file);
 
                             try
@@ -269,10 +279,10 @@ namespace InstantTraceViewerUI
 
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile($"ETL Trace Files ({joinedExts})|{joinedExts}",
-                            Settings.EtlOpenLocation,
-                            (s) => Settings.EtlOpenLocation = s);
+                            Settings.EtlOpenLocation);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.EtlOpenLocation = Path.GetDirectoryName(file);
                             try
                             {
                                 var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
@@ -339,7 +349,7 @@ namespace InstantTraceViewerUI
                     }
                 }
 
-                ImGui.SetNextItemShortcut(ImGuiKey.C | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                ImGui.SetNextItemShortcut((int)(ImGuiKey.C | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Csv"))
                 {
                     LoopHeaderOption((withHeader, headerNote) =>
@@ -348,10 +358,10 @@ namespace InstantTraceViewerUI
                         {
                             // TODO: This blocks the render thread
                             string file = FileDialog.OpenFile("Comma-Separated Values Files (*.csv)|*.csv",
-                                Settings.CsvOpenLocation,
-                                (s) => Settings.CsvOpenLocation = s);
+                                Settings.CsvOpenLocation);
                             if (!string.IsNullOrEmpty(file))
                             {
+                                Settings.CsvOpenLocation = Path.GetDirectoryName(file);
                                 try
                                 {
                                     var csvTableSource = new CsvTableSource(file, withHeader, readInBackground: true);
@@ -376,7 +386,7 @@ namespace InstantTraceViewerUI
                         {
                             try
                             {
-                                string clipboardText = ImGui.GetClipboardText();
+                                string clipboardText = ImGui.GetClipboardTextS();
                                 var csvTableSource = new CsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
                                 _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
                             }
@@ -390,7 +400,7 @@ namespace InstantTraceViewerUI
                     ImGui.EndMenu();
                 }
 
-                ImGui.SetNextItemShortcut(ImGuiKey.T | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                ImGui.SetNextItemShortcut((int)(ImGuiKey.T | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Tsv"))
                 {
                     LoopHeaderOption((withHeader, headerNote) =>
@@ -399,10 +409,10 @@ namespace InstantTraceViewerUI
                         {
                             // TODO: This blocks the render thread
                             string file = FileDialog.OpenFile("Tab-separated values file (*.tsv)|*.tsv",
-                                Settings.TsvOpenLocation,
-                                (s) => Settings.TsvOpenLocation = s);
+                                Settings.TsvOpenLocation);
                             if (!string.IsNullOrEmpty(file))
                             {
+                                Settings.TsvOpenLocation = Path.GetDirectoryName(file);
                                 try
                                 {
                                     var tsvTableSource = new TsvTableSource(file, withHeader, readInBackground: true);
@@ -427,7 +437,7 @@ namespace InstantTraceViewerUI
                         {
                             try
                             {
-                                string clipboardText = ImGui.GetClipboardText();
+                                string clipboardText = ImGui.GetClipboardTextS();
                                 var tsvTableSource = new TsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
                                 _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
                             }
@@ -441,7 +451,7 @@ namespace InstantTraceViewerUI
                     ImGui.EndMenu();
                 }
 
-                ImGui.SetNextItemShortcut(ImGuiKey.A | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                ImGui.SetNextItemShortcut((int)(ImGuiKey.A | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Android"))
                 {
                     if (_adbDevices == null && _adbDevicesException == null)
@@ -491,17 +501,17 @@ namespace InstantTraceViewerUI
                     ImGui.EndMenu();
                 }
 
-                ImGui.SetNextItemShortcut(ImGuiKey.P | ImGuiKey.ModAlt, ImGuiInputFlags.RouteGlobal);
+                ImGui.SetNextItemShortcut((int)(ImGuiKey.P | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Perfetto"))
                 {
                     if (ImGui.MenuItem($"Open Perfetto capture..."))
                     {
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile("Perfetto capture file (*.perfetto-trace; *.perfetto_trace; *.perfetto_trace.gz)|*.perfetto-trace;*.perfetto_trace;*.perfetto_trace.gz",
-                            Settings.PerfettoOpenLocation,
-                            (s) => Settings.PerfettoOpenLocation = s);
+                            Settings.PerfettoOpenLocation);
                         if (!string.IsNullOrEmpty(file))
                         {
+                            Settings.PerfettoOpenLocation = Path.GetDirectoryName(file);
                             try
                             {
                                 var tsvTableSource = new Perfetto.PerfettoTraceSource(file);
