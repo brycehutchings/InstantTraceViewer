@@ -67,15 +67,15 @@ namespace InstantTraceViewerUI
                     }
 
 #if PRIMARY_DOCKED_WINDOW
-                uint dockId = ImGui.DockSpaceOverViewport(0, new ImGuiViewportPtr(nint.Zero), ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.AutoHideTabBar);
+                    uint dockId = ImGui.DockSpaceOverViewport(0, new ImGuiViewportPtr(nint.Zero), ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.AutoHideTabBar);
 
-                // Force the next window to be docked.
-                ImGui.SetNextWindowDockID(dockId);
-                ImGuiWindowFlags flags = ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings;
-                if (ImGui.Begin("Window", flags))
-                {
-                    ImGui.TextUnformatted("Hello World");
-                }
+                    // Force the next window to be docked.
+                    ImGui.SetNextWindowDockID(dockId);
+                    ImGuiWindowFlags flags = ImGuiWindowFlags.NoBringToFrontOnFocus | ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings;
+                    if (ImGui.Begin("Window", flags))
+                    {
+                        ImGui.TextUnformatted("Hello World");
+                    }
 #endif
                     mainWindow.Draw();
 

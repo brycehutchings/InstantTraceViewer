@@ -127,6 +127,9 @@
 
     public static class TraceTableSnapshotExtensions
     {
+        public static bool IsValidRowIndex(this ITraceTableSnapshot snapshot, int? rowIndex)
+            => rowIndex.HasValue && rowIndex.Value >= 0 && rowIndex.Value < snapshot.RowCount;
+
         public static DateTime GetTimestamp(this ITraceTableSnapshot snapshot, int rowIndex)
         {
             if (snapshot.Schema.TimestampColumn == null)
@@ -136,6 +139,7 @@
 
             return snapshot.GetColumnValueDateTime(rowIndex, snapshot.Schema.TimestampColumn);
         }
+
         public static string GetName(this ITraceTableSnapshot snapshot, int rowIndex)
         {
             if (snapshot.Schema.NameColumn == null)
