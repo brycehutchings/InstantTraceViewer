@@ -265,6 +265,15 @@ namespace InstantTraceViewerUI.Etw
 
             ImGui.SameLine();
 
+            ImGui.BeginDisabled(string.IsNullOrWhiteSpace(_profile.DisplayName) || !HasConfiguredSessionOptions());
+            if (ImGui.Button("Export WPRP..."))
+            {
+                ExportWprp();
+            }
+            ImGui.EndDisabled();
+
+            ImGui.SameLine();
+
             // Make width oversized so the button is more prominent.
             float startButtonWidth = ImGui.GetFontSize() * 6;
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + ImGui.GetContentRegionAvail().X - startButtonWidth);
@@ -418,6 +427,19 @@ namespace InstantTraceViewerUI.Etw
             catch (Exception ex)
             {
                 _errorMessage = $"Failed to import .WPRP file: {ex.Message}";
+            }
+        }
+
+        private void ExportWprp()
+        {
+            try
+            {
+                Wprp.SaveToWprp(_profile);
+                _errorMessage = "";
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Failed to export .WPRP file: {ex.Message}";
             }
         }
 
