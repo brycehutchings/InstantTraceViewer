@@ -15,6 +15,7 @@ namespace InstantTraceViewerUI.Etw
     {
         private const string WindowName = "Start real-time ETW session";
         private const string ImportOverwritePopupName = "Import WPRP?";
+        private const string RecentWprpPopupName = "Recent WPRP files";
         private static int s_nextWindowId;
 
         private static readonly IReadOnlyList<KernelTraceEventParser.Keywords> KernelKeywords =
@@ -67,6 +68,7 @@ namespace InstantTraceViewerUI.Etw
         private string _newProviderName = "";
         private TraceEventLevel _newProviderLevel = TraceEventLevel.Verbose;
         private string _newProviderKeywords = "0xFFFFFFFFFFFFFFFF";
+        private string _pendingImportWprpFile = "";
         private string _errorMessage = "";
         private bool _closeRequested;
 
@@ -255,22 +257,16 @@ namespace InstantTraceViewerUI.Etw
                 ImGui.PopStyleColor();
             }
 
-            if (ImGui.Button("Import WPRP..."))
-            {
-                if (HasConfiguredSessionOptions())
-                {
-                    ImGui.OpenPopup(ImportOverwritePopupName);
-                }
-                else
-                {
-                    ImportWprp();
-                }
-            }
+            DrawImportWprpButton();
 
             ImGui.SameLine();
 
+            // Make width oversized so the button is more prominent.
+            float startButtonWidth = ImGui.GetFontSize() * 6;
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + ImGui.GetContentRegionAvail().X - startButtonWidth);
+
             ImGui.BeginDisabled(string.IsNullOrWhiteSpace(_profile.DisplayName) || (_profile.KernelKeywords == KernelTraceEventParser.Keywords.None && _profile.Providers.Count == 0));
-            if (ImGui.Button("Start"))
+            if (ImGui.Button("Start", new Vector2(startButtonWidth, 0)))
             {
                 StartSession(uiCommands);
             }
@@ -287,13 +283,52 @@ namespace InstantTraceViewerUI.Etw
                 if (ImGui.Button("Import"))
                 {
                     ImGui.CloseCurrentPopup();
-                    ImportWprp();
+                    ImportRequestedWprp();
                 }
 
                 ImGui.SameLine();
                 if (ImGui.Button("Cancel"))
                 {
                     ImGui.CloseCurrentPopup();
+                }
+
+                ImGui.EndPopup();
+            }
+        }
+
+        private void DrawImportWprpButton()
+        {
+            ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(0, ImGui.GetStyle().ItemSpacing.Y));
+
+            if (ImGui.Button("Import WPRP..."))
+            {
+                RequestImportWprp("");
+            }
+
+            ImGui.SameLine();
+            if (ImGui.ArrowButton("##RecentWprpFiles", ImGuiDir.Down))
+            {
+                ImGui.OpenPopup(RecentWprpPopupName);
+            }
+
+            ImGui.PopStyleVar();
+
+            if (ImGui.BeginPopup(RecentWprpPopupName))
+            {
+                IReadOnlyList<string> recentWprpFiles = Settings.GetRecentlyOpenedWprp();
+                if (recentWprpFiles.Count == 0)
+                {
+                    ImGui.BeginDisabled();
+                    ImGui.MenuItem("No recent WPRP files");
+                    ImGui.EndDisabled();
+                }
+
+                foreach (string file in recentWprpFiles)
+                {
+                    if (ImGui.MenuItem(file))
+                    {
+                        RequestImportWprp(file);
+                    }
                 }
 
                 ImGui.EndPopup();
@@ -332,9 +367,30 @@ namespace InstantTraceViewerUI.Etw
             _newProviderKeywords = "0xFFFFFFFFFFFFFFFF";
         }
 
-        private void ImportWprp()
+        private void RequestImportWprp(string file)
         {
-            string file = FileDialog.OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp", Settings.WprpOpenLocation);
+            _pendingImportWprpFile = file;
+
+            if (HasConfiguredSessionOptions())
+            {
+                ImGui.OpenPopup(ImportOverwritePopupName);
+            }
+            else
+            {
+                ImportRequestedWprp();
+            }
+        }
+
+        private void ImportRequestedWprp()
+        {
+            string file = _pendingImportWprpFile;
+            _pendingImportWprpFile = "";
+
+            if (string.IsNullOrEmpty(file))
+            {
+                file = FileDialog.OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp", Settings.WprpOpenLocation);
+            }
+
             if (string.IsNullOrEmpty(file))
             {
                 return;
@@ -366,7 +422,7 @@ namespace InstantTraceViewerUI.Etw
             try
             {
                 EtwTraceSource realTimeSession = EtwTraceSource.CreateRealTimeSession(_profile);
-                uiCommands.AddLogViewerWindow(new LogViewerWindow((ITraceSource)realTimeSession));
+                uiCommands.AddLogViewerWindow(new LogViewerWindow(realTimeSession));
                 _closeRequested = true;
             }
             catch (Exception ex)
