@@ -1,7 +1,7 @@
 using Hexa.NET.ImGui;
-using InstantTraceViewer;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Session;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -210,6 +210,10 @@ namespace InstantTraceViewerUI.Etw
         {
             ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.WarningColor));
             ImGui.TextWrapped("Warning: Many kernel events are not yet supported and will be ignored.");
+            if (!(TraceEventSession.IsElevated() ?? false))
+            {
+                ImGui.TextWrapped("Warning: Kernel events require running Instant Trace Viewer as administrator.");
+            }
             ImGui.PopStyleColor();
 
             Vector2 tableSize = new Vector2(-1, ImGui.GetContentRegionAvail().Y);
