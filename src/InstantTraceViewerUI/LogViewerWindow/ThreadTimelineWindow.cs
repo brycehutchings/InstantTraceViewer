@@ -491,7 +491,9 @@ namespace InstantTraceViewerUI
             }
 
             // We want the vertical line for the selected row to be draw over the visible region (previous block of code) but under all of the track bars/ticks.
-            if (lastSelectedVisibleRowIndex.HasValue && _trackAreaWidth.HasValue && _trackAreaLeftScreenPos.HasValue)
+            if (_latestComputedTracks.TraceTableSnapshot.IsValidRowIndex(lastSelectedVisibleRowIndex) &&
+                _trackAreaWidth.HasValue &&
+                _trackAreaLeftScreenPos.HasValue)
             {
                 DateTime timestamp = _latestComputedTracks.TraceTableSnapshot.GetTimestamp(lastSelectedVisibleRowIndex.Value);
                 if (timestamp >= _startZoomRange && timestamp <= _endZoomRange)

@@ -79,6 +79,13 @@ namespace InstantTraceViewerUI
             bool filteredViewRebuilt = _filteredTraceTableBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
             FilteredTraceTableSnapshot visibleTraceTable = _filteredTraceTableBuilder.Snapshot();
 
+            if (!visibleTraceTable.IsValidRowIndex(_lastSelectedVisibleRowIndex))
+            {
+                // The last selected row is no longer valid, so clear it to avoid later code potentially going out of bounds.
+                _lastSelectedVisibleRowIndex = null;
+                _lastSelectedFullTableRowIndex = null;
+            }
+
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(200, 200), new Vector2(float.MaxValue, float.MaxValue));
 
@@ -111,9 +118,9 @@ namespace InstantTraceViewerUI
             if (_threadTimelineWindow != null)
             {
                 // The topmost/bottommost row index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostRenderedVisibleRowIndex.HasValue && _topmostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
+                DateTime? startWindow = visibleTraceTable.IsValidRowIndex(_topmostRenderedVisibleRowIndex) ?
                     visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
-                DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
+                DateTime? endWindow = visibleTraceTable.IsValidRowIndex(_bottommostRenderedVisibleRowIndex) ?
                     visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
                 if (!_threadTimelineWindow.DrawWindow(uiCommands, visibleTraceTable, _lastSelectedVisibleRowIndex, _viewerRules, startWindow, endWindow))
                 {
@@ -129,40 +136,20 @@ namespace InstantTraceViewerUI
 
         private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceTableSnapshot visibleTraceTable, bool filteredViewRebuilt)
         {
-            if (_lastSelectedVisibleRowIndex >= visibleTraceTable.RowCount)
-            {
-                // The last selected row is no longer visible, so clear it to avoid later code potentially going out of bounds.
-                _lastSelectedVisibleRowIndex = null;
-                _lastSelectedFullTableRowIndex = null;
-            }
-
             // Row index to scroll to (it will be the topmost row that is visible).
             int? setScrollIndex = null;
 
             DrawToolStrip(uiCommands, visibleTraceTable, ref setScrollIndex);
 
-            if (setScrollIndex == null && _threadTimelineWindow?.ClickedVisibleRowIndex != null)
+            if (setScrollIndex == null && visibleTraceTable.IsValidRowIndex(_threadTimelineWindow?.ClickedVisibleRowIndex))
             {
                 // If the user clicked on a row in the timeline window, then scroll to that row.
-                _lastSelectedVisibleRowIndex = _threadTimelineWindow.ClickedVisibleRowIndex;
+                _lastSelectedVisibleRowIndex = _threadTimelineWindow.ClickedVisibleRowIndex.Value;
                 _selectedFullTableRowIndices.Clear();
                 _selectedFullTableRowIndices.Add(visibleTraceTable.GetFullTableRowIndex(_lastSelectedVisibleRowIndex.Value));
 
                 setScrollIndex = _lastSelectedVisibleRowIndex;
             }
-
-            // TODO: For inline thread timeline
-            /*
-            if (_timelineInline != null)
-            {
-                // The topmost/bottommost row index may not reflect a filtering or clear change, so it may be out of bounds for one frame, so we have to do a bounds check too.
-                DateTime? startWindow = _topmostRenderedVisibleRowIndex.HasValue && _topmostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
-                    visibleTraceTable.GetTimestamp(_topmostRenderedVisibleRowIndex.Value) : null;
-                DateTime? endWindow = _bottommostRenderedVisibleRowIndex.HasValue && _bottommostRenderedVisibleRowIndex < visibleTraceTable.RowCount ?
-                    visibleTraceTable.GetTimestamp(_bottommostRenderedVisibleRowIndex.Value) : null;
-                _timelineInline.DrawTimelineGraph(visibleTraceTable, startWindow, endWindow);
-            }
-            */
 
             // TODO: ImGui.GetTextLineHeightWithSpacing() is the correct number, but is it technically the right thing to rely on?
             Vector2 remainingRegion = ImGui.GetContentRegionAvail();
@@ -995,7 +982,7 @@ namespace InstantTraceViewerUI
                 }
             }
 
-            if (visibleTraceTable.Schema.ThreadIdColumn != null && _lastSelectedVisibleRowIndex.HasValue)
+            if (visibleTraceTable.Schema.ThreadIdColumn != null && visibleTraceTable.IsValidRowIndex(_lastSelectedVisibleRowIndex))
             {
                 int lastSelectedRowThreadId = visibleTraceTable.GetThreadId(_lastSelectedVisibleRowIndex.Value);
                 if (ImGui.Shortcut((int)(ImGuiKey.ModAlt | ImGuiKey.LeftBracket), ImGuiInputFlags.Repeat))
@@ -1093,7 +1080,7 @@ namespace InstantTraceViewerUI
                 findForward ?
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value + 1 : 0) :
                    (_lastSelectedVisibleRowIndex.HasValue ? _lastSelectedVisibleRowIndex.Value - 1 : visibleTraceTable.RowCount - 1);
-            while (visibleRowIndex >= 0 && visibleRowIndex < visibleTraceTable.RowCount)
+            while (visibleTraceTable.IsValidRowIndex(visibleRowIndex))
             {
                 if (predicate(visibleTraceTable, visibleRowIndex))
                 {
