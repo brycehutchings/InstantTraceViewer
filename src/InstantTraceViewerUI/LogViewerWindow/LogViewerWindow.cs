@@ -293,37 +293,6 @@ namespace InstantTraceViewerUI
 
                         ImGui.TableNextColumn();
 
-                        // We must store the index instead of the id for the multiselect system so that when we handle selection ranges, we can
-                        // look up the ids which might be sparse.
-                        ImGui.SetNextItemSelectionUserData(rowIdx);
-
-                        // The list clipper will prevent rows that aren't visible from being processed EXCEPT for the first row, which it always processes
-                        // to determine row height (all rows must have the same height). So we use IsItemVisible to determine if actually visible.
-                        if (ImGui.IsItemVisible())
-                        {
-                            // Don't bother to scroll to the selected index if it's already in view.
-                            if (rowIdx == setScrollIndex)
-                            {
-                                setScrollIndex = null;
-                            }
-
-                            // If this is the last selected row, remember its vertical offset from the top of the table so it can be preserved if the filter changes.
-                            if (fullTableRowIndex == _lastSelectedFullTableRowIndex)
-                            {
-                                _lastSelectedRowYOffset = rowYOffset - ImGui.GetScrollY() - topVisibleRowYOffset;
-                            }
-                            if (_topmostRenderedFullTableRowIndex == null)
-                            {
-                                _topmostRenderedFullTableRowIndex = fullTableRowIndex;
-                            }
-                            if (_topmostRenderedVisibleRowIndex == null)
-                            {
-                                _topmostRenderedVisibleRowIndex = rowIdx;
-                            }
-
-                            _bottommostRenderedVisibleRowIndex = rowIdx; // Each visible row stomps on the previous value so that the last one wins.
-                        }
-
                         // Selectable spans all columns so this makes it easy to tell if a row is hovered.
                         bool isRowHovered = false;
                         int hoveredCol = -1;
@@ -347,10 +316,42 @@ namespace InstantTraceViewerUI
                             {
                                 // Create an empty selectable that spans the full row to enable row selection.
                                 bool isSelected = _selectedFullTableRowIndices.Contains(fullTableRowIndex);
+
+                                // We must store the index instead of the id for the multiselect system so that when we handle selection ranges, we can
+                                // look up the ids which might be sparse.
+                                ImGui.SetNextItemSelectionUserData(rowIdx);
+
                                 if (ImGui.Selectable($"##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
                                 {
                                     _lastSelectedVisibleRowIndex = rowIdx;
                                     _lastSelectedFullTableRowIndex = fullTableRowIndex;
+                                }
+
+                                // The list clipper will prevent rows that aren't visible from being processed EXCEPT for the first row, which it always processes
+                                // to determine row height (all rows must have the same height). So we use IsItemVisible to determine if this row item is actually visible.
+                                if (ImGui.IsItemVisible())
+                                {
+                                    // Don't bother to scroll to the selected index if it's already in view.
+                                    if (rowIdx == setScrollIndex)
+                                    {
+                                        setScrollIndex = null;
+                                    }
+
+                                    // If this is the last selected row, remember its vertical offset from the top of the table so it can be preserved if the filter changes.
+                                    if (fullTableRowIndex == _lastSelectedFullTableRowIndex)
+                                    {
+                                        _lastSelectedRowYOffset = rowYOffset - ImGui.GetScrollY() - topVisibleRowYOffset;
+                                    }
+                                    if (_topmostRenderedFullTableRowIndex == null)
+                                    {
+                                        _topmostRenderedFullTableRowIndex = fullTableRowIndex;
+                                    }
+                                    if (_topmostRenderedVisibleRowIndex == null)
+                                    {
+                                        _topmostRenderedVisibleRowIndex = rowIdx;
+                                    }
+
+                                    _bottommostRenderedVisibleRowIndex = rowIdx; // Each visible row stomps on the previous value so that the last one wins.
                                 }
 
                                 isRowHovered = ImGui.IsItemHovered();
