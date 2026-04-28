@@ -3,7 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Xml;
 using System.Xml.Linq;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -135,7 +137,7 @@ namespace InstantTraceViewerUI.Etw
     internal class WprpProfile
     {
         // Some of these WPRP kernel keywords do not seem to be supported by the Microsoft.Diagnostics.Tracing library.
-        private readonly static Dictionary<string, KernelTraceEventParser.Keywords> KernelKeywordMap = new Dictionary<string, KernelTraceEventParser.Keywords> {
+        internal readonly static Dictionary<string, KernelTraceEventParser.Keywords> KernelKeywordMap = new Dictionary<string, KernelTraceEventParser.Keywords> {
             // { "AllFaults", ??? },
             { "Alpc", KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls },
             // { "AntiStarvation", ??? },
@@ -146,7 +148,7 @@ namespace InstantTraceViewerUI.Etw
             // { "CSwitch_Internal", ??? },
             { "DiskIO", KernelTraceEventParser.Keywords.DiskIO },
             { "DiskIOInit", KernelTraceEventParser.Keywords.DiskIOInit },
-            { "Dpc", KernelTraceEventParser.Keywords.DeferedProcedureCalls },
+            { "DPC", KernelTraceEventParser.Keywords.DeferedProcedureCalls },
             // { "Dpc_Internal", ??? },
             { "Drivers", KernelTraceEventParser.Keywords.Driver },
             // { "Drivers_Internal", ??? },
@@ -246,6 +248,7 @@ namespace InstantTraceViewerUI.Etw
                     etwSessionProfile.Providers.Add(new EtwSessionEnabledProvider
                     {
                         Name = eventProvider.Name,
+                        Description = eventProvider.Id,
                         Level = level,
                         MatchAnyKeyword = matchAnyKeywords,
                     });
@@ -393,6 +396,148 @@ namespace InstantTraceViewerUI.Etw
         public static Wprp Load(string wprpFilePath)
         {
             return new Wprp(wprpFilePath);
+        }
+
+        public static void SaveToWprp(EtwSessionProfile sessionProfile)
+        {
+            string file = FileDialog.SaveFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp", Settings.WprpOpenLocation, "wprp");
+            if (file == null)
+            {
+                return;
+            }
+
+            Settings.WprpOpenLocation = Path.GetDirectoryName(file);
+            Settings.AddRecentlyOpenedWprp(file);
+
+            const string systemCollectorId = "SystemCollector";
+            const string eventCollectorId = "EventCollector_UserMode";
+
+            string profileName = string.IsNullOrWhiteSpace(sessionProfile.DisplayName) ? "Instant Trace Viewer" : sessionProfile.DisplayName.Trim();
+            string profileIdBase = new string(profileName.Select(c => char.IsWhiteSpace(c) || c == ':' ? '_' : c).ToArray());
+            if (string.IsNullOrWhiteSpace(profileIdBase))
+            {
+                profileIdBase = "InstantTraceViewer";
+            }
+
+            var collectors = new XElement("Collectors");
+
+            List<string> keywordNames = new();
+            KernelTraceEventParser.Keywords remainingKernelKeywords = sessionProfile.KernelKeywords;
+            foreach (var keyword in WprpProfile.KernelKeywordMap)
+            {
+                if ((remainingKernelKeywords & keyword.Value) == keyword.Value)
+                {
+                    keywordNames.Add(keyword.Key);
+                    remainingKernelKeywords &= ~keyword.Value;
+                }
+            }
+
+            if (remainingKernelKeywords != KernelTraceEventParser.Keywords.None)
+            {
+                Trace.WriteLine("WPRP export skipped unsupported system/kernel keywords: " + remainingKernelKeywords);
+            }
+
+            if (keywordNames.Count > 0)
+            {
+                collectors.Add(new XElement("SystemCollectorId",
+                    new XAttribute("Value", systemCollectorId),
+                    new XElement("SystemProvider",
+                        new XAttribute("Id", "SystemProviderVerbose"),
+                        new XElement("Keywords", keywordNames.Select(keywordName =>
+                            new XElement("Keyword", new XAttribute("Value", keywordName)))))));
+            }
+
+            if (sessionProfile.Providers.Count > 0)
+            {
+                var eventProviders = new XElement("EventProviders");
+                foreach (var provider in sessionProfile.Providers)
+                {
+                    string providerIdSource = string.IsNullOrWhiteSpace(provider.Description) ? provider.Name : provider.Description;
+                    string providerId = new string(providerIdSource.Select(c => char.IsWhiteSpace(c) || c == ':' ? '_' : c).ToArray());
+                    if (string.IsNullOrWhiteSpace(providerId))
+                    {
+                        providerId = "EventProvider";
+                    }
+
+                    var eventProvider = new XElement("EventProvider",
+                        new XAttribute("Id", providerId),
+                        new XAttribute("Name", provider.Name));
+
+                    if (provider.Level != TraceEventLevel.Verbose)
+                    {
+                        eventProvider.Add(new XAttribute("Level", (uint)provider.Level));
+                    }
+
+                    if (provider.MatchAnyKeyword != ulong.MaxValue)
+                    {
+                        eventProvider.Add(new XElement("Keywords",
+                            new XElement("Keyword", new XAttribute("Value", "0x" + provider.MatchAnyKeyword.ToString("X")))));
+                    }
+
+                    eventProviders.Add(eventProvider);
+                }
+
+                collectors.Add(new XElement("EventCollectorId",
+                    new XAttribute("Value", eventCollectorId),
+                    eventProviders));
+            }
+
+            var profiles = new XElement("Profiles");
+
+            if (keywordNames.Count > 0)
+            {
+                profiles.Add(new XElement("SystemCollector",
+                    new XAttribute("Id", systemCollectorId),
+                    new XAttribute("Name", "NT Kernel Logger"),
+                    new XElement("BufferSize", new XAttribute("Value", 1020)),
+                    new XElement("Buffers",
+                        new XAttribute("Value", 3),
+                        new XAttribute("PercentageOfTotalMemory", true),
+                        new XAttribute("MaximumBufferSpace", 100))));
+            }
+
+            if (sessionProfile.Providers.Count > 0)
+            {
+                profiles.Add(new XElement("EventCollector",
+                    new XAttribute("Id", eventCollectorId),
+                    new XAttribute("Name", "User Mode Event Collector"),
+                    new XElement("BufferSize", new XAttribute("Value", 1020)),
+                    new XElement("Buffers",
+                        new XAttribute("Value", 3),
+                        new XAttribute("PercentageOfTotalMemory", true),
+                        new XAttribute("MaximumBufferSpace", 100))));
+            }
+
+            profiles.Add(new XElement("Profile",
+                new XAttribute("Id", profileIdBase + ".Verbose.File"),
+                new XAttribute("Name", profileIdBase),
+                new XAttribute("Description", profileName),
+                new XAttribute("LoggingMode", LoggingMode.File),
+                new XAttribute("DetailLevel", DetailLevel.Verbose),
+                new XAttribute("Default", true),
+                collectors));
+
+            profiles.Add(new XElement("Profile",
+                new XAttribute("Id", profileIdBase + ".Verbose.Memory"),
+                new XAttribute("Name", profileIdBase),
+                new XAttribute("Description", profileName),
+                new XAttribute("Base", profileIdBase + ".Verbose.File"),
+                new XAttribute("LoggingMode", LoggingMode.Memory),
+                new XAttribute("DetailLevel", DetailLevel.Verbose)));
+
+            XDocument document = new XDocument(
+                new XDeclaration("1.0", "utf-8", null),
+                new XElement("WindowsPerformanceRecorder",
+                    new XAttribute("Version", "1.0"),
+                    new XAttribute("Author", "Instant Trace Viewer"),
+                    profiles));
+
+            using XmlWriter writer = XmlWriter.Create(file, new XmlWriterSettings
+            {
+                Encoding = new System.Text.UTF8Encoding(false),
+                Indent = true,
+            });
+            document.Save(writer);
         }
 
         public IReadOnlyList<WprpProfile> Profiles => _profiles;
