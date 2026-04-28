@@ -206,6 +206,10 @@ namespace InstantTraceViewerUI.Etw
 
         private void DrawKernelKeywords()
         {
+            ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.WarningColor));
+            ImGui.TextWrapped("Warning: Many kernel events are not yet supported and will be ignored.");
+            ImGui.PopStyleColor();
+
             Vector2 tableSize = new Vector2(-1, ImGui.GetContentRegionAvail().Y);
             if (ImGui.BeginTable("EtwKernelKeywords", 2, ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV | ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY, tableSize))
             {

@@ -256,12 +256,12 @@ namespace InstantTraceViewerUI
                 ImGui.SetNextItemShortcut((int)(ImGuiKey.E | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Etw"))
                 {
-                    if (ImGui.MenuItem("Start real-time..."))
+                    if (ImGui.MenuItem("Open real-time..."))
                     {
                         _startRealTimeSessionWindows.Add(new Etw.StartRealTimeSessionWindow());
                     }
 
-                    if (ImGui.MenuItem("Open WPRP file (real-time)..."))
+                    if (ImGui.MenuItem("Open real-time from WPRP file..."))
                     {
                         // TODO: This blocks the render thread
                         string file = FileDialog.OpenFile("Windows Performance Recorder Profile Files (*.wprp)|*.wprp",
