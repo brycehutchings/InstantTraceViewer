@@ -74,6 +74,8 @@ namespace InstantTraceViewerUI.Logcat
         public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
             => throw new NotSupportedException();
 
+        public UnifiedLifecycleEvent GetLifecycleEvent(int rowIndex) => UnifiedLifecycleEvent.None;
+
         private UnifiedLevel ConvertPriority(Priority priority)
             => priority == Priority.Fatal ? UnifiedLevel.Fatal :
                priority == Priority.Error ? UnifiedLevel.Error :

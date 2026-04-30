@@ -105,6 +105,9 @@ namespace InstantTraceViewerUI
         public UnifiedOpcode GetColumnValueUnifiedOpcode(int filteredRowIndex, TraceSourceSchemaColumn column)
             => FullTable.GetColumnValueUnifiedOpcode(GetFullTableRowIndex(filteredRowIndex), column);
 
+        public UnifiedLifecycleEvent GetLifecycleEvent(int filteredRowIndex)
+            => FullTable.GetLifecycleEvent(GetFullTableRowIndex(filteredRowIndex));
+
         public TraceTableSchema Schema => FullTable.Schema;
 
         public int RowCount => _visibleRowIndiciesSnapshot.Count;

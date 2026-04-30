@@ -85,6 +85,8 @@ namespace InstantTraceViewerUI.Perfetto
                 _ => UnifiedOpcode.None
             };
 
+        public UnifiedLifecycleEvent GetLifecycleEvent(int rowIndex) => UnifiedLifecycleEvent.None;
+
         private UnifiedLevel ConvertCategoryToLevel(Priority priority)
             => priority == Priority.Verbose ? UnifiedLevel.Verbose :
                priority == Priority.Debug ? UnifiedLevel.Verbose :

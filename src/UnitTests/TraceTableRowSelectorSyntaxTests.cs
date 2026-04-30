@@ -20,6 +20,7 @@ namespace InstantTraceViewerTests
             public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
             public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
             public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column) => throw new NotImplementedException();
+            public UnifiedLifecycleEvent GetLifecycleEvent(int rowIndex) => UnifiedLifecycleEvent.None;
 
             public int RowCount => 16;
             public int GenerationId => 1;

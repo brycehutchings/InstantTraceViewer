@@ -149,10 +149,10 @@ namespace InstantTraceViewerUI.Etw
             //
             // Keywords.ImageLoad
             //
-            _etwSource.Kernel.ImageLoad += OnImageLoadUnload;
-            _etwSource.Kernel.ImageUnload += OnImageLoadUnload;
-            _etwSource.Kernel.ImageDCStart += OnImageLoadUnload;
-            _etwSource.Kernel.ImageDCStop += OnImageLoadUnload;
+            _etwSource.Kernel.ImageLoad += OnImageLoad;
+            _etwSource.Kernel.ImageUnload += OnImageLoad;
+            _etwSource.Kernel.ImageDCStart += OnImageLoad;
+            _etwSource.Kernel.ImageDCStop += OnImageLoad;
 
             //
             // Keywords.Thread
@@ -208,15 +208,13 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
         }
 
-        private void OnImageLoadUnload(ImageLoadTraceData obj)
+        private void OnImageLoad(ImageLoadTraceData obj)
         {
             if (IsPaused)
             {
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
-#if false
             var newRecord = CreateBaseTraceRecord(obj);
 
             // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
@@ -229,7 +227,6 @@ namespace InstantTraceViewerUI.Etw
                 new NamedValue("TimeDateStamp", timeDateStamp.ToString("yyyy-MM-dd HH:mm:ss")),
                 new NamedValue("CheckSum", obj.ImageChecksum)];
             AddEvent(newRecord);
-#endif
         }
 
         private void OnStackWalkStack(StackWalkStackTraceData obj)
@@ -240,6 +237,8 @@ namespace InstantTraceViewerUI.Etw
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+            AddEvent(newRecord);
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
@@ -249,7 +248,15 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.NamedValues = [
+                new NamedValue("OldThreadID", obj.OldThreadID),
+                new NamedValue("OldProcessID", obj.OldProcessID),
+                 new NamedValue("NewThreadID", obj.NewThreadID),
+                new NamedValue("NewProcessID", obj.NewProcessID),
+               // OldThreadWaitReason, OldThreadWaitMode, OldThreadState, etc?
+                ];
+            AddEvent(newRecord);
         }
 
         private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)
@@ -446,12 +453,24 @@ namespace InstantTraceViewerUI.Etw
                 }
             }
 
+            if (data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
+            {
+                return; // Too many at session start.
+            }
+
             if (IsPaused)
             {
                 return; // We still want to update the names but not add events.
             }
 
-            // IGNORED: Very noisy--Do we think anyone will want to see the thread events?
+            var newRecord = CreateBaseTraceRecord(data);
+
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop)
+            {
+                newRecord.InternalFlags = InternalFlags.ThreadLifecycle;
+            }
+
+            AddEvent(newRecord);
         }
 
         private void OnProcessEvent(ProcessTraceData data)
@@ -466,13 +485,18 @@ namespace InstantTraceViewerUI.Etw
                 return; // We still want to update the names but not add events.
             }
 
-            if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||
-                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && (_etwSession?.IsRealTime ?? false))
+            if ((data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop) &&
+                (_etwSession?.IsRealTime ?? false))
             {
                 return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
             }
 
             var newRecord = CreateBaseTraceRecord(data);
+
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop)
+            {
+                newRecord.InternalFlags = InternalFlags.ProcessLifecycle;
+            }
 
             var namedValues = new List<NamedValue>();
 
