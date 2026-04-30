@@ -237,8 +237,6 @@ namespace InstantTraceViewerUI.Etw
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.
-            var newRecord = CreateBaseTraceRecord(obj);
-            AddEvent(newRecord);
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
@@ -248,15 +246,7 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            var newRecord = CreateBaseTraceRecord(obj);
-            newRecord.NamedValues = [
-                new NamedValue("OldThreadID", obj.OldThreadID),
-                new NamedValue("OldProcessID", obj.OldProcessID),
-                 new NamedValue("NewThreadID", obj.NewThreadID),
-                new NamedValue("NewProcessID", obj.NewProcessID),
-               // OldThreadWaitReason, OldThreadWaitMode, OldThreadState, etc?
-                ];
-            AddEvent(newRecord);
+            // Better for analysis or graphical visualization. Too noisy for logs.
         }
 
         private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)
