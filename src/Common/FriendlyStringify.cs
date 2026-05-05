@@ -2,28 +2,34 @@
 {
     public static class FriendlyStringify
     {
-        public static string ToString(TimeSpan timeSpan)
+        public static string ToString(TimeSpan timeSpan, bool includePositiveSign = false)
         {
             if (timeSpan.Ticks == 0)
             {
-                return "0s";
+                return "0";
             }
-            else if (timeSpan.TotalMilliseconds < 1)
+
+            string sign = timeSpan.Ticks < 0 ? "-" : (includePositiveSign ? "+" : "");
+
+            double totalMilliseconds = Math.Abs(timeSpan.TotalMilliseconds);
+            if (totalMilliseconds < 1)
             {
-                return $"{timeSpan.TotalMicroseconds:0.000}us";
+                double totalMicroseconds = Math.Abs(timeSpan.TotalMicroseconds);
+                return $"{sign}{totalMicroseconds:0.000}us";
             }
-            else if (timeSpan.TotalSeconds >= 60)
+
+            double totalSeconds = Math.Abs(timeSpan.TotalSeconds);
+            if (totalSeconds >= 60)
             {
-                return $"{(int)timeSpan.TotalMinutes}m {timeSpan.TotalSeconds - (int)timeSpan.TotalMinutes * 60:0.000}s";
+                int totalMinutes = (int)(totalSeconds / 60);
+                return $"{sign}{totalMinutes}m {totalSeconds - totalMinutes * 60:0.000}s";
             }
-            else if (timeSpan.TotalSeconds >= 1)
+            else if (totalSeconds >= 1)
             {
-                return $"{timeSpan.TotalSeconds:0.000}s";
+                return $"{sign}{totalSeconds:0.000}s";
             }
-            else
-            {
-                return $"{timeSpan.TotalMilliseconds:0.000}ms";
-            }
+
+            return $"{sign}{totalMilliseconds:0.000}ms";
         }
 
         // This version is 100ns precision and should have no rounding issues (DateTime is like FILETIME which uses 100ns units).

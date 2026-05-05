@@ -47,6 +47,8 @@ namespace InstantTraceViewerUI
         private int? _cellContentPopupFullTableRowIndex = null;
         private TraceSourceSchemaColumn? _cellContentPopupColumn = null;
 
+        private DateTime? _t0Timestamp = null;
+
         private string _findBuffer = string.Empty;
         private bool _findForward = true;
         private bool _isDisposed;
@@ -360,7 +362,7 @@ namespace InstantTraceViewerUI
                                 ImGui.SameLine(); // The first column is already started with a special whole-row selectable.
                             }
 
-                            string displayText = visibleTraceTable.GetColumnValueString(rowIdx, column, allowMultiline: false).Replace('\n', ' ');
+                            string displayText = GetColumnDisplayText(visibleTraceTable, rowIdx, column, allowMultiline: false).Replace('\n', ' ');
                             ImGui.TextUnformatted(displayText);
 
                             if (ImGui.IsMouseReleased(ImGuiMouseButton.Right) && isRowHovered && hoveredCol == columnIndex)
@@ -377,6 +379,23 @@ namespace InstantTraceViewerUI
                                 AddIncludeExcludeRuleMenuItems(visibleTraceTable, rowIdx, column, displayTextTruncated);
 
                                 ImGui.Separator();
+                                if (column == visibleTraceTable.Schema.TimestampColumn)
+                                {
+                                    if (ImGui.MenuItem("Set as relative time point"))
+                                    {
+                                        _t0Timestamp = visibleTraceTable.GetTimestamp(rowIdx);
+                                    }
+
+                                    ImGui.BeginDisabled(!_t0Timestamp.HasValue);
+                                    if (ImGui.MenuItem("Clear relative time point"))
+                                    {
+                                        _t0Timestamp = null;
+                                    }
+                                    ImGui.EndDisabled();
+
+                                    ImGui.Separator();
+                                }
+
                                 if (ImGui.MenuItem($"Copy '{displayTextTruncated}'"))
                                 {
                                     ImGui.SetClipboardText(displayText);
@@ -636,7 +655,7 @@ namespace InstantTraceViewerUI
 
         private void RenderCellContentPopup(FilteredTraceTableSnapshot visibleTraceTable, int fullTableRowIndex, TraceSourceSchemaColumn column)
         {
-            string message = visibleTraceTable.FullTable.GetColumnValueString(fullTableRowIndex, column, true /*allow multiline*/);
+            string message = GetColumnDisplayText(visibleTraceTable, visibleTraceTable.FullTable, fullTableRowIndex, column, true /*allow multiline*/);
 
             // Analyze the text to measure it's width and height in pixels so we can pick a reasonable popup size within limits.
             string[] lines = message.Split('\n');
@@ -719,6 +738,7 @@ namespace InstantTraceViewerUI
                     _traceSource.TraceSource.Clear();
                     _lastSelectedVisibleRowIndex = null;
                     _selectedFullTableRowIndices.Clear();
+                    _t0Timestamp = null;
 
                     // Updating the filtered trace table here so it will see the generation id changed and clear itself.
                     _filteredTraceTableBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
@@ -1009,6 +1029,7 @@ namespace InstantTraceViewerUI
         {
             LogViewerWindow newWindow = new(_traceSource);
             newWindow._findBuffer = _findBuffer;
+            newWindow._t0Timestamp = _t0Timestamp;
             newWindow._viewerRules = _viewerRules.Clone();
             return newWindow;
         }
@@ -1042,7 +1063,7 @@ namespace InstantTraceViewerUI
                     }
                     isFirstColumn = false;
 
-                    string displayText = visibleTraceTable.FullTable.GetColumnValueString(fullTableRowIndex, column, allowMultiline: false);
+                    string displayText = GetColumnDisplayText(visibleTraceTable, visibleTraceTable.FullTable, fullTableRowIndex, column, allowMultiline: false);
                     copyText.Append(displayText);
                 }
                 copyText.AppendLine();
@@ -1056,7 +1077,7 @@ namespace InstantTraceViewerUI
                 {
                     foreach (var column in visibleTraceTable.Schema.Columns)
                     {
-                        string displayText = visibleTraceTable.GetColumnValueString(i, column, allowMultiline: false);
+                        string displayText = GetColumnDisplayText(visibleTraceTable, i, column, allowMultiline: false);
                         if (displayText.Contains(text, StringComparison.InvariantCultureIgnoreCase))
                         {
                             return true;
@@ -1064,6 +1085,19 @@ namespace InstantTraceViewerUI
                     }
                     return false;
                 }, findForward);
+
+        private string GetColumnDisplayText(ITraceTableSnapshot traceTable, int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+            => GetColumnDisplayText(traceTable, traceTable, rowIndex, column, allowMultiline);
+
+        private string GetColumnDisplayText(ITraceTableSnapshot visibleTraceTable, ITraceTableSnapshot queriedTraceTable, int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
+        {
+            if (_t0Timestamp.HasValue && column == visibleTraceTable.Schema.TimestampColumn)
+            {
+                return FriendlyStringify.ToString(queriedTraceTable.GetColumnValueDateTime(rowIndex, column) - _t0Timestamp.Value, includePositiveSign: true);
+            }
+
+            return queriedTraceTable.GetColumnValueString(rowIndex, column, allowMultiline);
+        }
 
         private int? FindNextThreadRow(FilteredTraceTableSnapshot visibleTraceTable, int threadId, bool findForward)
             => FindNextRow(visibleTraceTable, (visibleTraceTable, i) => visibleTraceTable.GetThreadId(i) == threadId, findForward);
