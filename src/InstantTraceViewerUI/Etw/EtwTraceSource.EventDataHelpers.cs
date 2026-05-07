@@ -11,6 +11,12 @@ namespace InstantTraceViewerUI.Etw
 
         private EtwRecord CreateBaseTraceRecord(TraceEvent data)
         {
+            // In very special cases, events for a process may come in before the process start event
+            // so we need to track when this happens so that when process name data comes in later, we
+            // can flag the generation id needs to increment to invalid past filtering which did not see
+            // the process name on earlier events.
+            _processDatabase.ProcessEnsure(data.ProcessID, data.TimeStamp);
+
             var newRecord = new EtwRecord();
             newRecord.ProcessId = data.ProcessID;
             newRecord.ThreadId = data.ThreadID;

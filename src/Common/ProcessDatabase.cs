@@ -6,15 +6,13 @@ namespace InstantTraceViewer
     /// <summary>
     /// Tracks process and thread names.
     /// TODO: Tracks loaded modules to resolve symbols
+    /// This class expects timestamp data happens chronologically but also allows for retroactive changes
+    /// like a process name for an already-known pid to be assigned.
     /// </summary>
     public class ProcessDatabase
     {
         record struct TrackedProcess
         {
-            public TrackedProcess()
-            {
-            }
-
             public string? Name;
             public DateTime? Start;
             public DateTime? End;
@@ -66,7 +64,13 @@ namespace InstantTraceViewer
             return null;
         }
 
-        public void ProcessStart(int pid, string? name, DateTime startTime)
+        public void ProcessEnsure(int pid, DateTime timestamp)
+        {
+            ProcessStart(pid, null, timestamp);
+        }
+
+        // Returns true if an existing process had its name changed.
+        public bool ProcessStart(int pid, string? name, DateTime? startTime)
         {
             lock (_trackedProcesses)
             {
@@ -76,16 +80,20 @@ namespace InstantTraceViewer
                     _trackedProcesses[pid] = processes;
                 }
 
-                if (processes.Count > 0)
+                // See if this event falls into an existing TrackedProcess already.
+                if (processes.Count > 0 && processes[^1].End == null)
                 {
-                    var lastProcess = processes[^1];
-                    if (lastProcess.End == null && (lastProcess.Start == null || lastProcess.Start < startTime))
+                    if (name != null)
                     {
-                        processes[^1] = lastProcess with { End = startTime };
+                        processes[^1] = processes[^1] with { Name = name };
+                        return true;
                     }
+
+                    return false;
                 }
 
                 processes.Add(new TrackedProcess { Name = name, Start = startTime });
+                return false;
             }
         }
 
@@ -131,7 +139,7 @@ namespace InstantTraceViewer
             return null;
         }
 
-        public void ThreadStart(int tid, string? name, DateTime startTime)
+        public void ThreadStart(int tid, string? name, DateTime? startTime)
         {
             lock (_trackedThreads)
             {
