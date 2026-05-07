@@ -9,11 +9,25 @@ namespace InstantTraceViewerUI.Etw
     {
         public ListBuilderSnapshot<EtwRecord> RecordSnapshot { get; init; }
 
+        public ProcessDatabase ProcessDatabase { get; init; }
+
         public TraceTableSchema Schema { get; init; }
 
         public int RowCount => RecordSnapshot.Count;
 
         public int GenerationId { get; init; }
+
+        private string GetProcessName(int rowIndex)
+        {
+            EtwRecord traceRecord = RecordSnapshot[rowIndex];
+            return ProcessDatabase.GetProcessName(traceRecord.ProcessId, traceRecord.Timestamp);
+        }
+
+        private string GetThreadName(int rowIndex)
+        {
+            EtwRecord traceRecord = RecordSnapshot[rowIndex];
+            return ProcessDatabase.GetThreadName(traceRecord.ThreadId, traceRecord.Timestamp);
+        }
 
         public string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
@@ -21,19 +35,21 @@ namespace InstantTraceViewerUI.Etw
 
             if (column == EtwTraceSource.ColumnProcess)
             {
+                string processName = GetProcessName(rowIndex);
                 return traceRecord.ProcessId switch
                 {
                     -1 => string.Empty,
-                    _ when !string.IsNullOrEmpty(traceRecord.ProcessName) => $"{traceRecord.ProcessId} ({traceRecord.ProcessName})",
+                    _ when !string.IsNullOrEmpty(processName) => $"{traceRecord.ProcessId} ({processName})",
                     _ => traceRecord.ProcessId.ToString(),
                 };
             }
             else if (column == EtwTraceSource.ColumnThread)
             {
+                string threadName = GetThreadName(rowIndex);
                 return traceRecord.ThreadId switch
                 {
                     -1 => string.Empty,
-                    _ when !string.IsNullOrEmpty(traceRecord.ThreadName) => $"{traceRecord.ThreadId} ({traceRecord.ThreadName})",
+                    _ when !string.IsNullOrEmpty(threadName) => $"{traceRecord.ThreadId} ({threadName})",
                     _ => traceRecord.ThreadId.ToString(),
                 };
             }
@@ -123,8 +139,8 @@ namespace InstantTraceViewerUI.Etw
         public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
             => column switch
             {
-                _ when column == EtwTraceSource.ColumnProcess => RecordSnapshot[rowIndex].ProcessName,
-                _ when column == EtwTraceSource.ColumnThread => RecordSnapshot[rowIndex].ThreadName,
+                _ when column == EtwTraceSource.ColumnProcess => GetProcessName(rowIndex),
+                _ when column == EtwTraceSource.ColumnThread => GetThreadName(rowIndex),
                 _ => throw new NotSupportedException(),
             };
 

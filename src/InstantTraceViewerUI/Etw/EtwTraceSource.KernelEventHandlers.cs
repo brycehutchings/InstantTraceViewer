@@ -1,8 +1,9 @@
+using InstantTraceViewer;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
-using InstantTraceViewer;
+using System.Text;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -141,6 +142,23 @@ namespace InstantTraceViewerUI.Etw
             //
             _etwSource.Kernel.ThreadCSwitch += OnThreadCSwitch;
 
+            _etwSource.Kernel.PerfInfoSample += (SampledProfileTraceData data) =>
+            {
+                var newRecord = CreateBaseTraceRecord(data);
+                var namedValues = new List<NamedValue>();
+                namedValues.Add(new NamedValue("IP", data.InstructionPointer));
+                //TraceCallStack callstack = _traceLog?.GetCallStackForEvent(data);
+                //if (callstack != null)
+                //{
+                //    namedValues.Add(new NamedValue("CallStack", callstack.ToString()));
+                //}
+#pragma warning disable CS0618 // Type or member is obsolete
+                namedValues.Add(new NamedValue("TimeStampQPC", data.TimeStampQPC));
+#pragma warning restore CS0618 // Type or member is obsolete
+                newRecord.NamedValues = namedValues.ToArray();
+                AddEvent(newRecord);
+            };
+
             //
             // Keywords.Dispatcher
             //
@@ -210,6 +228,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnImageLoad(ImageLoadTraceData obj)
         {
+            if (obj.Opcode == TraceEventOpcode.DataCollectionStart || obj.Opcode == TraceEventOpcode.DataCollectionStop)
+            {
+                return; // Too many at session start.
+            }
+
             if (IsPaused)
             {
                 return;
@@ -236,7 +259,23 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+
+            StringBuilder sb = new();
+            for (int i = 0; i < obj.FrameCount; i++)
+            {
+                if (i > 0)
+                {
+                    sb.Append(" ");
+                }
+                sb.Append(obj.InstructionPointer(i));
+            }
+
+            newRecord.NamedValues = [
+                new NamedValue("EventTimeStampQPC", obj.EventTimeStampQPC),
+                new NamedValue("FrameCount", obj.FrameCount),
+                new NamedValue("Frames", sb.ToString())];
+            AddEvent(newRecord);
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
@@ -420,7 +459,7 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
         {
-            _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
+            _processDatabase.ThreadSetName(data.ThreadID, data.ThreadName);
 
             if (IsPaused)
             {
@@ -432,15 +471,11 @@ namespace InstantTraceViewerUI.Etw
         {
             if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                if (!string.IsNullOrEmpty(data.ThreadName))
-                {
-                    _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
-                }
-                else
-                {
-                    // In case a thread id is reused, we want to make sure we don't have stale data. We need to use a timestamp if we want to keep old and new names around.
-                    _threadNames.TryRemove(data.ThreadID, out _);
-                }
+                _processDatabase.ThreadStart(data.ThreadID, data.ThreadName, data.TimeStamp);
+            }
+            else if (data.Opcode == TraceEventOpcode.Stop || data.Opcode == TraceEventOpcode.DataCollectionStop)
+            {
+                _processDatabase.ThreadStop(data.ThreadID, data.TimeStamp);
             }
 
             if (data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
@@ -467,7 +502,11 @@ namespace InstantTraceViewerUI.Etw
         {
             if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                _processNames.AddOrUpdate(data.ProcessID, data.ProcessName, (key, oldValue) => data.ProcessName);
+                _processDatabase.ProcessStart(data.ProcessID, data.ProcessName, data.TimeStamp);
+            }
+            else if (data.Opcode == TraceEventOpcode.Stop || data.Opcode == TraceEventOpcode.DataCollectionStop)
+            {
+                _processDatabase.ProcessStop(data.ProcessID, data.TimeStamp);
             }
 
             if (IsPaused)

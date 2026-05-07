@@ -1,14 +1,18 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
+using Microsoft.Win32.SafeHandles;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using InstantTraceViewer;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Threading;
+using FILETIME = System.Runtime.InteropServices.ComTypes.FILETIME;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -64,8 +68,7 @@ namespace InstantTraceViewerUI.Etw
         private ListBuilder<EtwRecord> _traceRecords = new ListBuilder<EtwRecord>();
         private int _generationId = 1;
 
-        private ConcurrentDictionary<int, string> _threadNames = new();
-        private ConcurrentDictionary<int, string> _processNames = new();
+        private ProcessDatabase _processDatabase = new();
 
         private bool isDisposed;
 
@@ -96,7 +99,7 @@ namespace InstantTraceViewerUI.Etw
         }
 
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
-        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
+        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl", ".etlx" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
         private void AddEvent(EtwRecord record)
         {
@@ -128,7 +131,13 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new EtwRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
+                AddEvent(new EtwRecord
+                {
+                    ProviderName = "Instant Trace Viewer",
+                    Name = "Internal Error",
+                    Level = TraceEventLevel.Critical,
+                    NamedValues = [new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" }]
+                });
             }
         }
 
@@ -171,6 +180,8 @@ namespace InstantTraceViewerUI.Etw
                 foreach (var provider in profile.Providers)
                 {
                     // Make sure to keep in sync with TogglePause() method
+
+                    // TODO (pass as optional 4th param): var options = new TraceEventProviderOptions() { StacksEnabled = true };
                     etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
                 }
 
@@ -293,6 +304,7 @@ namespace InstantTraceViewerUI.Etw
                 return new EtwTraceTableSnapshot
                 {
                     RecordSnapshot = _traceRecords.CreateSnapshot(),
+                    ProcessDatabase = _processDatabase,
                     GenerationId = _generationId,
                     Schema = _schema,
                 };
@@ -312,26 +324,68 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
+            HashSet<int> processNameLookupAttemptedPids = new();
             foreach (var record in traceRecords)
             {
-                _processNames.GetOrAdd(record.ProcessId, _ =>
+                if (record.ProcessId < 0)
                 {
-                    try
+                    continue;
+                }
+
+                if (!processNameLookupAttemptedPids.Add(record.ProcessId) ||
+                    _processDatabase.GetProcessName(record.ProcessId, record.Timestamp) != null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    TryAddLiveProcessToDatabase(record.ProcessId);
+                }
+                catch
+                {
+                    Debug.WriteLine($"Failed to get process name for pid {record.ProcessId})");
+                }
+            }
+        }
+
+        private unsafe void TryAddLiveProcessToDatabase(int processId)
+        {
+            HANDLE processHandle = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+            if (!processHandle.IsNull)
+            {
+                try
+                {
+                    FILETIME creationTime;
+                    FILETIME exitTime;
+                    FILETIME kernelTime;
+                    FILETIME userTime;
+                    using SafeFileHandle safeProcessHandle = new((nint)processHandle.Value, ownsHandle: false);
+                    if (!PInvoke.GetProcessTimes(safeProcessHandle, out creationTime, out exitTime, out kernelTime, out userTime))
                     {
-                        // We could go lower-level if it is useful and PInvoke QueryFullProcessImageName and open the process handle with PROCESS_QUERY_LIMITED_INFORMATION,
-                        // but since this is a realtime session, we're probably elevated already and shouldn't have problems. This would also avoid the need for a try-catch.
-                        // However we now have no way to know if the process terminated and the process id could be re-used in the future.
-                        using (var process = Process.GetProcessById(record.ProcessId))
-                        {
-                            return process.ProcessName;
-                        }
+                        return;
                     }
-                    catch
+
+                    const int MaxProcessImagePathLength = 32768;
+                    char* imagePathBuffer = stackalloc char[MaxProcessImagePathLength];
+                    uint imagePathLength = MaxProcessImagePathLength;
+                    if (!PInvoke.QueryFullProcessImageName(processHandle, PROCESS_NAME_FORMAT.PROCESS_NAME_WIN32, imagePathBuffer, &imagePathLength))
                     {
-                        Debug.WriteLine($"Failed to get process name for pid {record.ProcessId})");
-                        return null; // Avoid querying again.
+                        return;
                     }
-                });
+
+                    string imagePath = new string(imagePathBuffer, 0, (int)imagePathLength);
+                    string processName = Path.GetFileNameWithoutExtension(imagePath);
+                    if (!string.IsNullOrEmpty(processName))
+                    {
+                        long creationTimeFT = (long)(((ulong)(uint)creationTime.dwHighDateTime << 32) | (uint)creationTime.dwLowDateTime);
+                        _processDatabase.ProcessStart(processId, processName, DateTime.FromFileTime(creationTimeFT));
+                    }
+                }
+                finally
+                {
+                    PInvoke.CloseHandle(processHandle);
+                }
             }
         }
 

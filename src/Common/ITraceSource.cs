@@ -19,6 +19,7 @@
         Stop,
     }
 
+    // name sucks.... want it more generic like "SpecialType"?
     public enum UnifiedLifecycleEvent
     {
         None,

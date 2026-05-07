@@ -47,3 +47,9 @@ CommDlgExtendedError
 
 // Packaging detection (NativeInterop.cs)
 GetCurrentPackageFullName
+
+// Process lookup
+OpenProcess
+QueryFullProcessImageName
+GetProcessTimes
+PROCESS_ACCESS_RIGHTS

@@ -166,10 +166,6 @@ namespace InstantTraceViewerUI
         {
             Trace.Assert(IsSupported(traceTable.Schema));
 
-            bool latestComputedTracksOutOfDate = _latestComputedTracks != null &&
-                (_latestComputedTracks.TraceTableSnapshot.GenerationId != traceTable.GenerationId ||
-                  _latestComputedTracks.TraceTableSnapshot.RowCount != traceTable.RowCount);
-
             bool? expandCollapse = null; // true=expand, false=collapse, null=no change
             if (ImGui.Button("\uF31E Expand All"))
             {
@@ -220,6 +216,9 @@ namespace InstantTraceViewerUI
                 "CTRL + Click --- Jump to hovered event");
 
             // Re-compute tracks if the trace table has changed since the last computation, or if there is no cached result yet.
+            bool latestComputedTracksOutOfDate = _latestComputedTracks != null &&
+                (_latestComputedTracks.TraceTableSnapshot.GenerationId != traceTable.GenerationId ||
+                  _latestComputedTracks.TraceTableSnapshot.RowCount != traceTable.RowCount);
             if ((_latestComputedTracks == null || latestComputedTracksOutOfDate) && _computedTracksTask == null)
             {
                 _computedTracksTask = Task.Run(() => ComputeTracks(traceTable));

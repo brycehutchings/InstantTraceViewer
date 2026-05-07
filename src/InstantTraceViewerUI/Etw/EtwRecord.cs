@@ -45,10 +45,6 @@ namespace InstantTraceViewerUI.Etw
 
         public ulong Keywords;
 
-        public string ProcessName;
-
-        public string ThreadName;
-
         public string ProviderName;
 
         public string Name;

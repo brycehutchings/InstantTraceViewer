@@ -35,8 +35,6 @@ namespace InstantTraceViewerUI.Etw
                 }
             }
 
-            newRecord.ProcessName = _processNames.TryGetValue(newRecord.ProcessId, out string processName) ? processName : null;
-            newRecord.ThreadName = _threadNames.TryGetValue(newRecord.ThreadId, out string threadName) ? threadName : null;
             newRecord.ProviderName = data.ProviderName;
             newRecord.Name = data.TaskName;
 
