@@ -83,9 +83,11 @@ namespace InstantTraceViewer
                 // See if this event falls into an existing TrackedProcess already.
                 if (processes.Count > 0 && processes[^1].End == null)
                 {
-                    if (name != null)
+                    TrackedProcess tp = processes[^1];
+                    if (name != null && name != tp.Name)
                     {
-                        processes[^1] = processes[^1] with { Name = name };
+                        tp.Name = name;
+                        processes[^1] = tp;
                         return true;
                     }
 
@@ -139,7 +141,13 @@ namespace InstantTraceViewer
             return null;
         }
 
-        public void ThreadStart(int tid, string? name, DateTime? startTime)
+        public void ThreadEnsure(int tid, DateTime timestamp)
+        {
+            ThreadStart(tid, null, timestamp);
+        }
+
+        // Returns true if an existing thread had its name changed.
+        public bool ThreadStart(int tid, string? name, DateTime? startTime)
         {
             lock (_trackedThreads)
             {
@@ -149,11 +157,27 @@ namespace InstantTraceViewer
                     _trackedThreads[tid] = threads;
                 }
 
+                // See if this event falls into an existing TrackedThread already.
+                if (threads.Count > 0 && threads[^1].End == null)
+                {
+                    TrackedThread tt = threads[^1];
+                    if (name != null && name != tt.Name)
+                    {
+                        tt.Name = name;
+                        threads[^1] = tt;
+                        return true;
+                    }
+
+                    return false;
+                }
+
                 threads.Add(new TrackedThread { Name = name, Start = startTime });
+                return false;
             }
         }
 
-        public void ThreadSetName(int tid, string name)
+        // Returns true if an existing thread had its name changed.
+        public bool ThreadSetName(int tid, string name)
         {
             lock (_trackedThreads)
             {
@@ -166,10 +190,12 @@ namespace InstantTraceViewer
                 if (threads.Count == 0 || threads[^1].End != null)
                 {
                     threads.Add(new TrackedThread { Name = name });
+                    return false;
                 }
                 else
                 {
                     threads[^1] = threads[^1] with { Name = name };
+                    return true;
                 }
             }
         }

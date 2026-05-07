@@ -459,7 +459,10 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
         {
-            _processDatabase.ThreadSetName(data.ThreadID, data.ThreadName);
+            if (_processDatabase.ThreadSetName(data.ThreadID, data.ThreadName))
+            {
+                _generationId++;
+            }
 
             if (IsPaused)
             {
@@ -471,12 +474,18 @@ namespace InstantTraceViewerUI.Etw
         {
             if (data.Opcode == TraceEventOpcode.Start)
             {
-                _processDatabase.ThreadStart(data.ThreadID, data.ThreadName, data.TimeStamp);
+                if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, data.TimeStamp))
+                {
+                    _generationId++;
+                }
             }
             else if (data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
                 // The timestamp of a DCStart is not the actual start time so it is not provided here.
-                _processDatabase.ThreadStart(data.ThreadID, data.ThreadName, null);
+                if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, null))
+                {
+                    _generationId++;
+                }
             }
             else if (data.Opcode == TraceEventOpcode.Stop)
             {

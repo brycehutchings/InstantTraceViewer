@@ -16,6 +16,7 @@ namespace InstantTraceViewerUI.Etw
             // can flag the generation id needs to increment to invalid past filtering which did not see
             // the process name on earlier events.
             _processDatabase.ProcessEnsure(data.ProcessID, data.TimeStamp);
+            _processDatabase.ThreadEnsure(data.ThreadID, data.TimeStamp);
 
             var newRecord = new EtwRecord();
             newRecord.ProcessId = data.ProcessID;
