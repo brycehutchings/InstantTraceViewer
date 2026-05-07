@@ -159,6 +159,11 @@ namespace InstantTraceViewer
                     return false; // No existing thread to update, so just ignore this event.
                 }
 
+                if (string.IsNullOrEmpty(name))
+                {
+                    return false; // Not sure if this is the right decision, but don't allow previous thread names to get erased.
+                }
+
                 threads[^1] = threads[^1] with { Name = name };
                 return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
             }
