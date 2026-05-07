@@ -468,6 +468,10 @@ namespace InstantTraceViewerUI.Etw
             {
                 return; // We still want to update the names but not add events.
             }
+
+            var newRecord = CreateBaseTraceRecord(data);
+            newRecord.NamedValues = [new NamedValue("ThreadName", data.ThreadName)];
+            AddEvent(newRecord);
         }
 
         private void OnThreadEvent(ThreadTraceData data)
@@ -481,8 +485,9 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                // The timestamp of a DCStart is not the actual start time so it is not provided here.
-                if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, null))
+                // The timestamp of a DCStart is not the actual start time. Sampled stack events can show up before DCStart
+                // so we need an unbounded start time for them to be associated with the thread.
+                if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, DateTime.MinValue))
                 {
                     _generationId++;
                 }
@@ -491,11 +496,6 @@ namespace InstantTraceViewerUI.Etw
             {
                 _processDatabase.ThreadStop(data.ThreadID, data.TimeStamp);
             }
-
-            //if (data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
-            //{
-            //    return; // Too many at session start.
-            //}
 
             if (IsPaused)
             {
@@ -507,6 +507,11 @@ namespace InstantTraceViewerUI.Etw
             if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop)
             {
                 newRecord.InternalFlags = InternalFlags.ThreadLifecycle;
+            }
+
+            if (!string.IsNullOrEmpty(data.ThreadName))
+            {
+                newRecord.NamedValues = [new NamedValue("ThreadName", data.ThreadName)];
             }
 
             AddEvent(newRecord);
@@ -523,8 +528,8 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                // The timestamp of a DCStart is not the actual start time so it is not provided here.
-                if (_processDatabase.ProcessStart(data.ProcessID, data.ProcessName, null))
+                // The timestamp of a DCStart is not the actual start time.
+                if (_processDatabase.ProcessStart(data.ProcessID, data.ProcessName, DateTime.MinValue))
                 {
                     _generationId++;
                 }
@@ -539,11 +544,6 @@ namespace InstantTraceViewerUI.Etw
                 return; // We still want to update the names but not add events.
             }
 
-            if ((data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop) &&
-                (_etwSession?.IsRealTime ?? false))
-            {
-                return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
-            }
 
             var newRecord = CreateBaseTraceRecord(data);
 

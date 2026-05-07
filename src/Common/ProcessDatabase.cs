@@ -1,27 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Xml.Linq;
 
 namespace InstantTraceViewer
 {
     /// <summary>
     /// Tracks process and thread names.
     /// TODO: Tracks loaded modules to resolve symbols
-    /// This class expects timestamp data happens chronologically but also allows for retroactive changes
-    /// like a process name for an already-known pid to be assigned.
+    /// This class expects timestamp data happens chronologically but also allows for retroactive changes like a process name for an already-known pid to be assigned.
+    /// When this happens the caller is instructed to bump the generation id so that any filtering can be re-evaluated with the new information.
+    /// This class is very carefully designed so that the same timestamp never maps to a different process/thread when new start/stop/name events are observed.
+    /// This is important because filtering that runs as events stream in won't know to re-evaluate unless told to by bumping the generation id.
     /// </summary>
     public class ProcessDatabase
     {
         record struct TrackedProcess
         {
             public string? Name;
-            public DateTime? Start;
+            public DateTime Start;
             public DateTime? End;
         }
 
         record struct TrackedThread
         {
-            public required string? Name;
-            public DateTime? Start;
+            public string? Name;
+            public DateTime Start;
             public DateTime? End;
         }
 
@@ -39,38 +42,23 @@ namespace InstantTraceViewer
             {
                 if (_trackedProcesses.TryGetValue(pid, out var processes))
                 {
-                    TrackedProcess? nearestProcess = null;
-                    TimeSpan? nearestDistance = null;
                     for (int i = processes.Count - 1; i >= 0; i--)
                     {
                         var process = processes[i];
-                        if ((process.Start == null || process.Start <= timestamp) && (process.End == null || process.End >= timestamp))
+                        DateTime? end = process.End ?? (i == processes.Count - 1 ? null : processes[i + 1].Start);
+                        if (process.Start <= timestamp && (end == null || end >= timestamp))
                         {
                             return process.Name;
                         }
-
-                        TimeSpan distance = GetDistance(timestamp, process.Start, process.End);
-                        if (nearestDistance == null || distance < nearestDistance)
-                        {
-                            nearestProcess = process;
-                            nearestDistance = distance;
-                        }
                     }
-
-                    return nearestProcess?.Name;
                 }
             }
 
             return null;
         }
 
-        public void ProcessEnsure(int pid, DateTime timestamp)
-        {
-            ProcessStart(pid, null, timestamp);
-        }
-
         // Returns true if an existing process had its name changed.
-        public bool ProcessStart(int pid, string? name, DateTime? startTime)
+        public bool ProcessStart(int pid, string? name, DateTime startTime)
         {
             lock (_trackedProcesses)
             {
@@ -80,18 +68,15 @@ namespace InstantTraceViewer
                     _trackedProcesses[pid] = processes;
                 }
 
-                // See if this event falls into an existing TrackedProcess already.
-                if (processes.Count > 0 && processes[^1].End == null)
+                // See if this event falls into an existing TrackedProcess already and its name must be updated.
+                if (name != null && processes.Count > 0)
                 {
                     TrackedProcess tp = processes[^1];
-                    if (name != null && name != tp.Name)
+                    if (tp.End == null && name != tp.Name)
                     {
-                        tp.Name = name;
-                        processes[^1] = tp;
-                        return true;
+                        processes[^1] = tp with { Name = name };
+                        return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
                     }
-
-                    return false;
                 }
 
                 processes.Add(new TrackedProcess { Name = name, Start = startTime });
@@ -116,38 +101,23 @@ namespace InstantTraceViewer
             {
                 if (_trackedThreads.TryGetValue(tid, out var threads))
                 {
-                    TrackedThread? nearestThread = null;
-                    TimeSpan? nearestDistance = null;
                     for (int i = threads.Count - 1; i >= 0; i--)
                     {
                         var thread = threads[i];
-                        if ((thread.Start == null || thread.Start <= timestamp) && (thread.End == null || thread.End >= timestamp))
+                        DateTime? end = thread.End ?? (i == threads.Count - 1 ? null : threads[i + 1].Start);
+                        if (thread.Start <= timestamp && (end == null || end >= timestamp))
                         {
                             return thread.Name;
                         }
-
-                        TimeSpan distance = GetDistance(timestamp, thread.Start, thread.End);
-                        if (nearestDistance == null || distance < nearestDistance)
-                        {
-                            nearestThread = thread;
-                            nearestDistance = distance;
-                        }
                     }
-
-                    return nearestThread?.Name;
                 }
             }
 
             return null;
         }
 
-        public void ThreadEnsure(int tid, DateTime timestamp)
-        {
-            ThreadStart(tid, null, timestamp);
-        }
-
         // Returns true if an existing thread had its name changed.
-        public bool ThreadStart(int tid, string? name, DateTime? startTime)
+        public bool ThreadStart(int tid, string? name, DateTime startTime)
         {
             lock (_trackedThreads)
             {
@@ -157,18 +127,15 @@ namespace InstantTraceViewer
                     _trackedThreads[tid] = threads;
                 }
 
-                // See if this event falls into an existing TrackedThread already.
-                if (threads.Count > 0 && threads[^1].End == null)
+                // See if this event falls into an existing TrackedThread already and its name must be updated.
+                if (name != null && threads.Count > 0)
                 {
                     TrackedThread tt = threads[^1];
-                    if (name != null && name != tt.Name)
+                    if (tt.End == null && name != tt.Name)
                     {
-                        tt.Name = name;
-                        threads[^1] = tt;
-                        return true;
+                        threads[^1] = tt with { Name = name };
+                        return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
                     }
-
-                    return false;
                 }
 
                 threads.Add(new TrackedThread { Name = name, Start = startTime });
@@ -189,14 +156,11 @@ namespace InstantTraceViewer
 
                 if (threads.Count == 0 || threads[^1].End != null)
                 {
-                    threads.Add(new TrackedThread { Name = name });
-                    return false;
+                    return false; // No existing thread to update, so just ignore this event.
                 }
-                else
-                {
-                    threads[^1] = threads[^1] with { Name = name };
-                    return true;
-                }
+
+                threads[^1] = threads[^1] with { Name = name };
+                return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
             }
         }
 
@@ -209,21 +173,6 @@ namespace InstantTraceViewer
                     threads[^1] = threads[^1] with { End = endTime };
                 }
             }
-        }
-
-        private static TimeSpan GetDistance(DateTime timestamp, DateTime? start, DateTime? end)
-        {
-            if (end != null && timestamp > end)
-            {
-                return timestamp - end.Value;
-            }
-
-            if (start != null && timestamp < start)
-            {
-                return start.Value - timestamp;
-            }
-
-            return TimeSpan.Zero;
         }
 
     }
