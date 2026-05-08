@@ -4,9 +4,13 @@ using System.Xml.Linq;
 
 namespace InstantTraceViewer
 {
+    public readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, DateTime LoadTime, DateTime? UnloadTime)
+    {
+        public ulong ImageEnd => ImageBase + ImageSize;
+    }
+
     /// <summary>
-    /// Tracks process and thread names.
-    /// TODO: Tracks loaded modules to resolve symbols
+    /// Tracks process/thread names and loaded images.
     /// This class expects timestamp data happens chronologically but also allows for retroactive changes like a process name for an already-known pid to be assigned.
     /// When this happens the caller is instructed to bump the generation id so that any filtering can be re-evaluated with the new information.
     /// This class is very carefully designed so that the same timestamp never maps to a different process/thread when new start/stop/name events are observed.
@@ -34,7 +38,9 @@ namespace InstantTraceViewer
         // Value is a List because TIDs may be reused.
         // This is kept outside of the process tracking because ETW thread start events may be observed before process datacollectionstart events.
         // PID is not used in the key because some events exclude PID and only include TID.
-        private Dictionary<int, List<TrackedThread>> _trackedThreads = new();
+        private Dictionary<int /* tid */, List<TrackedThread>> _trackedThreads = new();
+
+        private Dictionary<int /* pid */, List<LoadedImage>> _loadedImages = new();
 
         public string? GetProcessName(int pid, DateTime timestamp)
         {
@@ -178,6 +184,62 @@ namespace InstantTraceViewer
                     threads[^1] = threads[^1] with { End = endTime };
                 }
             }
+        }
+
+        public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, DateTime loadTime)
+        {
+            lock (_loadedImages)
+            {
+                if (!_loadedImages.TryGetValue(pid, out var loadedImages))
+                {
+                    loadedImages = new List<LoadedImage>();
+                    _loadedImages[pid] = loadedImages;
+                }
+
+                loadedImages.Add(new LoadedImage(fileName, imageBase, imageSize, loadTime, null));
+            }
+        }
+
+        public void ImageUnload(int pid, ulong imageBase, DateTime unloadTime)
+        {
+            lock (_loadedImages)
+            {
+                if (_loadedImages.TryGetValue(pid, out var loadedImages))
+                {
+                    for (int i = loadedImages.Count - 1; i >= 0; i--)
+                    {
+                        var loadedImage = loadedImages[i];
+                        if (loadedImage.ImageBase == imageBase && loadedImage.UnloadTime == null)
+                        {
+                            loadedImages[i] = loadedImage with { UnloadTime = unloadTime };
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        public LoadedImage? GetLoadedImage(int pid, ulong instructionPointer, DateTime timestamp)
+        {
+            lock (_loadedImages)
+            {
+                if (_loadedImages.TryGetValue(pid, out var loadedImages))
+                {
+                    for (int i = loadedImages.Count - 1; i >= 0; i--)
+                    {
+                        var loadedImage = loadedImages[i];
+                        if (loadedImage.ImageBase <= instructionPointer &&
+                            instructionPointer < loadedImage.ImageEnd &&
+                            loadedImage.LoadTime <= timestamp &&
+                            (loadedImage.UnloadTime == null || loadedImage.UnloadTime >= timestamp))
+                        {
+                            return loadedImage;
+                        }
+                    }
+                }
+            }
+
+            return null;
         }
 
     }

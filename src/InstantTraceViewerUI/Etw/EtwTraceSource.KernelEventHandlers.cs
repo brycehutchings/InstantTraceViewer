@@ -3,6 +3,7 @@ using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 namespace InstantTraceViewerUI.Etw
@@ -228,9 +229,15 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnImageLoad(ImageLoadTraceData obj)
         {
-            if (obj.Opcode == TraceEventOpcode.DataCollectionStart || obj.Opcode == TraceEventOpcode.DataCollectionStop)
+            TraceEventOpcodeExtended opcode = (TraceEventOpcodeExtended)obj.Opcode;
+            if (opcode == TraceEventOpcodeExtended.Stop || opcode == TraceEventOpcodeExtended.DataCollectionStop)
             {
-                return; // Too many at session start.
+                _processDatabase.ImageUnload(obj.ProcessID, obj.ImageBase, obj.TimeStamp);
+            }
+            else if (opcode == TraceEventOpcodeExtended.Load || opcode == TraceEventOpcodeExtended.DataCollectionStart)
+            {
+                DateTime loadTime = opcode == TraceEventOpcodeExtended.DataCollectionStart ? DateTime.MinValue : obj.TimeStamp;
+                _processDatabase.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, loadTime);
             }
 
             if (IsPaused)
@@ -268,7 +275,7 @@ namespace InstantTraceViewerUI.Etw
                 {
                     sb.Append(" ");
                 }
-                sb.Append(obj.InstructionPointer(i));
+                sb.Append(FormatInstructionPointer(newRecord.ProcessId, obj.InstructionPointer(i), newRecord.Timestamp));
             }
 
             newRecord.NamedValues = [
@@ -276,6 +283,24 @@ namespace InstantTraceViewerUI.Etw
                 new NamedValue("FrameCount", obj.FrameCount),
                 new NamedValue("Frames", sb.ToString())];
             AddEvent(newRecord);
+        }
+
+        private string FormatInstructionPointer(int processId, ulong instructionPointer, DateTime timestamp)
+        {
+            LoadedImage? loadedImage = _processDatabase.GetLoadedImage(processId, instructionPointer, timestamp);
+            if (loadedImage == null)
+            {
+                return $"0x{instructionPointer:X}";
+            }
+
+            ulong relativeVirtualAddress = instructionPointer - loadedImage.Value.ImageBase;
+            string moduleName = Path.GetFileName(loadedImage.Value.FileName);
+            if (string.IsNullOrEmpty(moduleName))
+            {
+                moduleName = loadedImage.Value.FileName;
+            }
+
+            return $"{moduleName}+0x{relativeVirtualAddress:X}";
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
