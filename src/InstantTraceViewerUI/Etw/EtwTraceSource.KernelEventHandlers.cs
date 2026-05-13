@@ -1,4 +1,5 @@
 using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
@@ -237,7 +238,7 @@ namespace InstantTraceViewerUI.Etw
             else if (opcode == TraceEventOpcodeExtended.Load || opcode == TraceEventOpcodeExtended.DataCollectionStart)
             {
                 DateTime loadTime = opcode == TraceEventOpcodeExtended.DataCollectionStart ? DateTime.MinValue : obj.TimeStamp;
-                _processDatabase.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, loadTime);
+                _processDatabase.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, loadTime);
             }
 
             if (IsPaused)
@@ -246,16 +247,13 @@ namespace InstantTraceViewerUI.Etw
             }
 
             var newRecord = CreateBaseTraceRecord(obj);
-
-            // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
-            DateTimeOffset timeDateStamp = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(obj.TimeDateStamp).ToLocalTime();
-
             newRecord.NamedValues = [
                 new NamedValue("File", obj.FileName),
                 new NamedValue("ImageBase", obj.ImageBase),
-                new NamedValue("ImageSize", obj.ImageSize),
-                new NamedValue("TimeDateStamp", timeDateStamp.ToString("yyyy-MM-dd HH:mm:ss")),
-                new NamedValue("CheckSum", obj.ImageChecksum)];
+                new NamedValue("ImageSize", (uint)obj.ImageSize),
+                new NamedValue("CheckSum", (uint)obj.ImageChecksum),
+                new NamedValue("TimeDateStamp", (uint)obj.TimeDateStamp),
+            ];
             AddEvent(newRecord);
         }
 
@@ -268,39 +266,46 @@ namespace InstantTraceViewerUI.Etw
 
             var newRecord = CreateBaseTraceRecord(obj);
 
-            StringBuilder sb = new();
+            var stackFrames = new Dictionary<string, object>();
             for (int i = 0; i < obj.FrameCount; i++)
             {
-                if (i > 0)
-                {
-                    sb.Append(" ");
+                ulong ip = obj.InstructionPointer(i);
+
+                LoadedImage? loadedImage = _processDatabase.GetLoadedImage(newRecord.ProcessId, ip, obj.TimeStamp);
+                if (loadedImage.HasValue) {
+                    ulong relativeVirtualAddress = ip - loadedImage.Value.ImageBase;
+
+                    string moduleName = Path.GetFileName(loadedImage.Value.FileName);
+                    if (string.IsNullOrEmpty(moduleName))
+                    {
+                        moduleName = loadedImage.Value.FileName;
+                    }
+
+                    ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
+                        new Symbols.ModuleLookupRequest { FileName = moduleName, ImageSize = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
+                    if (resolvedSymbol.HasValue)
+                    {
+                        // Symbol found.
+                        stackFrames.Add(i.ToString(), $"{resolvedSymbol.Value.ModuleName}!{resolvedSymbol.Value.SymbolName}+0x{resolvedSymbol.Value.Displacement:X}");
+                    }
+                    else
+                    {
+                        // Module known but symbol not found. Show module and relative virtual address.
+                        stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
+                    }
                 }
-                sb.Append(FormatInstructionPointer(newRecord.ProcessId, obj.InstructionPointer(i), newRecord.Timestamp));
+                else
+                {
+                    // Unknown module, this is strange! Just show the IP.
+                    stackFrames.Add(i.ToString(), $"0x{obj.InstructionPointer(i):X}");
+                }
             }
 
             newRecord.NamedValues = [
                 new NamedValue("EventTimeStampQPC", obj.EventTimeStampQPC),
                 new NamedValue("FrameCount", obj.FrameCount),
-                new NamedValue("Frames", sb.ToString())];
+                new NamedValue("Frames", stackFrames)];
             AddEvent(newRecord);
-        }
-
-        private string FormatInstructionPointer(int processId, ulong instructionPointer, DateTime timestamp)
-        {
-            LoadedImage? loadedImage = _processDatabase.GetLoadedImage(processId, instructionPointer, timestamp);
-            if (loadedImage == null)
-            {
-                return $"0x{instructionPointer:X}";
-            }
-
-            ulong relativeVirtualAddress = instructionPointer - loadedImage.Value.ImageBase;
-            string moduleName = Path.GetFileName(loadedImage.Value.FileName);
-            if (string.IsNullOrEmpty(moduleName))
-            {
-                moduleName = loadedImage.Value.FileName;
-            }
-
-            return $"{moduleName}+0x{relativeVirtualAddress:X}";
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)

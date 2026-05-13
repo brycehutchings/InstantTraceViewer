@@ -1,4 +1,6 @@
-﻿using Microsoft.Diagnostics.Tracing;
+﻿using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using Microsoft.Win32.SafeHandles;
@@ -8,7 +10,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using InstantTraceViewer;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Threading;
@@ -69,6 +70,7 @@ namespace InstantTraceViewerUI.Etw
         private int _generationId = 1;
 
         private ProcessDatabase _processDatabase = new();
+        private SymbolResolver _symbolResolver = new SymbolResolver(@"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;d:\repos\cloud3\binlocal\WinX64;d:\repos\cloud3\binlocal\WinX64\Symbols");
 
         private bool isDisposed;
 

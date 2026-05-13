@@ -4,7 +4,7 @@ using System.Xml.Linq;
 
 namespace InstantTraceViewer
 {
-    public readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, DateTime LoadTime, DateTime? UnloadTime)
+    public readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, uint TimeDateStamp, uint CheckSum, DateTime LoadTime, DateTime? UnloadTime)
     {
         public ulong ImageEnd => ImageBase + ImageSize;
     }
@@ -186,7 +186,7 @@ namespace InstantTraceViewer
             }
         }
 
-        public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, DateTime loadTime)
+        public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, DateTime loadTime)
         {
             lock (_loadedImages)
             {
@@ -196,7 +196,7 @@ namespace InstantTraceViewer
                     _loadedImages[pid] = loadedImages;
                 }
 
-                loadedImages.Add(new LoadedImage(fileName, imageBase, imageSize, loadTime, null));
+                loadedImages.Add(new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, loadTime, null));
             }
         }
 
