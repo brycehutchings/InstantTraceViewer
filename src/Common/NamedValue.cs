@@ -4,6 +4,13 @@ namespace InstantTraceViewer
 {
     public delegate bool TryGetCustomizedValue(string? name, object value, out string customValue);
 
+    // TODO: Must be in an array or Span so modifications to struct are persisted by using "ref"
+    public struct StackFrame
+    {
+        public ulong InstructionPointer;
+        public string? ResolvedSymbol; // Cached once available.
+    }
+
     public struct NamedValue
     {
         private static readonly IFormatProvider FormatProvider = System.Globalization.CultureInfo.InvariantCulture;

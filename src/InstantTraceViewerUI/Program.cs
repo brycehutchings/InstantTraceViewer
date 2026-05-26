@@ -7,7 +7,7 @@ namespace InstantTraceViewerUI
 {
     internal class Program
     {
-        public static unsafe int Main(string[] args)
+        public static int Main(string[] args)
         {
             SymbolResolver.SetGlobalSymbolOptions(
                 /*PInvoke.SYMOPT_EXACT_SYMBOLS | */PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS);

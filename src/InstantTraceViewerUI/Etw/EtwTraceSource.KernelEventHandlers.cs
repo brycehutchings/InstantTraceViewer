@@ -250,7 +250,7 @@ namespace InstantTraceViewerUI.Etw
             newRecord.NamedValues = [
                 new NamedValue("File", obj.FileName),
                 new NamedValue("ImageBase", obj.ImageBase),
-                new NamedValue("ImageSize", (uint)obj.ImageSize),
+                new NamedValue("SizeOfImage", (uint)obj.ImageSize),
                 new NamedValue("CheckSum", (uint)obj.ImageChecksum),
                 new NamedValue("TimeDateStamp", (uint)obj.TimeDateStamp),
             ];
@@ -281,17 +281,20 @@ namespace InstantTraceViewerUI.Etw
                         moduleName = loadedImage.Value.FileName;
                     }
 
-                    ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
-                        new Symbols.ModuleLookupRequest { FileName = moduleName, ImageSize = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
-                    if (resolvedSymbol.HasValue)
+                    if (_processDatabase.GetProcessName(obj.ProcessID, obj.TimeStamp) == "MrShell")
                     {
-                        // Symbol found.
-                        stackFrames.Add(i.ToString(), $"{resolvedSymbol.Value.ModuleName}!{resolvedSymbol.Value.SymbolName}+0x{resolvedSymbol.Value.Displacement:X}");
-                    }
-                    else
-                    {
-                        // Module known but symbol not found. Show module and relative virtual address.
-                        stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
+                        //ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
+                        //    new Symbols.ModuleLookupRequest { FileName = loadedImage.Value.FileName, SizeOfImage = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
+                        //if (resolvedSymbol.HasValue)
+                        //{
+                        //    // Symbol found.
+                        //    stackFrames.Add(i.ToString(), $"{resolvedSymbol.Value.ModuleName}!{resolvedSymbol.Value.SymbolName}+0x{resolvedSymbol.Value.Displacement:X}");
+                        //}
+                        //else
+                        //{
+                        //    // Module known but symbol not found. Show module and relative virtual address.
+                        //    stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
+                        //}
                     }
                 }
                 else
@@ -316,6 +319,15 @@ namespace InstantTraceViewerUI.Etw
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.NamedValues = [
+                new NamedValue("OldThreadID", obj.OldThreadID),
+                new NamedValue("NewThreadID", obj.NewThreadID),
+                new NamedValue("OldThreadPriority", obj.OldThreadPriority),
+                new NamedValue("NewThreadPriority", obj.NewThreadPriority),
+                new NamedValue("OldThreadState", obj.OldThreadState),
+                new NamedValue("OldThreadWaitReason", obj.OldThreadWaitReason)];
+            AddEvent(newRecord);
         }
 
         private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)

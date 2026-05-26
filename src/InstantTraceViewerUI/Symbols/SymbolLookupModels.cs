@@ -4,7 +4,7 @@ namespace InstantTraceViewerUI.Symbols
 {
     internal readonly record struct ModuleLookupRequest(
         string FileName,
-        ulong ImageSize,
+        ulong SizeOfImage,
         uint TimeDateStamp)
     {
         public bool HasTimeDateStamp => TimeDateStamp != 0;

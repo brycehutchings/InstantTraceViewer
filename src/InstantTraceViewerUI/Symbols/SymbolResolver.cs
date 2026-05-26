@@ -183,9 +183,7 @@ namespace InstantTraceViewerUI.Symbols
 
         private string? FindBinary(ModuleLookupRequest module)
         {
-            string fileName = Path.GetFileName(module.FileName);
-
-            Trace.WriteLine($"SymbolResolver: finding binary '{fileName}' timestamp=0x{module.TimeDateStamp:X8} size=0x{module.ImageSize:X}.");
+            Trace.WriteLine($"SymbolResolver(FindBinary): '{module.FileName}' TimeDateStamp=0x{module.TimeDateStamp:X8} SizeOfImage=0x{module.SizeOfImage:X}.");
             unsafe
             {
                 Span<char> foundFile = stackalloc char[MaxPathBufferLength];
@@ -194,9 +192,9 @@ namespace InstantTraceViewerUI.Symbols
                     bool found = PInvoke.SymFindFileInPathW(
                         _sessionHandle,
                         null,
-                        fileName,
+                        module.FileName, // Docs say only file part of the path is used.
                         (void*)(nuint)module.TimeDateStamp,
-                        checked((uint)module.ImageSize),
+                        checked((uint)module.SizeOfImage),
                         0,
                         SYM_FIND_ID_OPTION.SSRVOPT_DWORD,
                         foundFile,
@@ -205,7 +203,14 @@ namespace InstantTraceViewerUI.Symbols
 
                     if (!found)
                     {
-                        Trace.WriteLine($"SymbolResolver: binary lookup failed for '{fileName}'. LastError={Marshal.GetLastPInvokeError()}.");
+                        if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
+                        {
+                            Trace.WriteLine($"SymbolResolver(FindBinary): '{module.FileName}' not found.");
+                        }
+                        else
+                        {
+                            Trace.WriteLine($"SymbolResolver(FindBinary): Unexpected failure. LastError={Marshal.GetLastPInvokeError()}.");
+                        }
                         return null;
                     }
                 }
@@ -218,7 +223,7 @@ namespace InstantTraceViewerUI.Symbols
 
         private unsafe DbgHelpFileIndexInfo? GetFileIndexInfo(string filePath)
         {
-            Trace.WriteLine($"SymbolResolver: reading symbol index info from '{filePath}'.");
+            Trace.WriteLine($"SymbolResolver(GetFileIndexInfo): '{filePath}'.");
 
             SYMSRV_INDEX_INFOW info = default;
             info.sizeofstruct = (uint)sizeof(SYMSRV_INDEX_INFOW);
@@ -227,7 +232,7 @@ namespace InstantTraceViewerUI.Symbols
             {
                 if (!PInvoke.SymSrvGetFileIndexInfoW(filePath, out info, 0))
                 {
-                    Trace.WriteLine($"SymbolResolver: SymSrvGetFileIndexInfoW failed for '{filePath}'. LastError={Marshal.GetLastPInvokeError()}.");
+                    Trace.WriteLine($"SymbolResolver(GetFileIndexInfo): SymSrvGetFileIndexInfoW failed for '{filePath}'. LastError={Marshal.GetLastPInvokeError()}.");
                     return null;
                 }
             }
@@ -241,13 +246,13 @@ namespace InstantTraceViewerUI.Symbols
                 info.age,
                 info.sig);
 
-            Trace.WriteLine($"SymbolResolver: index info file='{result.FileName}' timestamp=0x{result.TimeDateStamp:X8} size=0x{result.Size:X} pdb='{result.PdbFileName}' guid={result.PdbGuid} age={result.PdbAge}.");
+            Trace.WriteLine($"SymbolResolver(GetFileIndexInfo): index info file='{result.FileName}' timestamp=0x{result.TimeDateStamp:X8} size=0x{result.Size:X} pdb='{result.PdbFileName}' guid={result.PdbGuid} age={result.PdbAge}.");
             return result;
         }
 
         private string? FindPdb(PdbLookupRequest pdb)
         {
-            Trace.WriteLine($"SymbolResolver: finding PDB '{pdb.PdbFileName}' guid={pdb.Guid} age={pdb.Age}.");
+            Trace.WriteLine($"SymbolResolver(FindPdb): '{pdb.PdbFileName}' guid={pdb.Guid} age={pdb.Age}.");
             unsafe
             {
                 Span<char> foundFile = stackalloc char[MaxPathBufferLength];
@@ -268,13 +273,13 @@ namespace InstantTraceViewerUI.Symbols
 
                     if (!found)
                     {
-                        Trace.WriteLine($"SymbolResolver: PDB lookup failed for '{pdb.PdbFileName}'. LastError={Marshal.GetLastPInvokeError()}.");
+                        Trace.WriteLine($"SymbolResolver(FindPdb): PDB lookup failed for '{pdb.PdbFileName}'. LastError={Marshal.GetLastPInvokeError()}.");
                         return null;
                     }
                 }
 
                 string result = StringFromNullTerminated(foundFile);
-                Trace.WriteLine($"SymbolResolver: found PDB '{result}'.");
+                Trace.WriteLine($"SymbolResolver(FindPdb): Found at '{result}'.");
                 return result;
             }
         }
@@ -305,14 +310,14 @@ namespace InstantTraceViewerUI.Symbols
                     {
                         if (!PInvoke.SymFromAddrW(_sessionHandle, address, out displacement, symbolInfo))
                         {
-                            Trace.WriteLine($"SymbolResolver: symbol lookup failed for '{module.FileName}+0x{relativeVirtualAddress:X}'. LastError={Marshal.GetLastPInvokeError()}.");
+                            Trace.WriteLine($"SymbolResolver(Resolve): symbol lookup failed for '{module.FileName}+0x{relativeVirtualAddress:X}'. LastError={Marshal.GetLastPInvokeError()}.");
                             return null;
                         }
                     }
 
                     int nameLen = Math.Min((int)symbolInfo->NameLen, (int)symbolInfo->MaxNameLen);
                     string symbolName = nameLen == 0 ? string.Empty : new string((char*)&symbolInfo->Name, 0, nameLen);
-                    Trace.WriteLine($"SymbolResolver: resolved '{module.FileName}+0x{relativeVirtualAddress:X}' to '{symbolName}+0x{displacement:X}'.");
+                    Trace.WriteLine($"SymbolResolver(Resolve): '{module.FileName}+0x{relativeVirtualAddress:X}' resolved to '{symbolName}+0x{displacement:X}'.");
                     return new ResolvedSymbol(Path.GetFileName(module.FileName), relativeVirtualAddress, symbolName, displacement, true);
                 }
             }
@@ -333,7 +338,7 @@ namespace InstantTraceViewerUI.Symbols
             }
 
             string moduleName = Path.GetFileNameWithoutExtension(module.FileName);
-            ulong baseAddress = AllocateSyntheticBase(module.ImageSize);
+            ulong baseAddress = AllocateSyntheticBase(module.SizeOfImage);
 
             lock (DbgHelpLock)
             {
@@ -343,19 +348,19 @@ namespace InstantTraceViewerUI.Symbols
                     binaryPath,
                     moduleName,
                     baseAddress,
-                    checked((uint)module.ImageSize),
+                    checked((uint)module.SizeOfImage),
                     null,
                     SYM_LOAD_FLAGS.SLMFLAG_NONE);
 
                 if (loadedBase == 0)
                 {
                     int error = Marshal.GetLastPInvokeError();
-                    Trace.WriteLine($"SymbolResolver: failed to load module '{binaryPath}'. LastError={error}.");
+                    Trace.WriteLine($"SymbolResolver(LoadModule): failed to load module '{binaryPath}'. LastError={error}.");
                     return null;
                 }
 
-                Trace.WriteLine($"SymbolResolver: loaded module '{binaryPath}' at 0x{loadedBase:X}.");
-                return new LoadedModule(loadedBase, module.ImageSize);
+                Trace.WriteLine($"SymbolResolver(LoadModule): loaded module '{binaryPath}' at 0x{loadedBase:X}.");
+                return new LoadedModule(loadedBase, module.SizeOfImage);
             }
         }
 

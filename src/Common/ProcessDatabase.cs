@@ -196,7 +196,8 @@ namespace InstantTraceViewer
                     _loadedImages[pid] = loadedImages;
                 }
 
-                loadedImages.Add(new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, loadTime, null));
+                int insertIndex = FindFirstImageWithBaseGreaterThan(loadedImages, imageBase);
+                loadedImages.Insert(insertIndex, new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, loadTime, null));
             }
         }
 
@@ -206,32 +207,32 @@ namespace InstantTraceViewer
             {
                 if (_loadedImages.TryGetValue(pid, out var loadedImages))
                 {
-                    for (int i = loadedImages.Count - 1; i >= 0; i--)
+                    int endIndex = FindFirstImageWithBaseGreaterThan(loadedImages, imageBase);
+                    if (endIndex > 0)
                     {
-                        var loadedImage = loadedImages[i];
+                        int candidateIndex = endIndex - 1;
+                        var loadedImage = loadedImages[candidateIndex];
                         if (loadedImage.ImageBase == imageBase && loadedImage.UnloadTime == null)
                         {
-                            loadedImages[i] = loadedImage with { UnloadTime = unloadTime };
-                            return;
+                            loadedImages[candidateIndex] = loadedImage with { UnloadTime = unloadTime };
                         }
                     }
                 }
             }
         }
 
-        public LoadedImage? GetLoadedImage(int pid, ulong instructionPointer, DateTime timestamp)
+        public LoadedImage? GetLoadedImage(int pid, ulong virtualAddress, DateTime timestamp)
         {
             lock (_loadedImages)
             {
                 if (_loadedImages.TryGetValue(pid, out var loadedImages))
                 {
-                    for (int i = loadedImages.Count - 1; i >= 0; i--)
+                    int endIndex = FindFirstImageWithBaseGreaterThan(loadedImages, virtualAddress);
+                    for (int i = endIndex - 1; i >= 0; i--)
                     {
                         var loadedImage = loadedImages[i];
-                        if (loadedImage.ImageBase <= instructionPointer &&
-                            instructionPointer < loadedImage.ImageEnd &&
-                            loadedImage.LoadTime <= timestamp &&
-                            (loadedImage.UnloadTime == null || loadedImage.UnloadTime >= timestamp))
+                        if ((loadedImage.ImageBase <= virtualAddress && virtualAddress < loadedImage.ImageEnd) &&
+                            loadedImage.LoadTime <= timestamp && (loadedImage.UnloadTime == null || loadedImage.UnloadTime >= timestamp))
                         {
                             return loadedImage;
                         }
@@ -240,6 +241,26 @@ namespace InstantTraceViewer
             }
 
             return null;
+        }
+
+        private static int FindFirstImageWithBaseGreaterThan(List<LoadedImage> loadedImages, ulong imageBase)
+        {
+            int low = 0;
+            int high = loadedImages.Count;
+            while (low < high)
+            {
+                int middle = low + (high - low) / 2;
+                if (loadedImages[middle].ImageBase <= imageBase)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
+                }
+            }
+
+            return low;
         }
 
     }
