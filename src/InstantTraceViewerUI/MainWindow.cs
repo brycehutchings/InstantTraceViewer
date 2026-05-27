@@ -14,13 +14,6 @@ using Windows.Win32.Foundation;
 
 namespace InstantTraceViewerUI
 {
-    internal interface IUiCommands
-    {
-        void AddLogViewerWindow(LogViewerWindow logViewerWindow);
-
-        void ShowMessageBox(string message, string title, bool isError);
-    }
-
     internal class MainWindow : IDisposable, IUiCommands
     {
         private static readonly bool s_isPackaged = GetIsPackaged();
@@ -40,9 +33,8 @@ namespace InstantTraceViewerUI
         private MessageBoxData? _messageBox = null;
 
         private Etw.OpenActiveSession _openActiveSession = new();
-        private List<Etw.StartRealTimeSessionWindow> _startRealTimeSessionWindows = new();
-        private List<LogViewerWindow> _logViewerWindows = new();
-        private List<LogViewerWindow> _pendingNewLogViewWindows = new();
+        private List<IWindow> _windows = new();
+        private List<IWindow> _pendingWindows = new();
         private bool _showOpenActiveSession;
         private bool _isDisposed;
 
@@ -53,25 +45,25 @@ namespace InstantTraceViewerUI
                 if (Etw.EtwTraceSource.EtlFileExtensions.Contains(Path.GetExtension(args[0]), StringComparer.OrdinalIgnoreCase))
                 {
                     var etlSession = Etw.EtwTraceSource.CreateEtlSession(args[0]);
-                    _logViewerWindows.Add(new LogViewerWindow(etlSession));
+                    _windows.Add(new LogViewerWindow(etlSession));
                 }
                 else if (string.Equals(Path.GetExtension(args[0]), ".wprp", StringComparison.OrdinalIgnoreCase))
                 {
                     var wprp = Etw.Wprp.Load(args[0]);
                     var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
-                    _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                    _windows.Add(new LogViewerWindow(realTimeSession));
                 }
                 else if (string.Equals(Path.GetExtension(args[0]), ".csv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for CSV files.
                     var csvTableSource = new CsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
-                    _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
+                    _windows.Add(new LogViewerWindow(csvTableSource));
                 }
                 else if (string.Equals(Path.GetExtension(args[0]), ".tsv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for TSV files.
                     var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
-                    _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                    _windows.Add(new LogViewerWindow(tsvTableSource));
                 }
                 else if (
                     string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
@@ -79,17 +71,17 @@ namespace InstantTraceViewerUI
                     args[0].EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
                 {
                     var perfettoTableSource = new Perfetto.PerfettoTraceSource(args[0]);
-                    _logViewerWindows.Add(new LogViewerWindow(perfettoTableSource));
+                    _windows.Add(new LogViewerWindow(perfettoTableSource));
                 }
             }
         }
 
         public bool IsExitRequested { get; private set; }
 
-        public void AddLogViewerWindow(LogViewerWindow logViewerWindow)
+        public void AddWindow(IWindow window)
         {
-            // Can't add to _logViewerWindows since the collection might be enumerated during the add.
-            _pendingNewLogViewWindows.Add(logViewerWindow);
+            // Can't add to _windows since the collection might be enumerated during the add.
+            _pendingWindows.Add(window);
         }
 
         public void ShowMessageBox(string message, string title, bool isError)
@@ -107,12 +99,17 @@ namespace InstantTraceViewerUI
             // Force the (first) next window to be docked to fill window. Generally this is what people will want, rather than a smaller, floating window.
             ImGui.SetNextWindowDockID(dockId, ImGuiCond.FirstUseEver);
 
-            _logViewerWindows.AddRange(_pendingNewLogViewWindows);
-            _pendingNewLogViewWindows.Clear();
+            _windows.AddRange(_pendingWindows);
+            _pendingWindows.Clear();
 
-            foreach (var logViewerWindow in _logViewerWindows)
+            for (int i = 0; i < _windows.Count; i++)
             {
-                logViewerWindow.DrawWindow(this);
+                if (!_windows[i].DrawWindow(this))
+                {
+                    _windows[i].Dispose();
+                    _windows.RemoveAt(i);
+                    i--;
+                }
             }
 
             if (_showOpenActiveSession)
@@ -120,19 +117,7 @@ namespace InstantTraceViewerUI
                 _openActiveSession.DrawWindow(this, ref _showOpenActiveSession);
             }
 
-            for (int i = 0; i < _startRealTimeSessionWindows.Count; i++)
-            {
-                if (!_startRealTimeSessionWindows[i].DrawWindow(this))
-                {
-                    _startRealTimeSessionWindows.RemoveAt(i);
-                    i--;
-                }
-            }
-
             DrawMessageBox();
-
-            // Clean up any closed windows. A window is determined to be closed during the DrawWindow call so this comes afterwards.
-            CleanUpClosedLogViewerWindows();
         }
 
         private void DrawMessageBox()
@@ -159,17 +144,6 @@ namespace InstantTraceViewerUI
                 ImGui.PopStyleVar();
                 ImGui.EndPopup();
             }
-        }
-
-        private void CleanUpClosedLogViewerWindows()
-        {
-            var closedWindows = _logViewerWindows.Where(w => w.IsClosed);
-            foreach (var win in closedWindows)
-            {
-                win.Dispose();
-            }
-
-            _logViewerWindows.RemoveAll(w => closedWindows.Contains(w));
         }
 
         private void DrawMenuBar()
@@ -258,7 +232,7 @@ namespace InstantTraceViewerUI
                 {
                     if (ImGui.MenuItem("Open real-time..."))
                     {
-                        _startRealTimeSessionWindows.Add(new Etw.StartRealTimeSessionWindow());
+                        _windows.Add(new Etw.StartRealTimeSessionWindow());
                     }
 
                     if (ImGui.MenuItem("Open real-time from WPRP file..."))
@@ -279,7 +253,7 @@ namespace InstantTraceViewerUI
                                 var selectedProfile = wprp.Profiles[0];
                                 var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(selectedProfile.ConvertToSessionProfile());
 
-                                _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                                _windows.Add(new LogViewerWindow(realTimeSession));
                             }
                             catch (Exception ex)
                             {
@@ -306,7 +280,7 @@ namespace InstantTraceViewerUI
                                     ShowMessageBox($"{Path.GetFileName(file)} has {etlSession.LostEvents:N0} lost events.", "Warning", isError: false);
                                 }
 
-                                _logViewerWindows.Add(new LogViewerWindow(etlSession));
+                                _windows.Add(new LogViewerWindow(etlSession));
                             }
                             catch (Exception ex)
                             {
@@ -338,7 +312,7 @@ namespace InstantTraceViewerUI
                                         var wprp = Etw.Wprp.Load(file);
                                         var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
 
-                                        _logViewerWindows.Add(new LogViewerWindow(realTimeSession));
+                                        _windows.Add(new LogViewerWindow(realTimeSession));
                                     }
                                     catch (Exception ex)
                                     {
@@ -380,7 +354,7 @@ namespace InstantTraceViewerUI
                                 try
                                 {
                                     var csvTableSource = new CsvTableSource(file, withHeader, readInBackground: true);
-                                    _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
+                                    _windows.Add(new LogViewerWindow(csvTableSource));
                                 }
                                 catch (Exception ex)
                                 {
@@ -403,7 +377,7 @@ namespace InstantTraceViewerUI
                             {
                                 string clipboardText = ImGui.GetClipboardTextS();
                                 var csvTableSource = new CsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
-                                _logViewerWindows.Add(new LogViewerWindow(csvTableSource));
+                                _windows.Add(new LogViewerWindow(csvTableSource));
                             }
                             catch (Exception ex)
                             {
@@ -431,7 +405,7 @@ namespace InstantTraceViewerUI
                                 try
                                 {
                                     var tsvTableSource = new TsvTableSource(file, withHeader, readInBackground: true);
-                                    _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                                    _windows.Add(new LogViewerWindow(tsvTableSource));
                                 }
                                 catch (Exception ex)
                                 {
@@ -454,7 +428,7 @@ namespace InstantTraceViewerUI
                             {
                                 string clipboardText = ImGui.GetClipboardTextS();
                                 var tsvTableSource = new TsvTableSource("Clipboard CSV", new StringReader(clipboardText), withHeader, readInBackground: true);
-                                _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                                _windows.Add(new LogViewerWindow(tsvTableSource));
                             }
                             catch (Exception ex)
                             {
@@ -499,7 +473,7 @@ namespace InstantTraceViewerUI
                             if (ImGui.MenuItem("Open logcat"))
                             {
                                 var logcat = new Logcat.LogcatTraceSource(_adbClient, device);
-                                _logViewerWindows.Add(new LogViewerWindow(logcat));
+                                _windows.Add(new LogViewerWindow(logcat));
                             }
                             ImGui.EndMenu();
                         }
@@ -530,7 +504,7 @@ namespace InstantTraceViewerUI
                             try
                             {
                                 var tsvTableSource = new Perfetto.PerfettoTraceSource(file);
-                                _logViewerWindows.Add(new LogViewerWindow(tsvTableSource));
+                                _windows.Add(new LogViewerWindow(tsvTableSource));
                             }
                             catch (Exception ex)
                             {
@@ -562,11 +536,11 @@ namespace InstantTraceViewerUI
             {
                 if (disposing)
                 {
-                    foreach (var logViewerWindow in _logViewerWindows)
+                    foreach (var window in _windows)
                     {
-                        logViewerWindow.Dispose();
+                        window.Dispose();
                     }
-                    _logViewerWindows.Clear();
+                    _windows.Clear();
                     _openActiveSession.Dispose();
                 }
 

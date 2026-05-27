@@ -9,7 +9,7 @@ using InstantTraceViewer;
 
 namespace InstantTraceViewerUI
 {
-    unsafe internal class LogViewerWindow : IDisposable
+    unsafe internal class LogViewerWindow : IWindow
     {
         private static readonly MinUniqueId MinUniqueIdPool = new();
 
@@ -71,13 +71,8 @@ namespace InstantTraceViewerUI
 
         public bool IsClosed => _isDisposed;
 
-        public void DrawWindow(IUiCommands uiCommands)
+        public bool DrawWindow(IUiCommands uiCommands)
         {
-            if (IsClosed)
-            {
-                return;
-            }
-
             bool filteredViewRebuilt = _filteredTraceTableBuilder.Update(_viewerRules, _traceSource.TraceSource.CreateSnapshot());
             FilteredTraceTableSnapshot visibleTraceTable = _filteredTraceTableBuilder.Snapshot();
 
@@ -130,10 +125,7 @@ namespace InstantTraceViewerUI
                 }
             }
 
-            if (!opened)
-            {
-                Dispose();
-            }
+            return opened;
         }
 
         private unsafe void DrawWindowContents(IUiCommands uiCommands, FilteredTraceTableSnapshot visibleTraceTable, bool filteredViewRebuilt)
@@ -885,8 +877,10 @@ namespace InstantTraceViewerUI
             ImGui.SameLine();
             if (ImGui.Button("\uF0FE Clone"))
             {
-                uiCommands.AddLogViewerWindow(Clone());
+                uiCommands.AddWindow(Clone());
             }
+
+            (_traceSource.TraceSource as ITraceSourceGuiExtensions)?.RenderToolstripExtras(uiCommands);
 
             bool findRequested = false;
             ImGui.SameLine();

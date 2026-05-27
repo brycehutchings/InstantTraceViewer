@@ -1,4 +1,5 @@
-﻿using InstantTraceViewer;
+﻿using Hexa.NET.ImGui;
+using InstantTraceViewer;
 using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -26,7 +27,7 @@ namespace InstantTraceViewerUI.Etw
         TelemetryMeasures = 0x0000400000000000,
     }
 
-    internal partial class EtwTraceSource : ITraceSource
+    internal partial class EtwTraceSource : ITraceSource, ITraceSourceGuiExtensions
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
@@ -316,6 +317,16 @@ namespace InstantTraceViewerUI.Etw
                 _traceRecordsLock.ExitWriteLock();
             }
         }
+
+        public void RenderToolstripExtras(IUiCommands uiCommands)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("\ue697 Modules and Symbols"))
+            {
+                // TODO
+            }
+        }
+
 
         private void UpdateProcessNameTable(IReadOnlyList<EtwRecord> traceRecords)
         {
