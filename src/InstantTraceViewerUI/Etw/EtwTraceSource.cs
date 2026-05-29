@@ -73,7 +73,7 @@ namespace InstantTraceViewerUI.Etw
         private int _generationId = 1;
 
         private ProcessDatabase _processDatabase = new();
-        private List<SymbolResolverV2.RegisteredModuleRevoker> _moduleRevokers = new();
+        private List<IDisposable> _moduleRevokers = new();
         private SymbolResolverV2 _symbolResolver = new SymbolResolverV2(
             @"c:\windows\system32;d:\repos\cloud1\binlocal\WinX64;D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;d:\repos\cloud1\binlocal\WinX64\Symbols;" +
             @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +

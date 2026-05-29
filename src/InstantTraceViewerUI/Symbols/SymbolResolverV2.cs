@@ -1,6 +1,5 @@
 using Microsoft.Win32.SafeHandles;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -8,7 +7,6 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Diagnostics.Debug;
@@ -42,10 +40,37 @@ namespace InstantTraceViewerUI.Symbols
     /// </summary>
     internal sealed class SymbolResolverV2 : IDisposable
     {
+        private class RegisteredModuleRevoker : IDisposable
+        {
+            private ModuleData _moduleData;
+
+            public RegisteredModuleRevoker(ModuleData moduleData)
+            {
+                _moduleData = moduleData;
+            }
+
+            public void Dispose()
+            {
+                lock (_moduleData)
+                {
+                    _moduleData.ReferenceCount--;
+                    if (_moduleData.ReferenceCount == 0)
+                    {
+                        // TODO: Unload module or perform cleanup
+                    }
+                }
+            }
+        }
+
         private const int MaxPathBufferLength = 32768;
 
-        public readonly record struct ModuleLookupRequest(string FileName, ulong SizeOfImage, uint TimeDateStamp)
+        public readonly record struct Module(string FileName, ulong SizeOfImage, uint TimeDateStamp);
+
+        private record class ModuleData
         {
+            public string? ResolvedBinaryPath { get; set; }
+
+            public int ReferenceCount { get; set; }
         }
 
         internal static readonly object DbgHelpLock = new();
@@ -53,8 +78,7 @@ namespace InstantTraceViewerUI.Symbols
 
         private readonly DbgHelpSessionHandle _sessionHandle;
 
-        // Map module to the matching binary on disk.
-        private readonly Dictionary<ModuleLookupRequest, string> _binaryLookupCache = new();
+        private readonly Dictionary<Module, ModuleData> _binaryLookupCache = new();
 
         /// <summary>
         /// Creates a new resolver with its own dbghelp session and caches.
@@ -126,7 +150,7 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
-        public ResolvedSymbol? Resolve(in ModuleLookupRequest moduleLookupRequest, ulong relativeVirtualAddress)
+        public ResolvedSymbol? Resolve(in Module moduleLookupRequest, ulong relativeVirtualAddress)
         {
             lock (DbgHelpLock)
             {
@@ -155,27 +179,44 @@ namespace InstantTraceViewerUI.Symbols
             ForceRefresh,
         }
 
-        public unsafe string? FindBinary(in ModuleLookupRequest moduleLookupRequest, FindBinaryMethod findMethod)
+        public IDisposable RegisterModule(in Module moduleLookupRequest)
         {
-            lock (DbgHelpLock)
+            lock (_binaryLookupCache)
             {
-                // First try the cache.
-                if ((findMethod == FindBinaryMethod.CacheOnly || findMethod == FindBinaryMethod.Default) && _binaryLookupCache.TryGetValue(moduleLookupRequest, out string? foundBinary))
+                if (!_binaryLookupCache.TryGetValue(moduleLookupRequest, out var value))
                 {
-                    return foundBinary;
+                    value = new();
+                    _binaryLookupCache.Add(moduleLookupRequest, value);
                 }
+                value.ReferenceCount++;
+                return new RegisteredModuleRevoker(value);
+            }
+        }
 
-                if (findMethod == FindBinaryMethod.CacheOnly)
-                {
-                    return null;
-                }
+        public unsafe string? FindBinary(in Module moduleLookupRequest, FindBinaryMethod findMethod)
+        {
+            // First try the cache.
+            if ((findMethod == FindBinaryMethod.CacheOnly || findMethod == FindBinaryMethod.Default) &&
+                _binaryLookupCache.TryGetValue(moduleLookupRequest, out ModuleData? moduleData) &&
+                !string.IsNullOrEmpty(moduleData.ResolvedBinaryPath))
+            {
+                return moduleData.ResolvedBinaryPath;
+            }
 
-                // Second try the local filesystem at the exact path specified to avoid potentially slow symbol server hit.
-                foundBinary = FindBinaryLocal(moduleLookupRequest);
-                if (foundBinary == null)
+            if (findMethod == FindBinaryMethod.CacheOnly)
+            {
+                return null;
+            }
+
+            // Second try the local filesystem at the exact path specified to avoid potentially slow symbol server hit.
+            string? foundBinary = FindBinaryLocal(moduleLookupRequest);
+            if (foundBinary == null)
+            {
+                Span<char> foundFile = stackalloc char[MaxPathBufferLength];
+                bool found;
+                lock (DbgHelpLock)
                 {
-                    Span<char> foundFile = stackalloc char[MaxPathBufferLength];
-                    bool found = PInvoke.SymFindFileInPathW(
+                    found = PInvoke.SymFindFileInPathW(
                         _sessionHandle,
                         null,
                         moduleLookupRequest.FileName, // File part of the path is used.
@@ -186,27 +227,39 @@ namespace InstantTraceViewerUI.Symbols
                         foundFile,
                         null,
                         null);
-                    if (!found)
+                }
+                if (!found)
+                {
+                    if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
                     {
-                        if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
-                        {
-                            Trace.WriteLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found.");
-                        }
-                        else
-                        {
-                            Trace.WriteLine($"SymbolResolver[FindBinary]: Unexpected failure. LastError={Marshal.GetLastPInvokeError()}.");
-                        }
-                        return null;
+                        Trace.WriteLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found.");
                     }
-
-                    foundBinary = StringFromNullTerminated(foundFile);
-                    Trace.WriteLine($"SymbolResolver[FindBinary]: {foundBinary} found via SymFindFileInPathW.");
+                    else
+                    {
+                        Trace.WriteLine($"SymbolResolver[FindBinary]: Unexpected failure. LastError={Marshal.GetLastPInvokeError()}.");
+                    }
+                    return null;
                 }
 
-                _binaryLookupCache[moduleLookupRequest] = foundBinary;
-
-                return foundBinary;
+                foundBinary = StringFromNullTerminated(foundFile);
+                Trace.WriteLine($"SymbolResolver[FindBinary]: {foundBinary} found via SymFindFileInPathW.");
             }
+
+            lock (_binaryLookupCache)
+            {
+                if (!_binaryLookupCache.TryGetValue(moduleLookupRequest, out var value))
+                {
+                    value = new();
+                    _binaryLookupCache.Add(moduleLookupRequest, value);
+                }
+                value.ResolvedBinaryPath = foundBinary;
+            }
+
+            return foundBinary;
+        }
+
+        public void RenderSymbolManagerWindow(IUiCommands uiCommands, ref bool isOpen)
+        {
         }
 
         public void Dispose()
@@ -225,7 +278,7 @@ namespace InstantTraceViewerUI.Symbols
             _sessionHandle.Dispose();
         }
 
-        private string? FindBinaryLocal(in ModuleLookupRequest moduleLookupRequest)
+        private string? FindBinaryLocal(in Module moduleLookupRequest)
         {
             if (!Path.IsPathFullyQualified(moduleLookupRequest.FileName))
             {
