@@ -294,11 +294,11 @@ namespace InstantTraceViewerUI.Symbols
                     {
                         if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
                         {
-                            WriteTraceLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found.");
+                            WriteTraceLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found by SymFindFileInPathW.");
                         }
                         else
                         {
-                            WriteTraceLine($"SymbolResolver[FindBinary]: Unexpected failure. LastError={Marshal.GetLastPInvokeError()}.");
+                            WriteTraceLine($"SymbolResolver[FindBinary]: Unexpected failure by SymFindFileInPathW. LastError={Marshal.GetLastPInvokeError()}.");
                         }
                         return null;
                     }
@@ -430,6 +430,12 @@ namespace InstantTraceViewerUI.Symbols
         {
             if (!Path.IsPathFullyQualified(moduleLookupRequest.FileName))
             {
+                return null;
+            }
+
+            if (!Path.Exists(moduleLookupRequest.FileName))
+            {
+                WriteTraceLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' does not exist.");
                 return null;
             }
 
