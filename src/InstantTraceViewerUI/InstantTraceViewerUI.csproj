@@ -53,6 +53,7 @@
     <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
     <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
+    <PackageReference Include="Microsoft.Debugging.Platform.SymSrv" Version="20260319.1511.0" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -70,6 +71,18 @@
   <ItemGroup>
     <AdditionalFiles Include="NativeMethods.txt" />
   </ItemGroup>
+
+  <Target Name="CopySymSrvToOutput" AfterTargets="CopyFilesToOutputDirectory">
+    <PropertyGroup>
+      <SymSrvPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-x64'">amd64</SymSrvPackageArchitecture>
+      <SymSrvPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</SymSrvPackageArchitecture>
+      <SymSrvPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-x86'">x86</SymSrvPackageArchitecture>
+    </PropertyGroup>
+    <Error Condition="'$(SymSrvPackageArchitecture)' == ''" Text="Unable to determine SymSrv package architecture for RuntimeIdentifier='$(RuntimeIdentifier)'." />
+    <Error Condition="'$(MicrosoftDebuggingPlatformSymSrvContent)' == ''" Text="Microsoft.Debugging.Platform.SymSrv did not define MicrosoftDebuggingPlatformSymSrvContent." />
+    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformSymSrvContent)$(SymSrvPackageArchitecture)\symsrv.dll')" Text="Unable to find symsrv.dll at '$(MicrosoftDebuggingPlatformSymSrvContent)$(SymSrvPackageArchitecture)\symsrv.dll'." />
+    <Copy SourceFiles="$(MicrosoftDebuggingPlatformSymSrvContent)$(SymSrvPackageArchitecture)\symsrv.dll" DestinationFiles="$(TargetDir)symsrv.dll" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Fonts\CascadiaMono.ttf">
