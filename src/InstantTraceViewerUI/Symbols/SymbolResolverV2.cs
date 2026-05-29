@@ -1,11 +1,14 @@
+using Hexa.NET.ImGui;
 using Microsoft.Win32.SafeHandles;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Numerics;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -70,15 +73,60 @@ namespace InstantTraceViewerUI.Symbols
         {
             public string? ResolvedBinaryPath { get; set; }
 
+            public StringBuilder ResolvedBinaryPathLog { get; } = new();
+
             public int ReferenceCount { get; set; }
         }
 
+        private readonly record struct ModuleManagerRow(Module Module, string? ResolvedBinaryPath);
+
+        private sealed class CurrentModuleDataScope : IDisposable
+        {
+            private readonly ModuleData? _previousModuleData;
+
+            public CurrentModuleDataScope(ModuleData? moduleData)
+            {
+                _previousModuleData = CurrentModuleData;
+                CurrentModuleData = moduleData;
+            }
+
+            public void Dispose()
+            {
+                CurrentModuleData = _previousModuleData;
+            }
+        }
+
+        private sealed class ModuleDataTraceSink
+        {
+            public void WriteLine(string message)
+            {
+                ModuleData? moduleData = CurrentModuleData;
+                if (moduleData == null || string.IsNullOrEmpty(message))
+                {
+                    Trace.WriteLine("[No ModuleData] " + message);
+                    return;
+                }
+
+                lock (moduleData)
+                {
+                    moduleData.ResolvedBinaryPathLog.AppendLine(message);
+                }
+            }
+        }
+
         internal static readonly object DbgHelpLock = new();
+        private static readonly ModuleDataTraceSink ResolveModuleTraceSink = new();
+
+        [ThreadStatic]
+        private static ModuleData? CurrentModuleData;
+
         private static long NextHandleValue = 1;
 
         private readonly DbgHelpSessionHandle _sessionHandle;
 
         private readonly Dictionary<Module, ModuleData> _binaryLookupCache = new();
+
+        private Module? _selectedSymbolManagerModule;
 
         /// <summary>
         /// Creates a new resolver with its own dbghelp session and caches.
@@ -93,19 +141,22 @@ namespace InstantTraceViewerUI.Symbols
             ArgumentNullException.ThrowIfNull(searchPath);
             _sessionHandle = new DbgHelpSessionHandle(new IntPtr(Interlocked.Increment(ref NextHandleValue)));
 
-            Trace.WriteLine($"SymbolResolver: Initializing with search path '{searchPath}'.");
-            lock (DbgHelpLock)
+            WriteTraceLine($"SymbolResolver: Initializing with search path '{searchPath}'.");
+            using (BeginCurrentModuleDataScope(null))
             {
-                if (!PInvoke.SymInitializeW(_sessionHandle, searchPath, fInvadeProcess: false))
+                lock (DbgHelpLock)
                 {
-                    throw new InvalidOperationException($"SymInitializeW failed. LastError={Marshal.GetLastPInvokeError()}");
-                }
-
-                unsafe
-                {
-                    if (!PInvoke.SymRegisterCallbackW64(_sessionHandle, &DbgHelpCallback, 0))
+                    if (!PInvoke.SymInitializeW(_sessionHandle, searchPath, fInvadeProcess: false))
                     {
-                        Trace.WriteLine($"SymbolResolver: SymRegisterCallbackW64 failed. LastError={Marshal.GetLastPInvokeError()}.");
+                        throw new InvalidOperationException($"SymInitializeW failed. LastError={Marshal.GetLastPInvokeError()}");
+                    }
+
+                    unsafe
+                    {
+                        if (!PInvoke.SymRegisterCallbackW64(_sessionHandle, &DbgHelpCallback, 0))
+                        {
+                            WriteTraceLine($"SymbolResolver: SymRegisterCallbackW64 failed. LastError={Marshal.GetLastPInvokeError()}.");
+                        }
                     }
                 }
             }
@@ -120,7 +171,7 @@ namespace InstantTraceViewerUI.Symbols
                 string? message = Marshal.PtrToStringUni((nint)callbackData);
                 if (!string.IsNullOrEmpty(message))
                 {
-                    Trace.WriteLine("DbgHelp: " + message.TrimEnd());
+                    WriteTraceLine(message.TrimEnd());
                 }
 
                 return true;
@@ -136,34 +187,44 @@ namespace InstantTraceViewerUI.Symbols
         /// </summary>
         public static void SetGlobalSymbolOptions(uint symbolOptions)
         {
-            lock (DbgHelpLock)
+            using (BeginCurrentModuleDataScope(null))
             {
-                PInvoke.SymSetOptions(symbolOptions | PInvoke.SYMOPT_DEBUG);
+                lock (DbgHelpLock)
+                {
+                    PInvoke.SymSetOptions(symbolOptions | PInvoke.SYMOPT_DEBUG);
+                }
             }
         }
 
         public static void SetParentWindow(HWND hwnd)
         {
-            lock (DbgHelpLock)
+            using (BeginCurrentModuleDataScope(null))
             {
-                PInvoke.SymSetParentWindow(hwnd);
+                lock (DbgHelpLock)
+                {
+                    PInvoke.SymSetParentWindow(hwnd);
+                }
             }
         }
 
         public ResolvedSymbol? Resolve(in Module moduleLookupRequest, ulong relativeVirtualAddress)
         {
-            lock (DbgHelpLock)
+            ModuleData moduleData = GetOrAddModuleData(moduleLookupRequest);
+            using (BeginCurrentModuleDataScope(moduleData))
             {
-                // Need to find binary to get symbol information.
-                string? binaryPath = FindBinary(moduleLookupRequest, findMethod: FindBinaryMethod.Default);
-                if (binaryPath == null)
+                lock (DbgHelpLock)
                 {
+                    // Need to find binary to get symbol information.
+                    string? binaryPath = FindBinary(moduleLookupRequest, findMethod: FindBinaryMethod.Default);
+                    if (binaryPath == null)
+                    {
+                        return null;
+                    }
+
+                    // TODO
+
                     return null;
                 }
-
-                // TODO
-
-                return null;
             }
         }
 
@@ -183,11 +244,7 @@ namespace InstantTraceViewerUI.Symbols
         {
             lock (_binaryLookupCache)
             {
-                if (!_binaryLookupCache.TryGetValue(moduleLookupRequest, out var value))
-                {
-                    value = new();
-                    _binaryLookupCache.Add(moduleLookupRequest, value);
-                }
+                ModuleData value = GetOrAddModuleDataLocked(moduleLookupRequest);
                 value.ReferenceCount++;
                 return new RegisteredModuleRevoker(value);
             }
@@ -195,9 +252,11 @@ namespace InstantTraceViewerUI.Symbols
 
         public unsafe string? FindBinary(in Module moduleLookupRequest, FindBinaryMethod findMethod)
         {
+            ModuleData? moduleData = TryGetModuleData(moduleLookupRequest);
+
             // First try the cache.
             if ((findMethod == FindBinaryMethod.CacheOnly || findMethod == FindBinaryMethod.Default) &&
-                _binaryLookupCache.TryGetValue(moduleLookupRequest, out ModuleData? moduleData) &&
+                moduleData != null &&
                 !string.IsNullOrEmpty(moduleData.ResolvedBinaryPath))
             {
                 return moduleData.ResolvedBinaryPath;
@@ -208,58 +267,144 @@ namespace InstantTraceViewerUI.Symbols
                 return null;
             }
 
-            // Second try the local filesystem at the exact path specified to avoid potentially slow symbol server hit.
-            string? foundBinary = FindBinaryLocal(moduleLookupRequest);
-            if (foundBinary == null)
+            moduleData ??= GetOrAddModuleData(moduleLookupRequest);
+            using (BeginCurrentModuleDataScope(moduleData))
             {
-                Span<char> foundFile = stackalloc char[MaxPathBufferLength];
-                bool found;
-                lock (DbgHelpLock)
+                // Second try the local filesystem at the exact path specified to avoid potentially slow symbol server hit.
+                string? foundBinary = FindBinaryLocal(moduleLookupRequest);
+                if (foundBinary == null)
                 {
-                    found = PInvoke.SymFindFileInPathW(
-                        _sessionHandle,
-                        null,
-                        moduleLookupRequest.FileName, // File part of the path is used.
-                        (void*)(nuint)moduleLookupRequest.TimeDateStamp,
-                        checked((uint)moduleLookupRequest.SizeOfImage),
-                        0,
-                        SYM_FIND_ID_OPTION.SSRVOPT_DWORD,
-                        foundFile,
-                        null,
-                        null);
-                }
-                if (!found)
-                {
-                    if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
+                    Span<char> foundFile = stackalloc char[MaxPathBufferLength];
+                    bool found;
+                    lock (DbgHelpLock)
                     {
-                        Trace.WriteLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found.");
+                        found = PInvoke.SymFindFileInPathW(
+                            _sessionHandle,
+                            null,
+                            moduleLookupRequest.FileName, // File part of the path is used.
+                            (void*)(nuint)moduleLookupRequest.TimeDateStamp,
+                            checked((uint)moduleLookupRequest.SizeOfImage),
+                            0,
+                            SYM_FIND_ID_OPTION.SSRVOPT_DWORD,
+                            foundFile,
+                            null,
+                            null);
                     }
-                    else
+                    if (!found)
                     {
-                        Trace.WriteLine($"SymbolResolver[FindBinary]: Unexpected failure. LastError={Marshal.GetLastPInvokeError()}.");
+                        if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
+                        {
+                            WriteTraceLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found.");
+                        }
+                        else
+                        {
+                            WriteTraceLine($"SymbolResolver[FindBinary]: Unexpected failure. LastError={Marshal.GetLastPInvokeError()}.");
+                        }
+                        return null;
                     }
-                    return null;
+
+                    foundBinary = StringFromNullTerminated(foundFile);
+                    WriteTraceLine($"SymbolResolver[FindBinary]: {foundBinary} found via SymFindFileInPathW.");
                 }
 
-                foundBinary = StringFromNullTerminated(foundFile);
-                Trace.WriteLine($"SymbolResolver[FindBinary]: {foundBinary} found via SymFindFileInPathW.");
-            }
-
-            lock (_binaryLookupCache)
-            {
-                if (!_binaryLookupCache.TryGetValue(moduleLookupRequest, out var value))
+                lock (_binaryLookupCache)
                 {
-                    value = new();
-                    _binaryLookupCache.Add(moduleLookupRequest, value);
+                    ModuleData value = GetOrAddModuleDataLocked(moduleLookupRequest);
+                    value.ResolvedBinaryPath = foundBinary;
                 }
-                value.ResolvedBinaryPath = foundBinary;
-            }
 
-            return foundBinary;
+                return foundBinary;
+            }
         }
 
         public void RenderSymbolManagerWindow(IUiCommands uiCommands, ref bool isOpen)
         {
+            ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
+
+            if (ImGui.Begin("Symbols", ref isOpen))
+            {
+                List<ModuleManagerRow> modules;
+                lock (_binaryLookupCache)
+                {
+                    modules = new(_binaryLookupCache.Count);
+                    foreach ((Module module, ModuleData data) in _binaryLookupCache)
+                    {
+                        modules.Add(new ModuleManagerRow(module, data.ResolvedBinaryPath));
+                    }
+                }
+                
+                modules.Sort((left, right) => string.Compare(left.Module.FileName, right.Module.FileName, StringComparison.OrdinalIgnoreCase));
+
+                if (modules.Count == 0)
+                {
+                    ImGui.TextUnformatted("No modules registered.");
+                }
+
+                float logHeight = ImGui.GetTextLineHeightWithSpacing() * 8;
+                Vector2 tableSize = new Vector2(-1, -logHeight - ImGui.GetFrameHeightWithSpacing());
+                if (ImGui.BeginTable("SymbolModules", 5,
+                    ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
+                    ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable,
+                    tableSize))
+                {
+                    float dpiBase = ImGui.GetFontSize();
+
+                    ImGui.TableSetupScrollFreeze(0, 1);
+                    ImGui.TableSetupColumn("name", ImGuiTableColumnFlags.WidthStretch, 0.35f);
+                    ImGui.TableSetupColumn("timestamp", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
+                    ImGui.TableSetupColumn("sizeofimage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
+                    ImGui.TableSetupColumn("resolvedname", ImGuiTableColumnFlags.WidthStretch, 0.65f);
+                    ImGui.TableSetupColumn("actions", ImGuiTableColumnFlags.WidthFixed, dpiBase * 6.0f);
+                    ImGui.TableHeadersRow();
+
+                    foreach (ModuleManagerRow row in modules)
+                    {
+                        Module module = row.Module;
+                        ImGui.PushID($"{module.FileName}|{module.TimeDateStamp:X8}|{module.SizeOfImage:X}");
+
+                        ImGui.TableNextRow();
+
+                        ImGui.TableNextColumn();
+                        bool isSelected = _selectedSymbolManagerModule == module;
+                        if (ImGui.Selectable("##TableRow", isSelected, ImGuiSelectableFlags.SpanAllColumns))
+                        {
+                            _selectedSymbolManagerModule = module;
+                        }
+                        ImGui.SameLine();
+                        ImGui.TextUnformatted(module.FileName);
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"0x{module.TimeDateStamp:X8}");
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted($"0x{module.SizeOfImage:X}");
+
+                        ImGui.TableNextColumn();
+                        ImGui.TextUnformatted(row.ResolvedBinaryPath ?? "");
+
+                        ImGui.TableNextColumn();
+                        if (ImGui.Button("Resolve"))
+                        {
+                            _selectedSymbolManagerModule = module;
+                            FindBinary(module, FindBinaryMethod.ForceRefresh);
+                        }
+
+                        ImGui.PopID();
+                    }
+
+                    ImGui.EndTable();
+                }
+
+                string selectedLog = GetSelectedSymbolManagerModuleLog();
+                ImGui.InputTextMultiline(
+                    "##SelectedSymbolModuleLog",
+                    ref selectedLog,
+                    ImGuiWidgets.GetInputTextBufferSize(selectedLog, 1),
+                    new Vector2(-1, logHeight),
+                    ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
+            }
+
+            ImGui.End();
         }
 
         public void Dispose()
@@ -269,10 +414,13 @@ namespace InstantTraceViewerUI.Symbols
                 return;
             }
 
-            lock (DbgHelpLock)
+            using (BeginCurrentModuleDataScope(null))
             {
-                // TODO: PInvoke.SymUnloadModule64(_sessionHandle, BaseAddress);
-                // TODO: PInvoke.SymCleanup(_sessionHandle);
+                lock (DbgHelpLock)
+                {
+                    // TODO: PInvoke.SymUnloadModule64(_sessionHandle, BaseAddress);
+                    // TODO: PInvoke.SymCleanup(_sessionHandle);
+                }
             }
 
             _sessionHandle.Dispose();
@@ -292,7 +440,7 @@ namespace InstantTraceViewerUI.Symbols
                 PEHeader? peHeader = peReader.PEHeaders.PEHeader;
                 if (peHeader == null)
                 {
-                    Trace.WriteLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' has no PE header.");
+                    WriteTraceLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' has no PE header.");
                     return null;
                 }
 
@@ -300,18 +448,75 @@ namespace InstantTraceViewerUI.Symbols
                 uint sizeOfImage = unchecked((uint)peHeader.SizeOfImage);
                 if (timeDateStamp != moduleLookupRequest.TimeDateStamp || sizeOfImage != moduleLookupRequest.SizeOfImage)
                 {
-                    Trace.WriteLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' mismatched. Expected TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}; actual TimeDateStamp=0x{timeDateStamp:X8} SizeOfImage=0x{sizeOfImage:X}.");
+                    WriteTraceLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' mismatched. Expected TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}; actual TimeDateStamp=0x{timeDateStamp:X8} SizeOfImage=0x{sizeOfImage:X}.");
                     return null;
                 }
 
-                Trace.WriteLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' found locally with matching TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}.");
+                WriteTraceLine($"SymbolResolver[FindBinary]: Local file '{moduleLookupRequest.FileName}' found locally with matching TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}.");
                 return moduleLookupRequest.FileName;
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"SymbolResolver[FindBinary]: Failed to open or parse '{moduleLookupRequest.FileName}': {ex.Message}");
+                WriteTraceLine($"SymbolResolver[FindBinary]: Failed to open or parse '{moduleLookupRequest.FileName}': {ex.Message}");
                 return null;
             }
+        }
+
+        private static IDisposable BeginCurrentModuleDataScope(ModuleData? moduleData)
+        {
+            return new CurrentModuleDataScope(moduleData);
+        }
+
+        private static void WriteTraceLine(string message)
+        {
+            Trace.WriteLine(message);
+            ResolveModuleTraceSink.WriteLine(message);
+        }
+
+        private ModuleData? TryGetModuleData(in Module moduleLookupRequest)
+        {
+            lock (_binaryLookupCache)
+            {
+                return _binaryLookupCache.TryGetValue(moduleLookupRequest, out ModuleData? moduleData) ? moduleData : null;
+            }
+        }
+
+        private string GetSelectedSymbolManagerModuleLog()
+        {
+            if (!_selectedSymbolManagerModule.HasValue)
+            {
+                return string.Empty;
+            }
+
+            ModuleData? moduleData = TryGetModuleData(_selectedSymbolManagerModule.Value);
+            if (moduleData == null)
+            {
+                return string.Empty;
+            }
+
+            lock (moduleData)
+            {
+                return moduleData.ResolvedBinaryPathLog.ToString();
+            }
+        }
+
+        private ModuleData GetOrAddModuleData(in Module moduleLookupRequest)
+        {
+            lock (_binaryLookupCache)
+            {
+                return GetOrAddModuleDataLocked(moduleLookupRequest);
+            }
+        }
+
+        private ModuleData GetOrAddModuleDataLocked(in Module moduleLookupRequest)
+        {
+            if (!_binaryLookupCache.TryGetValue(moduleLookupRequest, out ModuleData? moduleData))
+            {
+                moduleData = new();
+                _binaryLookupCache.Add(moduleLookupRequest, moduleData);
+            }
+
+            return moduleData;
         }
 
         private static string StringFromNullTerminated(ReadOnlySpan<char> buffer)
