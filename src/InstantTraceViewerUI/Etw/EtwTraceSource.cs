@@ -10,7 +10,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
+using System.Xml.Linq;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Threading;
@@ -71,7 +73,12 @@ namespace InstantTraceViewerUI.Etw
         private int _generationId = 1;
 
         private ProcessDatabase _processDatabase = new();
-        private SymbolResolver _symbolResolver = new SymbolResolver(@"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;d:\repos\cloud3\binlocal\WinX64;d:\repos\cloud3\binlocal\WinX64\Symbols");
+        private List<SymbolResolverV2.RegisteredModuleRevoker> _moduleRevokers = new();
+        private SymbolResolverV2 _symbolResolver = new SymbolResolverV2(
+            @"c:\windows\system32;d:\repos\cloud1\binlocal\WinX64;D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;d:\repos\cloud1\binlocal\WinX64\Symbols;" +
+            @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
+            @"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
+            @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
 
         private bool isDisposed;
 
@@ -232,6 +239,12 @@ namespace InstantTraceViewerUI.Etw
             {
                 _traceRecords = new();
                 _generationId++;
+
+                foreach (var module in _moduleRevokers)
+                {
+                    module.Dispose();
+                }
+                _moduleRevokers.Clear();
             }
             finally
             {
@@ -318,12 +331,32 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
+        bool _renderSymbolManager = false;
+
+
         public void RenderToolstripExtras(IUiCommands uiCommands)
         {
             ImGui.SameLine();
-            if (ImGui.Button("\ue697 Modules and Symbols"))
+            if (ImGui.Button("\ue697 Symbols"))
             {
-                // TODO
+                ImGui.OpenPopup("EtwSymbols");
+            }
+            if (ImGui.BeginPopup("EtwSymbols"))
+            {
+                if (ImGui.MenuItem("Manage symbols", "", _renderSymbolManager))
+                {
+                    _renderSymbolManager = !_renderSymbolManager;
+                }
+
+                ImGui.EndPopup();
+            }
+        }
+
+        public void RenderActiveWindows(IUiCommands uiCommands)
+        {
+            if (_renderSymbolManager)
+            {
+                _symbolResolver.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
             }
         }
 
@@ -415,6 +448,12 @@ namespace InstantTraceViewerUI.Etw
                     _etwSource.Dispose();
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
+
+                    foreach (var module in _moduleRevokers)
+                    {
+                        module.Dispose();
+                    }
+                    _moduleRevokers.Clear();
                 }
 
                 isDisposed = true;

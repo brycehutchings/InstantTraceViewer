@@ -9,12 +9,18 @@ namespace InstantTraceViewerUI
     {
         public static int Main(string[] args)
         {
+            /*
             SymbolResolver.SetGlobalSymbolOptions(
-                /*PInvoke.SYMOPT_EXACT_SYMBOLS | */PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS);
+                PInvoke.SYMOPT_EXACT_SYMBOLS | PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS);
+            SymbolResolver.SetParentWindow(mainHWnd);
+            */
+
+            SymbolResolverV2.SetGlobalSymbolOptions(
+                PInvoke.SYMOPT_EXACT_SYMBOLS | PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS);
 
             HWND mainHWnd = Win32ImGuiHost.WindowInitialize();
 
-            SymbolResolver.SetParentWindow(mainHWnd);
+            SymbolResolverV2.SetParentWindow(mainHWnd);
 
             ImGuiContextPtr imguiContext = ImGui.CreateContext();
             ImGui.SetCurrentContext(imguiContext);

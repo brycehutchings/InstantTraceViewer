@@ -19,8 +19,6 @@ namespace InstantTraceViewerUI
 {
     internal unsafe class ThreadTimelineWindow
     {
-        private const string PopupName = "Thread Timeline";
-
         private record struct TrackKey(int Pid, string? ProcessName, int Tid);
 
         private readonly string _name;
@@ -149,7 +147,7 @@ namespace InstantTraceViewerUI
             // uses SHIFT+MouseMove to pan, we need to disable the window moving because ImGui allows windows to move by
             // click+dragging anywhere there is no input control.
             ImGuiWindowFlags flags = _isMouseHoveringTable ? ImGuiWindowFlags.NoMove : ImGuiWindowFlags.None;
-            if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open, flags))
+            if (ImGui.Begin($"Thread Timeline - {_name}###ThreadTimeline_{_parentWindowId}", ref _open, flags))
             {
                 DrawTimelineGraph(traceTable, lastSelectedVisibleRowIndex, viewerRules, startWindow, endWindow);
             }

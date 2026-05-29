@@ -239,6 +239,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 DateTime loadTime = opcode == TraceEventOpcodeExtended.DataCollectionStart ? DateTime.MinValue : obj.TimeStamp;
                 _processDatabase.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, loadTime);
+                _moduleRevokers.Add(_symbolResolver.RegisterModule(new SymbolResolverV2.Module { FileName = obj.FileName, SizeOfImage = (ulong)obj.ImageSize, TimeDateStamp = (uint)obj.TimeDateStamp }));
             }
 
             if (IsPaused)
@@ -284,7 +285,7 @@ namespace InstantTraceViewerUI.Etw
                     if (_processDatabase.GetProcessName(obj.ProcessID, obj.TimeStamp) == "MrShell")
                     {
                         //ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
-                        //    new Symbols.ModuleLookupRequest { FileName = loadedImage.Value.FileName, SizeOfImage = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
+                        //    new Symbols.Module { FileName = loadedImage.Value.FileName, SizeOfImage = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
                         //if (resolvedSymbol.HasValue)
                         //{
                         //    // Symbol found.

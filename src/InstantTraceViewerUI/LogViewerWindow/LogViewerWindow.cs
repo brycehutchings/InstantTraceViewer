@@ -125,6 +125,8 @@ namespace InstantTraceViewerUI
                 }
             }
 
+            (_traceSource.TraceSource as ITraceSourceGuiExtensions)?.RenderActiveWindows(uiCommands);
+
             return opened;
         }
 

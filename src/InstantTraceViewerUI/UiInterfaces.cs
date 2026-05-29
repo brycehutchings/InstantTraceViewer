@@ -17,5 +17,7 @@ namespace InstantTraceViewerUI
     interface ITraceSourceGuiExtensions
     {
         void RenderToolstripExtras(IUiCommands uiCommands);
+
+        void RenderActiveWindows(IUiCommands uiCommands);
     }
 }
