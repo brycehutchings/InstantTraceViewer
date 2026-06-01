@@ -350,11 +350,11 @@ namespace InstantTraceViewerUI.Symbols
                     float dpiBase = ImGui.GetFontSize();
 
                     ImGui.TableSetupScrollFreeze(0, 1);
-                    ImGui.TableSetupColumn("name", ImGuiTableColumnFlags.WidthStretch, 0.35f);
-                    ImGui.TableSetupColumn("timestamp", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
-                    ImGui.TableSetupColumn("sizeofimage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
-                    ImGui.TableSetupColumn("resolvedname", ImGuiTableColumnFlags.WidthStretch, 0.65f);
-                    ImGui.TableSetupColumn("actions", ImGuiTableColumnFlags.WidthFixed, dpiBase * 6.0f);
+                    ImGui.TableSetupColumn("Loaded Module", ImGuiTableColumnFlags.WidthStretch, 0.35f);
+                    ImGui.TableSetupColumn("TimeDateStamp", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
+                    ImGui.TableSetupColumn("SizeOfImage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
+                    ImGui.TableSetupColumn("Resolved Module", ImGuiTableColumnFlags.WidthStretch, 0.65f);
+                    ImGui.TableSetupColumn("Actions", ImGuiTableColumnFlags.WidthFixed, dpiBase * 6.0f);
                     ImGui.TableHeadersRow();
 
                     foreach (ModuleManagerRow row in modules)

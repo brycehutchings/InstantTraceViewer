@@ -15,6 +15,8 @@ namespace InstantTraceViewerUI.Etw
         public TraceEventLevel Level { get; set; } = TraceEventLevel.Verbose;
 
         public ulong MatchAnyKeyword { get; set; } = ulong.MaxValue;
+
+        public bool StackwalkEnabled { get; set; }
     }
 
     internal class EtwSessionProfile
@@ -22,6 +24,8 @@ namespace InstantTraceViewerUI.Etw
         public required string DisplayName { get; set; }
 
         public KernelTraceEventParser.Keywords KernelKeywords { get; set; } = KernelTraceEventParser.Keywords.None;
+
+        public KernelTraceEventParser.Keywords KernelStackwalkKeywords { get; set; } = KernelTraceEventParser.Keywords.None;
 
         public List<EtwSessionEnabledProvider> Providers { get; set; } = new List<EtwSessionEnabledProvider>();
     }

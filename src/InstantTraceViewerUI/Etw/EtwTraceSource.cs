@@ -59,7 +59,8 @@ namespace InstantTraceViewerUI.Etw
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
         private readonly TraceEventSession? _etwSession;
-        private readonly ETWTraceEventSource _etwSource;
+        private readonly TraceEventDispatcher _etwSource;
+        private readonly SymbolTraceEventParser _symbolEventParser;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
@@ -93,9 +94,11 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
+
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -105,6 +108,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = displayName;
             _etwSession = null;
             _etwSource = etwSource;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
             _processingThread = new Thread(() => ProcessThread());
@@ -136,6 +140,7 @@ namespace InstantTraceViewerUI.Etw
         {
             SubscribeToKernelEvents();
             SubscribeToDynamicEvents();
+            SubscribeToSymbolEvents();
 
             try
             {
@@ -182,20 +187,19 @@ namespace InstantTraceViewerUI.Etw
                 // but then this disallows non-kernel providers being enabled. To avoid the problem we simply remove these special keywords.
                 // Oddly WPR can enable these keywords along with non-kernel providers, so the Microsoft.Diagnostics.Tracing library restrictions may be out of date?
                 KernelTraceEventParser.Keywords NonOSKeywords = (KernelTraceEventParser.Keywords)unchecked((int)0xf84c0000);
-                KernelTraceEventParser.Keywords allowedKernelKeywords = profile.KernelKeywords & ~NonOSKeywords;
+                KernelTraceEventParser.Keywords allowedKernelStackwalkKeywords = profile.KernelStackwalkKeywords & ~NonOSKeywords;
+                KernelTraceEventParser.Keywords allowedKernelKeywords = (profile.KernelKeywords & ~NonOSKeywords) | allowedKernelStackwalkKeywords;
                 if (allowedKernelKeywords != KernelTraceEventParser.Keywords.None)
                 {
                     // EnableKernelProvider will always enable Process and Thread events.
                     kernelProcessThreadProviderEnabled = true;
-                    etwSession.EnableKernelProvider(allowedKernelKeywords);
+                    etwSession.EnableKernelProvider(allowedKernelKeywords, allowedKernelStackwalkKeywords);
                 }
 
                 foreach (var provider in profile.Providers)
                 {
                     // Make sure to keep in sync with TogglePause() method
-
-                    // TODO (pass as optional 4th param): var options = new TraceEventProviderOptions() { StacksEnabled = true };
-                    etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
+                    etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword, CreateProviderOptions(provider));
                 }
 
                 // Example of enabling processor CPU counter support. Not investigated yet. Search perfview codebase for examples of use.
@@ -231,9 +235,9 @@ namespace InstantTraceViewerUI.Etw
 
         public string DisplayName { get; private set; }
 
-        public int LostEvents => _etwSource.EventsLost;
+        public int LostEvents => (_etwSource as ETWTraceEventSource)?.EventsLost ?? 0;
 
-        public bool CanClear => _etwSource.IsRealTime;
+        public bool CanClear => (_etwSource as ETWTraceEventSource)?.IsRealTime ?? false;
 
         public void Clear()
         {
@@ -257,7 +261,7 @@ namespace InstantTraceViewerUI.Etw
             GC.Collect();
         }
 
-        public bool CanPause => _etwSource.IsRealTime;
+        public bool CanPause => (_etwSource as ETWTraceEventSource)?.IsRealTime ?? false;
         public bool IsPaused { get; private set; }
         public void TogglePause()
         {
@@ -279,7 +283,7 @@ namespace InstantTraceViewerUI.Etw
                     }
                     else
                     {
-                        _etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
+                        _etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword, CreateProviderOptions(provider));
                     }
                 }
                 catch (Exception ex)
@@ -289,6 +293,11 @@ namespace InstantTraceViewerUI.Etw
                     Debug.Fail($"Failed to toggle ETW session providers: {ex.Message}"); // To check if this actually happens in practice when testing.
                 }
             }
+        }
+
+        private static TraceEventProviderOptions? CreateProviderOptions(EtwSessionEnabledProvider provider)
+        {
+            return provider.StackwalkEnabled ? new TraceEventProviderOptions { StacksEnabled = true } : null;
         }
 
         // ETW data streams in very quickly, so no need to indicate to user that it is loading.
@@ -368,7 +377,7 @@ namespace InstantTraceViewerUI.Etw
         {
             // Microsoft.Diagnostics.Tracing will track process names when the Kernel provider is enabled, otherwise we need to do it.
             // If this is not a realtime session, then no point in trying to look up process names--they could be from a different machine or be reused at this point.
-            if (!_etwSource.IsRealTime || _kernelProcessThreadProviderEnabled)
+            if (!((_etwSource as ETWTraceEventSource)?.IsRealTime ?? false) || _kernelProcessThreadProviderEnabled)
             {
                 return;
             }

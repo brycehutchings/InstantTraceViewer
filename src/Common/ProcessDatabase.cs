@@ -134,7 +134,7 @@ namespace InstantTraceViewer
                 }
 
                 // See if this event falls into an existing TrackedThread already and its name must be updated.
-                if (name != null && threads.Count > 0)
+                if (!string.IsNullOrEmpty(name) && threads.Count > 0)
                 {
                     TrackedThread tt = threads[^1];
                     if (tt.End == null && name != tt.Name)

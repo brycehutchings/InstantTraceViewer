@@ -1,6 +1,7 @@
 using InstantTraceViewer;
 using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
@@ -137,6 +138,7 @@ namespace InstantTraceViewerUI.Etw
 
         private void SubscribeToKernelEvents()
         {
+            //_etwSource.Kernel.All += Kernel_All;
             _etwSource.Kernel.StackWalkStack += OnStackWalkStack;
 
             //
@@ -228,6 +230,20 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
         }
 
+        private void Kernel_All(TraceEvent obj)
+        {
+            var newRecord = CreateBaseTraceRecord(obj);
+            
+            var namedValues = new List<NamedValue>();
+            foreach (var payloadName in obj.PayloadNames)
+            {
+                namedValues.Add(new NamedValue(payloadName, obj.PayloadByName(payloadName)));
+            }
+
+            newRecord.NamedValues = namedValues.ToArray();
+            AddEvent(newRecord);
+        }
+
         private void OnImageLoad(ImageLoadTraceData obj)
         {
             TraceEventOpcodeExtended opcode = (TraceEventOpcodeExtended)obj.Opcode;
@@ -245,6 +261,11 @@ namespace InstantTraceViewerUI.Etw
             if (IsPaused)
             {
                 return;
+            }
+
+            if (obj.FileName.Contains("MrShell.dll"))
+            {
+
             }
 
             var newRecord = CreateBaseTraceRecord(obj);
@@ -504,7 +525,8 @@ namespace InstantTraceViewerUI.Etw
         {
             if (_processDatabase.ThreadSetName(data.ThreadID, data.ThreadName))
             {
-                _generationId++;
+                // fixme
+                // _generationId++;
             }
 
             if (IsPaused)
@@ -523,7 +545,8 @@ namespace InstantTraceViewerUI.Etw
             {
                 if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, data.TimeStamp))
                 {
-                    _generationId++;
+                    // fixme
+                    // _generationId++;
                 }
             }
             else if (data.Opcode == TraceEventOpcode.DataCollectionStart)
@@ -532,7 +555,8 @@ namespace InstantTraceViewerUI.Etw
                 // so we need an unbounded start time for them to be associated with the thread.
                 if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, DateTime.MinValue))
                 {
-                    _generationId++;
+                    // fixme
+                    // _generationId++;
                 }
             }
             else if (data.Opcode == TraceEventOpcode.Stop)
