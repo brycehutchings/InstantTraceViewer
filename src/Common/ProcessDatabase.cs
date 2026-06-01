@@ -11,34 +11,26 @@ namespace InstantTraceViewer
 
     /// <summary>
     /// Tracks process/thread names and loaded images.
-    /// This class expects timestamp data happens chronologically but also allows for retroactive changes like a process name for an already-known pid to be assigned.
+    /// This class expects timestamp data happens chronologically but also allows for retroactive changes like a thread name for an already-known tid to be assigned.
     /// When this happens the caller is instructed to bump the generation id so that any filtering can be re-evaluated with the new information.
-    /// This class is very carefully designed so that the same timestamp never maps to a different process/thread when new start/stop/name events are observed.
+    /// This class is very carefully designed so that the same timestamp never maps to a different process/thread when new start/name events are observed.
     /// This is important because filtering that runs as events stream in won't know to re-evaluate unless told to by bumping the generation id.
     /// </summary>
     public class ProcessDatabase
     {
-        record struct TrackedProcess
+        record struct TrackedName
         {
-            public string? Name;
+            public string Name;
             public DateTime Start;
-            public DateTime? End;
-        }
-
-        record struct TrackedThread
-        {
-            public string? Name;
-            public DateTime Start;
-            public DateTime? End;
         }
 
         // Value is a List because PIDs may be reused.
-        private Dictionary<int /* pid */, List<TrackedProcess>> _trackedProcesses = new();
+        private Dictionary<int /* pid */, List<TrackedName>> _trackedProcesses = new();
 
         // Value is a List because TIDs may be reused.
         // This is kept outside of the process tracking because ETW thread start events may be observed before process datacollectionstart events.
         // PID is not used in the key because some events exclude PID and only include TID.
-        private Dictionary<int /* tid */, List<TrackedThread>> _trackedThreads = new();
+        private Dictionary<int /* tid */, List<TrackedName>> _trackedThreads = new();
 
         private Dictionary<int /* pid */, List<LoadedImage>> _loadedImages = new();
 
@@ -48,56 +40,24 @@ namespace InstantTraceViewer
             {
                 if (_trackedProcesses.TryGetValue(pid, out var processes))
                 {
-                    for (int i = processes.Count - 1; i >= 0; i--)
-                    {
-                        var process = processes[i];
-                        DateTime? end = process.End ?? (i == processes.Count - 1 ? null : processes[i + 1].Start);
-                        if (process.Start <= timestamp && (end == null || end >= timestamp))
-                        {
-                            return process.Name;
-                        }
-                    }
+                    return GetName(processes, timestamp);
                 }
             }
 
             return null;
         }
 
-        // Returns true if an existing process had its name changed.
-        public bool ProcessStart(int pid, string? name, DateTime startTime)
+        public void SetProcessName(int pid, string name, DateTime startTime)
         {
             lock (_trackedProcesses)
             {
                 if (!_trackedProcesses.TryGetValue(pid, out var processes))
                 {
-                    processes = new List<TrackedProcess>();
+                    processes = new List<TrackedName>();
                     _trackedProcesses[pid] = processes;
                 }
 
-                // See if this event falls into an existing TrackedProcess already and its name must be updated.
-                if (name != null && processes.Count > 0)
-                {
-                    TrackedProcess tp = processes[^1];
-                    if (tp.End == null && name != tp.Name)
-                    {
-                        processes[^1] = tp with { Name = name };
-                        return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
-                    }
-                }
-
-                processes.Add(new TrackedProcess { Name = name, Start = startTime });
-                return false;
-            }
-        }
-
-        public void ProcessStop(int pid, DateTime? endTime)
-        {
-            lock (_trackedProcesses)
-            {
-                if (_trackedProcesses.TryGetValue(pid, out var processes))
-                {
-                    processes[^1] = processes[^1] with { End = endTime };
-                }
+                processes.Add(new TrackedName { Name = name, Start = startTime });
             }
         }
 
@@ -107,83 +67,61 @@ namespace InstantTraceViewer
             {
                 if (_trackedThreads.TryGetValue(tid, out var threads))
                 {
-                    for (int i = threads.Count - 1; i >= 0; i--)
-                    {
-                        var thread = threads[i];
-                        DateTime? end = thread.End ?? (i == threads.Count - 1 ? null : threads[i + 1].Start);
-                        if (thread.Start <= timestamp && (end == null || end >= timestamp))
-                        {
-                            return thread.Name;
-                        }
-                    }
+                    return GetName(threads, timestamp);
                 }
             }
 
             return null;
         }
 
-        // Returns true if an existing thread had its name changed.
-        public bool ThreadStart(int tid, string? name, DateTime startTime)
+        public void SetThreadName(int tid, string name, DateTime startTime)
         {
             lock (_trackedThreads)
             {
                 if (!_trackedThreads.TryGetValue(tid, out var threads))
                 {
-                    threads = new List<TrackedThread>();
+                    threads = new List<TrackedName>();
                     _trackedThreads[tid] = threads;
                 }
 
-                // See if this event falls into an existing TrackedThread already and its name must be updated.
-                if (!string.IsNullOrEmpty(name) && threads.Count > 0)
-                {
-                    TrackedThread tt = threads[^1];
-                    if (tt.End == null && name != tt.Name)
-                    {
-                        threads[^1] = tt with { Name = name };
-                        return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
-                    }
-                }
-
-                threads.Add(new TrackedThread { Name = name, Start = startTime });
-                return false;
+                threads.Add(new TrackedName { Name = name, Start = startTime });
             }
         }
 
-        // Returns true if an existing thread had its name changed.
-        public bool ThreadSetName(int tid, string name)
+        // Entries are appended in chronological order, so the list is sorted ascending by Start.
+        // The matching entry is the last one whose Start is <= timestamp (its end is the next entry's Start).
+        private static string? GetName(List<TrackedName> entries, DateTime timestamp)
         {
-            lock (_trackedThreads)
+            if (entries.Count == 0)
             {
-                if (!_trackedThreads.TryGetValue(tid, out var threads))
-                {
-                    threads = new List<TrackedThread>();
-                    _trackedThreads[tid] = threads;
-                }
-
-                if (threads.Count == 0 || threads[^1].End != null)
-                {
-                    return false; // No existing thread to update, so just ignore this event.
-                }
-
-                if (string.IsNullOrEmpty(name))
-                {
-                    return false; // Not sure if this is the right decision, but don't allow previous thread names to get erased.
-                }
-
-                threads[^1] = threads[^1] with { Name = name };
-                return true; // Caller should bump the generation id so that any filtering can be re-evaluated with the new information.
+                return null;
             }
-        }
 
-        public void ThreadStop(int tid, DateTime? endTime)
-        {
-            lock (_trackedThreads)
+            // Fast path: the timestamp is at or after the most recent entry, which is the common case for streaming events.
+            if (entries[^1].Start <= timestamp)
             {
-                if (_trackedThreads.TryGetValue(tid, out var threads))
+                return entries[^1].Name;
+            }
+
+            // Binary search for the rightmost entry whose Start is <= timestamp.
+            int low = 0;
+            int high = entries.Count - 1;
+            int match = -1;
+            while (low <= high)
+            {
+                int middle = low + (high - low) / 2;
+                if (entries[middle].Start <= timestamp)
                 {
-                    threads[^1] = threads[^1] with { End = endTime };
+                    match = middle;
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
                 }
             }
+
+            return match >= 0 ? entries[match].Name : null;
         }
 
         public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, DateTime loadTime)

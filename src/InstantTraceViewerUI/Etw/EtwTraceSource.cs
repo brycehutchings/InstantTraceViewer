@@ -437,11 +437,7 @@ namespace InstantTraceViewerUI.Etw
                     if (!string.IsNullOrEmpty(processName))
                     {
                         long creationTimeFT = (long)(((ulong)(uint)creationTime.dwHighDateTime << 32) | (uint)creationTime.dwLowDateTime);
-                        if (_processDatabase.ProcessStart(processId, processName, DateTime.FromFileTime(creationTimeFT)))
-                        {
-                            // Process name for existing row(s) with this pid have changed retroactively.
-                            _generationId++;
-                        }
+                        _processDatabase.SetProcessName(processId, processName, DateTime.FromFileTime(creationTimeFT));
                     }
                 }
                 finally

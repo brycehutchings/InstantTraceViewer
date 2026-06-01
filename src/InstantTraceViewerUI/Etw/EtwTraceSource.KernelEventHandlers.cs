@@ -523,11 +523,7 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
         {
-            if (_processDatabase.ThreadSetName(data.ThreadID, data.ThreadName))
-            {
-                // fixme
-                // _generationId++;
-            }
+            _processDatabase.SetThreadName(data.ThreadID, data.ThreadName, data.TimeStamp);
 
             if (IsPaused)
             {
@@ -543,25 +539,13 @@ namespace InstantTraceViewerUI.Etw
         {
             if (data.Opcode == TraceEventOpcode.Start)
             {
-                if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, data.TimeStamp))
-                {
-                    // fixme
-                    // _generationId++;
-                }
+                _processDatabase.SetThreadName(data.ThreadID, data.ThreadName, data.TimeStamp);
             }
             else if (data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
                 // The timestamp of a DCStart is not the actual start time. Sampled stack events can show up before DCStart
                 // so we need an unbounded start time for them to be associated with the thread.
-                if (_processDatabase.ThreadStart(data.ThreadID, data.ThreadName, DateTime.MinValue))
-                {
-                    // fixme
-                    // _generationId++;
-                }
-            }
-            else if (data.Opcode == TraceEventOpcode.Stop)
-            {
-                _processDatabase.ThreadStop(data.ThreadID, data.TimeStamp);
+                _processDatabase.SetThreadName(data.ThreadID, data.ThreadName, DateTime.MinValue);
             }
 
             if (IsPaused)
@@ -588,22 +572,12 @@ namespace InstantTraceViewerUI.Etw
         {
             if (data.Opcode == TraceEventOpcode.Start)
             {
-                if (_processDatabase.ProcessStart(data.ProcessID, data.ProcessName, data.TimeStamp))
-                {
-                    _generationId++;
-                }
+                _processDatabase.SetProcessName(data.ProcessID, data.ProcessName, data.TimeStamp);
             }
             else if (data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
                 // The timestamp of a DCStart is not the actual start time.
-                if (_processDatabase.ProcessStart(data.ProcessID, data.ProcessName, DateTime.MinValue))
-                {
-                    _generationId++;
-                }
-            }
-            else if (data.Opcode == TraceEventOpcode.Stop)
-            {
-                _processDatabase.ProcessStop(data.ProcessID, data.TimeStamp);
+                _processDatabase.SetProcessName(data.ProcessID, data.ProcessName, DateTime.MinValue);
             }
 
             if (IsPaused)
