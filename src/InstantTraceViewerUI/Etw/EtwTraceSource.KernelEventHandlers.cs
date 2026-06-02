@@ -138,7 +138,6 @@ namespace InstantTraceViewerUI.Etw
 
         private void SubscribeToKernelEvents()
         {
-            //_etwSource.Kernel.All += Kernel_All;
             _etwSource.Kernel.StackWalkStack += OnStackWalkStack;
 
             //
@@ -230,20 +229,6 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
         }
 
-        private void Kernel_All(TraceEvent obj)
-        {
-            var newRecord = CreateBaseTraceRecord(obj);
-            
-            var namedValues = new List<NamedValue>();
-            foreach (var payloadName in obj.PayloadNames)
-            {
-                namedValues.Add(new NamedValue(payloadName, obj.PayloadByName(payloadName)));
-            }
-
-            newRecord.NamedValues = namedValues.ToArray();
-            AddEvent(newRecord);
-        }
-
         private void OnImageLoad(ImageLoadTraceData obj)
         {
             TraceEventOpcodeExtended opcode = (TraceEventOpcodeExtended)obj.Opcode;
@@ -260,11 +245,6 @@ namespace InstantTraceViewerUI.Etw
             if (IsPaused)
             {
                 return;
-            }
-
-            if (obj.FileName.Contains("MrShell.dll"))
-            {
-
             }
 
             var newRecord = CreateBaseTraceRecord(obj);
