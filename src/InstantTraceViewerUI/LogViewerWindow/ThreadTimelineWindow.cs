@@ -51,7 +51,7 @@ namespace InstantTraceViewerUI
 
             // Some of the information in this struct like Level, Depth and Color could be determined by looking up the event in the table with this row index
             // but it would be slower so we cache the information that is needed for per-frame rendering above and use this for tooltips and other things that are not per-frame.
-            public int VisibleRowIndex;
+            public int? VisibleRowIndex;
         }
 
         class Track
@@ -107,7 +107,7 @@ namespace InstantTraceViewerUI
             public IReadOnlyList<ComputedTrack> Tracks;
 
             // Snapshot of the trace table used to compute the Tracks.
-            public ITraceTableSnapshot TraceTableSnapshot;
+            public FilteredTraceTableSnapshot TraceTableSnapshot;
 
             public DateTime StartTraceTable => TraceTableSnapshot.GetTimestamp(0);
 
@@ -138,7 +138,7 @@ namespace InstantTraceViewerUI
         // This is reset every frame and only set if a click happens on an event.
         public int? ClickedVisibleRowIndex { get; set; }
 
-        public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
+        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(600, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -160,7 +160,7 @@ namespace InstantTraceViewerUI
         public static bool IsSupported(TraceTableSchema schema)
             => schema.TimestampColumn != null && schema.NameColumn != null && schema.ProcessIdColumn != null && schema.ThreadIdColumn != null;
 
-        private void DrawTimelineGraph(ITraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
+        private void DrawTimelineGraph(FilteredTraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
         {
             Trace.Assert(IsSupported(traceTable.Schema));
 
@@ -350,7 +350,7 @@ namespace InstantTraceViewerUI
                 if (hoveredEvents.Count > 0)
                 {
                     bool clickable = false;
-                    if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
+                    if (ImGui.IsKeyDown(ImGuiKey.ModCtrl) && hoveredEvents.Any(e => GetVisibleRowIndex(e).HasValue))
                     {
                         clickable = true;
                         ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
@@ -383,7 +383,8 @@ namespace InstantTraceViewerUI
                 var eventNames = hoveredEvents.Select(e => e switch
                 {
                     Bar bar => _latestComputedTracks.TraceTableSnapshot.GetName(bar.VisibleRowIndex),
-                    InstantEvent instantEvent => _latestComputedTracks.TraceTableSnapshot.GetName(instantEvent.VisibleRowIndex),
+                    InstantEvent { VisibleRowIndex: int visibleRowIndex } => _latestComputedTracks.TraceTableSnapshot.GetName(visibleRowIndex),
+                    InstantEvent => null,
                     _ => throw new InvalidOperationException("Unexpected event type.")
                 });
 
@@ -397,12 +398,7 @@ namespace InstantTraceViewerUI
 
                 if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
-                    ClickedVisibleRowIndex = hoveredEvents.First() switch
-                    {
-                        Bar bar => bar.VisibleRowIndex,
-                        InstantEvent instantEvent => instantEvent.VisibleRowIndex,
-                        _ => throw new InvalidOperationException("Unexpected event type.")
-                    };
+                    ClickedVisibleRowIndex = hoveredEvents.Select(GetVisibleRowIndex).FirstOrDefault(rowIndex => rowIndex.HasValue);
                 }
             }
             else if (hoveredEvents.SingleOrDefault() is Bar bar)
@@ -421,9 +417,20 @@ namespace InstantTraceViewerUI
                     ClickedVisibleRowIndex = instantEvent.VisibleRowIndex;
                 }
 
-                DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex);
+                if (instantEvent.VisibleRowIndex.HasValue)
+                {
+                    DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex.Value);
+                }
             }
         }
+
+        private static int? GetVisibleRowIndex(object timelineEvent)
+            => timelineEvent switch
+            {
+                Bar bar => bar.VisibleRowIndex,
+                InstantEvent instantEvent => instantEvent.VisibleRowIndex,
+                _ => throw new InvalidOperationException("Unexpected event type.")
+            };
 
         private static void DrawEventDetails(ITraceTableSnapshot traceTable, int visibleRowIndex, TimeSpan? duration = null)
         {
@@ -800,27 +807,35 @@ namespace InstantTraceViewerUI
             _endZoomRange = ClampDateTime(_endZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
         }
 
-        private static ComputedTracks ComputeTracks(ITraceTableSnapshot traceTable)
+        private static ComputedTracks ComputeTracks(FilteredTraceTableSnapshot traceTable)
         {
             var stopwatch = Stopwatch.StartNew();
 
+            ITraceTableSnapshot fullTraceTable = traceTable.FullTable;
             Dictionary<TrackKey, Track> tracks = new();
             Dictionary<int, TrackKey> activeProcessTrackKeys = new();
 
-            for (int i = 0; i < traceTable.RowCount; i++)
+            foreach ((int fullTableRowIndex, int? visibleRowIndex) in traceTable.GetFullTableRowIndices())
             {
-                int processId = traceTable.GetProcessId(i);
-                DateTime traceEventTime = traceTable.GetTimestamp(i);
-                string name = traceTable.GetName(i);
-                UnifiedOpcode opcode = traceTable.Schema.UnifiedOpcodeColumn != null ? traceTable.GetUnifiedOpcode(i) : UnifiedOpcode.None;
-                UnifiedLifecycleEvent lifecycleEvent = traceTable.GetLifecycleEvent(i);
-                string processName = traceTable.GetColumnValueNameForId(i, traceTable.Schema.ProcessIdColumn);
+                if (!visibleRowIndex.HasValue)
+                {
+                    continue;
+                }
+
+                int visibleTableRowIndex = visibleRowIndex.Value;
+
+                int processId = fullTraceTable.GetProcessId(fullTableRowIndex);
+                DateTime traceEventTime = fullTraceTable.GetTimestamp(fullTableRowIndex);
+                string name = fullTraceTable.GetName(fullTableRowIndex);
+                UnifiedOpcode opcode = fullTraceTable.Schema.UnifiedOpcodeColumn != null ? fullTraceTable.GetUnifiedOpcode(fullTableRowIndex) : UnifiedOpcode.None;
+                UnifiedLifecycleEvent lifecycleEvent = fullTraceTable.GetLifecycleEvent(fullTableRowIndex);
+                string processName = fullTraceTable.GetColumnValueNameForId(fullTableRowIndex, fullTraceTable.Schema.ProcessIdColumn);
 
                 TrackKey trackKey = lifecycleEvent switch
                 {
                     UnifiedLifecycleEvent.ProcessStart => new TrackKey(processId, processName, -1),
                     UnifiedLifecycleEvent.ProcessStop when activeProcessTrackKeys.TryGetValue(processId, out TrackKey activeProcessTrackKey) => activeProcessTrackKey,
-                    _ => new TrackKey(processId, processName, traceTable.GetThreadId(i))
+                    _ => new TrackKey(processId, processName, fullTraceTable.GetThreadId(fullTableRowIndex))
                 };
 
                 bool isProcessLifecycleEvent = lifecycleEvent is UnifiedLifecycleEvent.ProcessStart or UnifiedLifecycleEvent.ProcessStop;
@@ -842,7 +857,7 @@ namespace InstantTraceViewerUI
 
                 if (track.ThreadName == null && trackKey.Tid != -1)
                 {
-                    track.ThreadName = traceTable.GetColumnValueNameForId(i, traceTable.Schema.ThreadIdColumn);
+                    track.ThreadName = fullTraceTable.GetColumnValueNameForId(fullTableRowIndex, fullTraceTable.Schema.ThreadIdColumn);
                 }
 
                 track.HasNonLifecycleEvents |= !isLifecycleEvent;
@@ -850,7 +865,7 @@ namespace InstantTraceViewerUI
                 if (opcode == UnifiedOpcode.Start || isLifecycleStart)
                 {
                     // Push the start time onto the stack.
-                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name, VisibleRowIndex = i });
+                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name, VisibleRowIndex = visibleTableRowIndex });
                     if (lifecycleEvent == UnifiedLifecycleEvent.ProcessStart)
                     {
                         activeProcessTrackKeys[processId] = trackKey;
@@ -876,8 +891,8 @@ namespace InstantTraceViewerUI
                 }
                 else
                 {
-                    UnifiedLevel level = traceTable.Schema.UnifiedLevelColumn == null ? UnifiedLevel.Info : traceTable.GetUnifiedLevel(i);
-                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = level, Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = i });
+                    UnifiedLevel level = fullTraceTable.Schema.UnifiedLevelColumn == null ? UnifiedLevel.Info : fullTraceTable.GetUnifiedLevel(fullTableRowIndex);
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = level, Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = visibleRowIndex });
                 }
             }
 

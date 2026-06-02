@@ -195,12 +195,12 @@ namespace InstantTraceViewerUI.Etw
             };
 
         public UnifiedLifecycleEvent ConvertLifecycleEvent(EtwRecord record)
-            => (record.InternalFlags, record.OpCode) switch
+            => (record.InternalFlags, ConvertOpcode(record.OpCode)) switch
             {
-                (InternalFlags.ThreadLifecycle, TraceEventOpcodeExtended.Start) => UnifiedLifecycleEvent.ThreadStart,
-                (InternalFlags.ThreadLifecycle, TraceEventOpcodeExtended.Stop) => UnifiedLifecycleEvent.ThreadStop,
-                (InternalFlags.ProcessLifecycle, TraceEventOpcodeExtended.Start) => UnifiedLifecycleEvent.ProcessStart,
-                (InternalFlags.ProcessLifecycle, TraceEventOpcodeExtended.Stop) => UnifiedLifecycleEvent.ProcessStop,
+                (InternalFlags.ThreadLifecycle, UnifiedOpcode.Start) => UnifiedLifecycleEvent.ThreadStart,
+                (InternalFlags.ThreadLifecycle, UnifiedOpcode.Stop) => UnifiedLifecycleEvent.ThreadStop,
+                (InternalFlags.ProcessLifecycle, UnifiedOpcode.Start) => UnifiedLifecycleEvent.ProcessStart,
+                (InternalFlags.ProcessLifecycle, UnifiedOpcode.Stop) => UnifiedLifecycleEvent.ProcessStop,
                 _ => UnifiedLifecycleEvent.None,
             };
     }

@@ -528,7 +528,8 @@ namespace InstantTraceViewerUI.Etw
 
             var newRecord = CreateBaseTraceRecord(data);
 
-            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop)
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop ||
+                data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
             {
                 newRecord.InternalFlags = InternalFlags.ThreadLifecycle;
             }
@@ -553,10 +554,10 @@ namespace InstantTraceViewerUI.Etw
                 return; // We still want to update the names but not add events.
             }
 
-
             var newRecord = CreateBaseTraceRecord(data);
 
-            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop)
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop ||
+                data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
             {
                 newRecord.InternalFlags = InternalFlags.ProcessLifecycle;
             }
