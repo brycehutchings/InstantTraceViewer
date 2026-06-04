@@ -67,7 +67,7 @@ namespace InstantTraceViewerUI
         /// <summary>
         /// Creates the application window and the D3D11 device + swap chain. Must be called once before any other method.
         /// </summary>
-        public static void WindowInitialize()
+        public static HWND WindowInitialize()
         {
             if (!s_hwnd.IsNull)
             {
@@ -139,6 +139,8 @@ namespace InstantTraceViewerUI
 
             PInvoke.ShowWindow(s_hwnd, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
             PInvoke.UpdateWindow(s_hwnd);
+
+            return s_hwnd;
         }
 
         /// <summary>
