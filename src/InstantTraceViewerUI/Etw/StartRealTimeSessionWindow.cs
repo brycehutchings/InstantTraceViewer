@@ -11,7 +11,7 @@ using System.Numerics;
 
 namespace InstantTraceViewerUI.Etw
 {
-    internal class StartRealTimeSessionWindow
+    internal class StartRealTimeSessionWindow : IWindow
     {
         private const string WindowName = "Start real-time ETW session";
         private const string ImportOverwritePopupName = "Import WPRP?";
@@ -448,7 +448,7 @@ namespace InstantTraceViewerUI.Etw
             try
             {
                 EtwTraceSource realTimeSession = EtwTraceSource.CreateRealTimeSession(_profile);
-                uiCommands.AddLogViewerWindow(new LogViewerWindow(realTimeSession));
+                uiCommands.AddWindow(new LogViewerWindow(realTimeSession));
                 _closeRequested = true;
             }
             catch (Exception ex)
@@ -493,6 +493,10 @@ namespace InstantTraceViewerUI.Etw
         private static EtwSessionProfile CreateDefaultProfile()
         {
             return new EtwSessionProfile { DisplayName = "Real-time ETW" };
+        }
+
+        public void Dispose()
+        {
         }
     }
 }
