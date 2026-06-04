@@ -94,7 +94,7 @@ namespace InstantTraceViewerUI.Etw
         }
 
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
-        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl", ".etlx" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
+        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
         private void ProcessThread()
         {

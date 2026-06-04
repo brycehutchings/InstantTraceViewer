@@ -149,7 +149,7 @@ namespace InstantTraceViewerUI.Etw
                 }
 
                 newRecord.NamedValues = namedValues.ToArray();
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             };
 #endif
 
@@ -244,7 +244,7 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnImageLoad(ImageLoadTraceData obj)
         {
-            if (obj.Opcode == TraceEventOpcode.Stop || obj.Opcode == TraceEventOpcode.DataCollectionStop)
+            if (obj.Opcode == TraceEventOpcode.Stop)
             {
                 _moduleTracker.ImageUnload(obj.ProcessID, obj.ImageBase, obj.TimeStamp);
             }
@@ -268,7 +268,7 @@ namespace InstantTraceViewerUI.Etw
                 new NamedValue("CheckSum", (uint)obj.ImageChecksum),
                 new NamedValue("TimeDateStamp", (uint)obj.TimeDateStamp),
             ];
-            AddEvent(newRecord);
+            AddPendingRecord(newRecord);
 #endif
         }
 
@@ -303,7 +303,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 var newRecord = CreateBaseTraceRecord(obj);
                 newRecord.NamedValues = [
-                    new NamedValue("RelativeMSec", obj.EventTimeStampRelativeMSec - obj.EventTimeStampRelativeMSec),
+                    new NamedValue("RelativeMSec", obj.EventTimeStampRelativeMSec - obj.TimeStampRelativeMSec),
                     new NamedValue("StackWalk", GetStackFrames())];
                 AddPendingRecord(newRecord);
             }
