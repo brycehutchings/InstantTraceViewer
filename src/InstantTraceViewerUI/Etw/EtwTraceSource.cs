@@ -51,7 +51,8 @@ namespace InstantTraceViewerUI.Etw
 
         // Fixed name is used because ETW sessions can outlive their processes and there is a low system limit. This way we replace leaked sessions rather than creating new ones.
         private static string SessionNamePrefix = "InstantTraceViewerSession";
-        private static readonly TimeSpan PendingTraceRecordMinAge = TimeSpan.FromMilliseconds(1000);
+        private static readonly TimeSpan PendingTraceRecordWallclockMinAge = TimeSpan.FromMilliseconds(2000);
+        private static readonly TimeSpan PendingTraceRecordEventTimeMinAge = TimeSpan.FromMilliseconds(100);
 
         private readonly TraceEventSession? _etwSession;
         private readonly TraceEventDispatcher _etwSource;
@@ -286,14 +287,16 @@ namespace InstantTraceViewerUI.Etw
             {
                 if (_pendingTraceRecords.Count > 0)
                 {
-                    // We hold records back briefly so that related events enqueued a little later have a chance to
-                    // be processed first. For example, stackwalk events arrive shortly after the sample events they
-                    // get injected into. A record is only flushed once at least PendingTraceRecordMinAge of wall-clock
-                    // time has passed for events up to that record's event timestamp, leaving a window for any
-                    // slightly-later related events to show up. If too little time has elapsed, maxReadyTimestamp
-                    // falls before the first record so nothing is flushed.
+                    // We hold records back briefly so that stackwalk event data can get injected into the record they are associated with.
+                    // Stackwalk events usually come just a few microseconds after the main event.
+                    // A record is only flushed once either:
+                    // 1. An event at least PendingTraceRecordEventTimeMinAge newer than the record has arrived.
+                    // 2. PendingTraceRecordWallclockMinAge of wall-clock time has passed for events up to that record's event timestamp.
+                    //    This ensures events eventually flush even if no new events come in.
                     DateTime firstPendingRecordTimestamp = _pendingTraceRecords[0].Timestamp;
-                    DateTime maxReadyTimestamp = firstPendingRecordTimestamp + (DateTime.Now - _pendingTraceRecordsStartTime - PendingTraceRecordMinAge);
+                    DateTime maxReadyTimestamp1 = firstPendingRecordTimestamp + (DateTime.Now - _pendingTraceRecordsStartTime - PendingTraceRecordWallclockMinAge);
+                    DateTime maxReadyTimestamp2 = _pendingTraceRecords[^1].Timestamp - PendingTraceRecordEventTimeMinAge;
+                    DateTime maxReadyTimestamp = maxReadyTimestamp2 > maxReadyTimestamp1 ? maxReadyTimestamp2 : maxReadyTimestamp1;
 
                     int readyRecordCount = 0;
                     while (readyRecordCount < _pendingTraceRecords.Count && _pendingTraceRecords[readyRecordCount].Timestamp <= maxReadyTimestamp)

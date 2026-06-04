@@ -1,19 +1,17 @@
 using InstantTraceViewer;
 using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace InstantTraceViewerUI.Etw
 {
     internal partial class EtwTraceSource : ITraceSource
     {
+        private const string InstructionPointerName = "InstructionPointer";
+
         // Copied from Microsoft.Diagnostics.Tracing.Parsers.Kernel in order to improve naming.
         [Flags]
         public enum KernelFileCreateOptions
@@ -144,8 +142,6 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.All += (obj) =>
             {
                 var newRecord = CreateBaseTraceRecord(obj);
-                newRecord.Name = obj.EventName;
-
                 var namedValues = new List<NamedValue>();
                 namedValues.Add(new NamedValue("TimeStampRelativeMSec", obj.TimeStampRelativeMSec));
                 foreach (var payloadName in obj.PayloadNames)
@@ -165,12 +161,7 @@ namespace InstantTraceViewerUI.Etw
             //
             _etwSource.Kernel.ThreadCSwitch += OnThreadCSwitch;
 
-            _etwSource.Kernel.PerfInfoSample += (SampledProfileTraceData data) =>
-            {
-                var newRecord = CreateBaseTraceRecord(data);
-                newRecord.NamedValues = [new NamedValue("IP", data.InstructionPointer)];
-                AddEvent(newRecord);
-            };
+            _etwSource.Kernel.PerfInfoSample += Kernel_PerfInfoSample;
 
             //
             // Keywords.Dispatcher
@@ -239,6 +230,13 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
         }
 
+        private void Kernel_PerfInfoSample(SampledProfileTraceData obj)
+        {
+            var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.NamedValues = [new NamedValue(InstructionPointerName, ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer))];
+            AddEvent(newRecord);
+        }
+
         private void OnImageLoad(ImageLoadTraceData obj)
         {
             if (obj.Opcode == TraceEventOpcode.Stop || obj.Opcode == TraceEventOpcode.DataCollectionStop)
@@ -282,49 +280,15 @@ namespace InstantTraceViewerUI.Etw
                 var stackFrames = new Dictionary<string, object>();
                 for (int i = 0; i < obj.FrameCount; i++)
                 {
-                    ulong ip = obj.InstructionPointer(i);
-
-                    LoadedImage? loadedImage = _processDatabase.GetLoadedImage(obj.ProcessID, ip, obj.TimeStamp);
-                    if (loadedImage.HasValue)
-                    {
-                        ulong relativeVirtualAddress = ip - loadedImage.Value.ImageBase;
-
-                        string moduleName = Path.GetFileName(loadedImage.Value.FileName);
-                        if (string.IsNullOrEmpty(moduleName))
-                        {
-                            moduleName = loadedImage.Value.FileName;
-                        }
-
-                        stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
-
-                        //if (_processDatabase.GetProcessName(obj.ProcessID, obj.TimeStamp) == "MrShell")
-                        //{
-                        //ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
-                        //    new Symbols.Module { FileName = loadedImage.Value.FileName, SizeOfImage = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
-                        //if (resolvedSymbol.HasValue)
-                        //{
-                        //    // Symbol found.
-                        //    stackFrames.Add(i.ToString(), $"{resolvedSymbol.Value.ModuleName}!{resolvedSymbol.Value.SymbolName}+0x{resolvedSymbol.Value.Displacement:X}");
-                        //}
-                        //else
-                        //{
-                        //    // Module known but symbol not found. Show module and relative virtual address.
-                        //    stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
-                        //}
-                        //}
-                    }
-                    else
-                    {
-                        // Unknown module, this is strange! Just show the IP.
-                        stackFrames.Add(i.ToString(), $"0x{obj.InstructionPointer(i):X}");
-                    }
+                    stackFrames.Add(i.ToString(), ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer(i)));
                 }
                 return stackFrames;
             }
 
             bool found = UpdatePendingRecord(obj.ThreadID, obj.EventTimeStampRelativeMSec, (ref record) =>
             {
-                var namedValuesCopy = record.NamedValues.ToList();
+                // InstructionPointer is emitted by PerfInfoSample but it's the same as the top of the stack. Since we have the stack, we can remove it.
+                var namedValuesCopy = record.NamedValues.Where(nv => nv.Name != InstructionPointerName).ToList();
                 namedValuesCopy.Add(new NamedValue("StackWalk", GetStackFrames()));
                 record.NamedValues = namedValuesCopy.ToArray();
             });
@@ -348,7 +312,6 @@ namespace InstantTraceViewerUI.Etw
             }
 
             var newRecord = CreateBaseTraceRecord(obj);
-            newRecord.Name = "CSwitch";
             newRecord.NamedValues = [
                 new NamedValue("OldThreadID", obj.OldThreadID),
                 new NamedValue("NewThreadID", obj.NewThreadID),

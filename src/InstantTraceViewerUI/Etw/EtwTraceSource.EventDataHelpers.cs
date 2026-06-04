@@ -1,5 +1,6 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace InstantTraceViewerUI.Etw
@@ -20,7 +21,6 @@ namespace InstantTraceViewerUI.Etw
             newRecord.Timestamp = data.TimeStamp;
             newRecord.TimestampRelativeMSec = data.TimeStampRelativeMSec;
             newRecord.Level = data.Level;
-            newRecord.OpCode = (byte)data.Opcode;
             newRecord.Keywords = (ulong)data.Keywords;
 
             // Extract process and thread IDs from events without them (e.g. some Kernel events).
@@ -42,7 +42,18 @@ namespace InstantTraceViewerUI.Etw
             newRecord.ProcessName = _processNames.TryGetValue(newRecord.ProcessId, out string processName) ? processName : null;
             newRecord.ThreadName = _threadNames.TryGetValue(newRecord.ThreadId, out string threadName) ? threadName : null;
             newRecord.ProviderName = data.ProviderName;
-            newRecord.Name = data.TaskName;
+
+            if (data.ProviderGuid == SystemProvider && !Enum.IsDefined(data.Opcode))
+            {
+                // Use EventName which is "TaskName/OpCodeName" because many of the Kernel/System OpCodes aren't defined in the TraceEventOpcode enum
+                // and will display as opaque numbers. We don't set OpCode separately because it'll be distracting when the OpCode is part of the name.
+                newRecord.Name = data.EventName;
+            }
+            else
+            {
+                newRecord.Name = data.TaskName;
+                newRecord.OpCode = (byte)data.Opcode;
+            }
 
             return newRecord;
         }
@@ -98,6 +109,25 @@ namespace InstantTraceViewerUI.Etw
             {
                 _pendingTraceRecordsLock.ExitWriteLock();
             }
+        }
+
+        private string ResolveInstructionPointer(int processId, DateTime timestamp, ulong instructionPointer)
+        {
+            LoadedImage? loadedImage = _processDatabase.GetLoadedImage(processId, instructionPointer, timestamp);
+            if (!loadedImage.HasValue)
+            {
+                return $"0x{instructionPointer:X}";
+            }
+
+            ulong relativeVirtualAddress = instructionPointer - loadedImage.Value.ImageBase;
+
+            string moduleName = Path.GetFileName(loadedImage.Value.FileName);
+            if (string.IsNullOrEmpty(moduleName))
+            {
+                moduleName = loadedImage.Value.FileName;
+            }
+
+            return $"{moduleName}+0x{relativeVirtualAddress:X}";
         }
     }
 }
