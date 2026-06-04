@@ -58,7 +58,7 @@ namespace InstantTraceViewerUI.Etw
 
             newRecord.NamedValues = namedValues.ToArray();
 
-            AddEvent(newRecord);
+            AddPendingRecord(newRecord);
         }
     }
 }
