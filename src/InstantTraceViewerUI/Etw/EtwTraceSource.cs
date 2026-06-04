@@ -1,4 +1,7 @@
-﻿using Microsoft.Diagnostics.Tracing;
+﻿using Hexa.NET.ImGui;
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
@@ -8,7 +11,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -21,7 +23,7 @@ namespace InstantTraceViewerUI.Etw
         TelemetryMeasures = 0x0000400000000000,
     }
 
-    internal partial class EtwTraceSource : ITraceSource
+    internal partial class EtwTraceSource : ITraceSource, ITraceSourceGuiExtensions
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
@@ -49,15 +51,19 @@ namespace InstantTraceViewerUI.Etw
 
         // Fixed name is used because ETW sessions can outlive their processes and there is a low system limit. This way we replace leaked sessions rather than creating new ones.
         private static string SessionNamePrefix = "InstantTraceViewerSession";
+        private static readonly TimeSpan PendingTraceRecordWallclockMinAge = TimeSpan.FromMilliseconds(2000);
+        private static readonly TimeSpan PendingTraceRecordEventTimeMinAge = TimeSpan.FromMilliseconds(100);
 
         private readonly TraceEventSession? _etwSession;
-        private readonly ETWTraceEventSource _etwSource;
+        private readonly TraceEventDispatcher _etwSource;
+        private readonly SymbolTraceEventParser _symbolEventParser;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
         private readonly Thread _processingThread;
 
         private readonly ReaderWriterLockSlim _pendingTraceRecordsLock = new ReaderWriterLockSlim();
+        private DateTime _pendingTraceRecordsStartTime = DateTime.MinValue;
         private List<EtwRecord> _pendingTraceRecords = new();
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
@@ -66,6 +72,16 @@ namespace InstantTraceViewerUI.Etw
 
         private ConcurrentDictionary<int, string> _threadNames = new();
         private ConcurrentDictionary<int, string> _processNames = new();
+        private EtwModuleTracker _processDatabase = new();
+        private List<IDisposable> _moduleRevokers = new();
+        private SymbolResolver _symbolResolver = new SymbolResolver(
+            @"c:\windows\system32;" +
+            @"d:\repos\cloud1\binlocal\WinX64;" + 
+            @"D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;" + 
+            @"d:\repos\cloud1\binlocal\WinX64\Symbols;" +
+            @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
+            @"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
+            @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
 
         private bool isDisposed;
 
@@ -77,6 +93,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
@@ -89,6 +106,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = displayName;
             _etwSession = null;
             _etwSource = etwSource;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
             _processingThread = new Thread(() => ProcessThread());
@@ -96,30 +114,13 @@ namespace InstantTraceViewerUI.Etw
         }
 
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
-        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
-
-        private void AddEvent(EtwRecord record)
-        {
-            if (IsPaused)
-            {
-                return;
-            }
-
-            _pendingTraceRecordsLock.EnterWriteLock();
-            try
-            {
-                _pendingTraceRecords.Add(record);
-            }
-            finally
-            {
-                _pendingTraceRecordsLock.ExitWriteLock();
-            }
-        }
+        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl", ".etlx" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
         private void ProcessThread()
         {
             SubscribeToKernelEvents();
             SubscribeToDynamicEvents();
+            SubscribeToSymbolEvents();
 
             try
             {
@@ -128,7 +129,13 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new EtwRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
+                AddEvent(new EtwRecord
+                {
+                    ProviderName = "Instant Trace Viewer",
+                    Name = "Internal Error",
+                    Level = TraceEventLevel.Critical,
+                    NamedValues = [new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" }]
+                });
             }
         }
 
@@ -218,6 +225,12 @@ namespace InstantTraceViewerUI.Etw
             {
                 _traceRecords = new();
                 _generationId++;
+
+                foreach (var module in _moduleRevokers)
+                {
+                    module.Dispose();
+                }
+                _moduleRevokers.Clear();
             }
             finally
             {
@@ -268,26 +281,63 @@ namespace InstantTraceViewerUI.Etw
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.
             // It is important to not block the ETW event callback or events might get dropped.
-            List<EtwRecord> pendingTraceRecordsLocal;
+            List<EtwRecord>? pendingTraceRecordsLocal = null;
             _pendingTraceRecordsLock.EnterWriteLock();
             try
             {
-                pendingTraceRecordsLocal = _pendingTraceRecords;
-                _pendingTraceRecords = new();
+                if (_pendingTraceRecords.Count > 0)
+                {
+                    // We hold records back briefly so that stackwalk event data can get injected into the record they are associated with.
+                    // Stackwalk events usually come just a few microseconds after the main event.
+                    // A record is only flushed once either:
+                    // 1. An event at least PendingTraceRecordEventTimeMinAge newer than the record has arrived.
+                    // 2. PendingTraceRecordWallclockMinAge of wall-clock time has passed for events up to that record's event timestamp.
+                    //    This ensures events eventually flush even if no new events come in.
+                    DateTime firstPendingRecordTimestamp = _pendingTraceRecords[0].Timestamp;
+                    DateTime maxReadyTimestamp1 = firstPendingRecordTimestamp + (DateTime.Now - _pendingTraceRecordsStartTime - PendingTraceRecordWallclockMinAge);
+                    DateTime maxReadyTimestamp2 = _pendingTraceRecords[^1].Timestamp - PendingTraceRecordEventTimeMinAge;
+                    DateTime maxReadyTimestamp = maxReadyTimestamp2 > maxReadyTimestamp1 ? maxReadyTimestamp2 : maxReadyTimestamp1;
+
+                    int readyRecordCount = 0;
+                    while (readyRecordCount < _pendingTraceRecords.Count && _pendingTraceRecords[readyRecordCount].Timestamp <= maxReadyTimestamp)
+                    {
+                        readyRecordCount++;
+                    }
+
+                    if (readyRecordCount > 0)
+                    {
+                        pendingTraceRecordsLocal = _pendingTraceRecords.GetRange(0, readyRecordCount);
+                        _pendingTraceRecords.RemoveRange(0, readyRecordCount);
+
+                        // Re-anchor the wall-clock reference to the new first record's timestamp so the remaining
+                        // records keep the same effective wait window. (When the list is now empty, the next
+                        // AddEvent resets the start time, so there is nothing to do.)
+                        if (_pendingTraceRecords.Count > 0)
+                        {
+                            _pendingTraceRecordsStartTime += _pendingTraceRecords[0].Timestamp - firstPendingRecordTimestamp;
+                        }
+                    }
+                }
             }
             finally
             {
                 _pendingTraceRecordsLock.ExitWriteLock();
             }
 
-            UpdateProcessNameTable(pendingTraceRecordsLocal);
+            if (pendingTraceRecordsLocal != null)
+            {
+                UpdateProcessNameTable(pendingTraceRecordsLocal);
+            }
 
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                foreach (var record in pendingTraceRecordsLocal)
+                if (pendingTraceRecordsLocal != null)
                 {
-                    _traceRecords.Add(record);
+                    foreach (var record in pendingTraceRecordsLocal)
+                    {
+                        _traceRecords.Add(record);
+                    }
                 }
 
                 return new EtwTraceTableSnapshot
@@ -302,6 +352,34 @@ namespace InstantTraceViewerUI.Etw
                 _traceRecordsLock.ExitWriteLock();
             }
         }
+
+        bool _renderSymbolManager = false;
+        public void RenderToolstripExtras(IUiCommands uiCommands)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("\ue697 Symbols"))
+            {
+                ImGui.OpenPopup("EtwSymbols");
+            }
+            if (ImGui.BeginPopup("EtwSymbols"))
+            {
+                if (ImGui.MenuItem("Manage symbols", "", _renderSymbolManager))
+                {
+                    _renderSymbolManager = !_renderSymbolManager;
+                }
+
+                ImGui.EndPopup();
+            }
+        }
+
+        public void RenderActiveWindows(IUiCommands uiCommands)
+        {
+            if (_renderSymbolManager)
+            {
+                _symbolResolver.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
+            }
+        }
+
 
         private void UpdateProcessNameTable(IReadOnlyList<EtwRecord> traceRecords)
         {
@@ -344,6 +422,12 @@ namespace InstantTraceViewerUI.Etw
                     _etwSource.Dispose();
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
+
+                    foreach (var module in _moduleRevokers)
+                    {
+                        module.Dispose();
+                    }
+                    _moduleRevokers.Clear();
                 }
 
                 isDisposed = true;
