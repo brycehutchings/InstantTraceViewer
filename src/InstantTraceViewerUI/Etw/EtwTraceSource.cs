@@ -51,6 +51,7 @@ namespace InstantTraceViewerUI.Etw
 
         // Fixed name is used because ETW sessions can outlive their processes and there is a low system limit. This way we replace leaked sessions rather than creating new ones.
         private static string SessionNamePrefix = "InstantTraceViewerSession";
+        private static readonly TimeSpan PendingTraceRecordMinAge = TimeSpan.FromMilliseconds(1000);
 
         private readonly TraceEventSession? _etwSession;
         private readonly TraceEventDispatcher _etwSource;
@@ -61,6 +62,7 @@ namespace InstantTraceViewerUI.Etw
         private readonly Thread _processingThread;
 
         private readonly ReaderWriterLockSlim _pendingTraceRecordsLock = new ReaderWriterLockSlim();
+        private DateTime _pendingTraceRecordsStartTime = DateTime.MinValue;
         private List<EtwRecord> _pendingTraceRecords = new();
 
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
@@ -112,24 +114,6 @@ namespace InstantTraceViewerUI.Etw
 
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
         public static IEnumerable<string> EtlFileExtensions => new[] { ".etl", ".etlx" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
-
-        private void AddEvent(EtwRecord record)
-        {
-            if (IsPaused)
-            {
-                return;
-            }
-
-            _pendingTraceRecordsLock.EnterWriteLock();
-            try
-            {
-                _pendingTraceRecords.Add(record);
-            }
-            finally
-            {
-                _pendingTraceRecordsLock.ExitWriteLock();
-            }
-        }
 
         private void ProcessThread()
         {
@@ -296,26 +280,61 @@ namespace InstantTraceViewerUI.Etw
         {
             // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.
             // It is important to not block the ETW event callback or events might get dropped.
-            List<EtwRecord> pendingTraceRecordsLocal;
+            List<EtwRecord>? pendingTraceRecordsLocal = null;
             _pendingTraceRecordsLock.EnterWriteLock();
             try
             {
-                pendingTraceRecordsLocal = _pendingTraceRecords;
-                _pendingTraceRecords = new();
+                if (_pendingTraceRecords.Count > 0)
+                {
+                    // We hold records back briefly so that related events enqueued a little later have a chance to
+                    // be processed first. For example, stackwalk events arrive shortly after the sample events they
+                    // get injected into. A record is only flushed once at least PendingTraceRecordMinAge of wall-clock
+                    // time has passed for events up to that record's event timestamp, leaving a window for any
+                    // slightly-later related events to show up. If too little time has elapsed, maxReadyTimestamp
+                    // falls before the first record so nothing is flushed.
+                    DateTime firstPendingRecordTimestamp = _pendingTraceRecords[0].Timestamp;
+                    DateTime maxReadyTimestamp = firstPendingRecordTimestamp + (DateTime.Now - _pendingTraceRecordsStartTime - PendingTraceRecordMinAge);
+
+                    int readyRecordCount = 0;
+                    while (readyRecordCount < _pendingTraceRecords.Count && _pendingTraceRecords[readyRecordCount].Timestamp <= maxReadyTimestamp)
+                    {
+                        readyRecordCount++;
+                    }
+
+                    if (readyRecordCount > 0)
+                    {
+                        pendingTraceRecordsLocal = _pendingTraceRecords.GetRange(0, readyRecordCount);
+                        _pendingTraceRecords.RemoveRange(0, readyRecordCount);
+
+                        // Re-anchor the wall-clock reference to the new first record's timestamp so the remaining
+                        // records keep the same effective wait window. (When the list is now empty, the next
+                        // AddEvent resets the start time, so there is nothing to do.)
+                        if (_pendingTraceRecords.Count > 0)
+                        {
+                            _pendingTraceRecordsStartTime += _pendingTraceRecords[0].Timestamp - firstPendingRecordTimestamp;
+                        }
+                    }
+                }
             }
             finally
             {
                 _pendingTraceRecordsLock.ExitWriteLock();
             }
 
-            UpdateProcessNameTable(pendingTraceRecordsLocal);
+            if (pendingTraceRecordsLocal != null)
+            {
+                UpdateProcessNameTable(pendingTraceRecordsLocal);
+            }
 
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                foreach (var record in pendingTraceRecordsLocal)
+                if (pendingTraceRecordsLocal != null)
                 {
-                    _traceRecords.Add(record);
+                    foreach (var record in pendingTraceRecordsLocal)
+                    {
+                        _traceRecords.Add(record);
+                    }
                 }
 
                 return new EtwTraceTableSnapshot

@@ -6,7 +6,9 @@ using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -138,6 +140,24 @@ namespace InstantTraceViewerUI.Etw
 
         private void SubscribeToKernelEvents()
         {
+#if false
+            _etwSource.Kernel.All += (obj) =>
+            {
+                var newRecord = CreateBaseTraceRecord(obj);
+                newRecord.Name = obj.EventName;
+
+                var namedValues = new List<NamedValue>();
+                namedValues.Add(new NamedValue("TimeStampRelativeMSec", obj.TimeStampRelativeMSec));
+                foreach (var payloadName in obj.PayloadNames)
+                {
+                    namedValues.Add(new NamedValue(payloadName, obj.PayloadByName(payloadName)));
+                }
+
+                newRecord.NamedValues = namedValues.ToArray();
+                AddEvent(newRecord);
+            };
+#endif
+
             _etwSource.Kernel.StackWalkStack += OnStackWalkStack;
 
             //
@@ -148,17 +168,7 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.PerfInfoSample += (SampledProfileTraceData data) =>
             {
                 var newRecord = CreateBaseTraceRecord(data);
-                var namedValues = new List<NamedValue>();
-                namedValues.Add(new NamedValue("IP", data.InstructionPointer));
-                //TraceCallStack callstack = _traceLog?.GetCallStackForEvent(data);
-                //if (callstack != null)
-                //{
-                //    namedValues.Add(new NamedValue("CallStack", callstack.ToString()));
-                //}
-#pragma warning disable CS0618 // Type or member is obsolete
-                namedValues.Add(new NamedValue("TimeStampQPC", data.TimeStampQPC));
-#pragma warning restore CS0618 // Type or member is obsolete
-                newRecord.NamedValues = namedValues.ToArray();
+                newRecord.NamedValues = [new NamedValue("IP", data.InstructionPointer)];
                 AddEvent(newRecord);
             };
 
@@ -267,25 +277,28 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            var newRecord = CreateBaseTraceRecord(obj);
-
-            var stackFrames = new Dictionary<string, object>();
-            for (int i = 0; i < obj.FrameCount; i++)
+            Dictionary<string, object> GetStackFrames()
             {
-                ulong ip = obj.InstructionPointer(i);
+                var stackFrames = new Dictionary<string, object>();
+                for (int i = 0; i < obj.FrameCount; i++)
+                {
+                    ulong ip = obj.InstructionPointer(i);
 
-                LoadedImage? loadedImage = _processDatabase.GetLoadedImage(newRecord.ProcessId, ip, obj.TimeStamp);
-                if (loadedImage.HasValue) {
-                    ulong relativeVirtualAddress = ip - loadedImage.Value.ImageBase;
-
-                    string moduleName = Path.GetFileName(loadedImage.Value.FileName);
-                    if (string.IsNullOrEmpty(moduleName))
+                    LoadedImage? loadedImage = _processDatabase.GetLoadedImage(obj.ProcessID, ip, obj.TimeStamp);
+                    if (loadedImage.HasValue)
                     {
-                        moduleName = loadedImage.Value.FileName;
-                    }
+                        ulong relativeVirtualAddress = ip - loadedImage.Value.ImageBase;
 
-                    //if (_processDatabase.GetProcessName(obj.ProcessID, obj.TimeStamp) == "MrShell")
-                    //{
+                        string moduleName = Path.GetFileName(loadedImage.Value.FileName);
+                        if (string.IsNullOrEmpty(moduleName))
+                        {
+                            moduleName = loadedImage.Value.FileName;
+                        }
+
+                        stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
+
+                        //if (_processDatabase.GetProcessName(obj.ProcessID, obj.TimeStamp) == "MrShell")
+                        //{
                         //ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
                         //    new Symbols.Module { FileName = loadedImage.Value.FileName, SizeOfImage = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
                         //if (resolvedSymbol.HasValue)
@@ -298,20 +311,33 @@ namespace InstantTraceViewerUI.Etw
                         //    // Module known but symbol not found. Show module and relative virtual address.
                         //    stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
                         //}
-                    //}
+                        //}
+                    }
+                    else
+                    {
+                        // Unknown module, this is strange! Just show the IP.
+                        stackFrames.Add(i.ToString(), $"0x{obj.InstructionPointer(i):X}");
+                    }
                 }
-                else
-                {
-                    // Unknown module, this is strange! Just show the IP.
-                    stackFrames.Add(i.ToString(), $"0x{obj.InstructionPointer(i):X}");
-                }
+                return stackFrames;
             }
 
-            newRecord.NamedValues = [
-                new NamedValue("EventTimeStampQPC", obj.EventTimeStampQPC),
-                new NamedValue("FrameCount", obj.FrameCount),
-                new NamedValue("Frames", stackFrames)];
-            AddEvent(newRecord);
+            bool found = UpdatePendingRecord(obj.ThreadID, obj.EventTimeStampRelativeMSec, (ref record) =>
+            {
+                var namedValuesCopy = record.NamedValues.ToList();
+                namedValuesCopy.Add(new NamedValue("StackWalk", GetStackFrames()));
+                record.NamedValues = namedValuesCopy.ToArray();
+            });
+
+            // If we couldn't attach the stackwalk to an existing event, create a new one just for the stackwalk.
+            if (!found)
+            {
+                var newRecord = CreateBaseTraceRecord(obj);
+                newRecord.NamedValues = [
+                    new NamedValue("RelativeMSec", obj.EventTimeStampRelativeMSec - obj.EventTimeStampRelativeMSec),
+                    new NamedValue("StackWalk", GetStackFrames())];
+                AddEvent(newRecord);
+            }
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
@@ -322,6 +348,7 @@ namespace InstantTraceViewerUI.Etw
             }
 
             var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.Name = "CSwitch";
             newRecord.NamedValues = [
                 new NamedValue("OldThreadID", obj.OldThreadID),
                 new NamedValue("NewThreadID", obj.NewThreadID),
