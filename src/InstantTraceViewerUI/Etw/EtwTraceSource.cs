@@ -1,4 +1,7 @@
-﻿using Microsoft.Diagnostics.Tracing;
+﻿using Hexa.NET.ImGui;
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
@@ -8,7 +11,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -21,7 +23,7 @@ namespace InstantTraceViewerUI.Etw
         TelemetryMeasures = 0x0000400000000000,
     }
 
-    internal partial class EtwTraceSource : ITraceSource
+    internal partial class EtwTraceSource : ITraceSource, ITraceSourceGuiExtensions
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
@@ -51,7 +53,8 @@ namespace InstantTraceViewerUI.Etw
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
         private readonly TraceEventSession? _etwSession;
-        private readonly ETWTraceEventSource _etwSource;
+        private readonly TraceEventDispatcher _etwSource;
+        private readonly SymbolTraceEventParser _symbolEventParser;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
@@ -66,6 +69,16 @@ namespace InstantTraceViewerUI.Etw
 
         private ConcurrentDictionary<int, string> _threadNames = new();
         private ConcurrentDictionary<int, string> _processNames = new();
+        private EtwModuleTracker _processDatabase = new();
+        private List<IDisposable> _moduleRevokers = new();
+        private SymbolResolver _symbolResolver = new SymbolResolver(
+            @"c:\windows\system32;" +
+            @"d:\repos\cloud1\binlocal\WinX64;" + 
+            @"D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;" + 
+            @"d:\repos\cloud1\binlocal\WinX64\Symbols;" +
+            @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
+            @"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
+            @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
 
         private bool isDisposed;
 
@@ -77,6 +90,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
@@ -89,6 +103,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = displayName;
             _etwSession = null;
             _etwSource = etwSource;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
             _processingThread = new Thread(() => ProcessThread());
@@ -96,7 +111,7 @@ namespace InstantTraceViewerUI.Etw
         }
 
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
-        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
+        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl", ".etlx" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
         private void AddEvent(EtwRecord record)
         {
@@ -120,6 +135,7 @@ namespace InstantTraceViewerUI.Etw
         {
             SubscribeToKernelEvents();
             SubscribeToDynamicEvents();
+            SubscribeToSymbolEvents();
 
             try
             {
@@ -128,7 +144,13 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new EtwRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
+                AddEvent(new EtwRecord
+                {
+                    ProviderName = "Instant Trace Viewer",
+                    Name = "Internal Error",
+                    Level = TraceEventLevel.Critical,
+                    NamedValues = [new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" }]
+                });
             }
         }
 
@@ -218,6 +240,12 @@ namespace InstantTraceViewerUI.Etw
             {
                 _traceRecords = new();
                 _generationId++;
+
+                foreach (var module in _moduleRevokers)
+                {
+                    module.Dispose();
+                }
+                _moduleRevokers.Clear();
             }
             finally
             {
@@ -303,6 +331,34 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
+        bool _renderSymbolManager = false;
+        public void RenderToolstripExtras(IUiCommands uiCommands)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("\ue697 Symbols"))
+            {
+                ImGui.OpenPopup("EtwSymbols");
+            }
+            if (ImGui.BeginPopup("EtwSymbols"))
+            {
+                if (ImGui.MenuItem("Manage symbols", "", _renderSymbolManager))
+                {
+                    _renderSymbolManager = !_renderSymbolManager;
+                }
+
+                ImGui.EndPopup();
+            }
+        }
+
+        public void RenderActiveWindows(IUiCommands uiCommands)
+        {
+            if (_renderSymbolManager)
+            {
+                _symbolResolver.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
+            }
+        }
+
+
         private void UpdateProcessNameTable(IReadOnlyList<EtwRecord> traceRecords)
         {
             // Microsoft.Diagnostics.Tracing will track process names when the Kernel provider is enabled, otherwise we need to do it.
@@ -344,6 +400,12 @@ namespace InstantTraceViewerUI.Etw
                     _etwSource.Dispose();
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
+
+                    foreach (var module in _moduleRevokers)
+                    {
+                        module.Dispose();
+                    }
+                    _moduleRevokers.Clear();
                 }
 
                 isDisposed = true;

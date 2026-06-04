@@ -53,6 +53,8 @@
     <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
     <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
+    <PackageReference Include="Microsoft.Debugging.Platform.DbgEng" Version="20260319.1511.0" />
+    <PackageReference Include="Microsoft.Debugging.Platform.SymSrv" Version="20260319.1511.0" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -70,6 +72,26 @@
   <ItemGroup>
     <AdditionalFiles Include="NativeMethods.txt" />
   </ItemGroup>
+
+  <Target Name="CopyDebuggingPlatformDllsToOutput" AfterTargets="CopyFilesToOutputDirectory">
+    <PropertyGroup>
+      <DebuggingPlatformPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-x64'">amd64</DebuggingPlatformPackageArchitecture>
+      <DebuggingPlatformPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</DebuggingPlatformPackageArchitecture>
+      <DebuggingPlatformPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-x86'">x86</DebuggingPlatformPackageArchitecture>
+    </PropertyGroup>
+    <Error Condition="'$(DebuggingPlatformPackageArchitecture)' == ''" Text="Unable to determine Debugging Platform package architecture for RuntimeIdentifier='$(RuntimeIdentifier)'." />
+    <Error Condition="'$(MicrosoftDebuggingPlatformDbgEngContent)' == ''" Text="Microsoft.Debugging.Platform.DbgEng did not define MicrosoftDebuggingPlatformDbgEngContent." />
+    <Error Condition="'$(MicrosoftDebuggingPlatformSymSrvContent)' == ''" Text="Microsoft.Debugging.Platform.SymSrv did not define MicrosoftDebuggingPlatformSymSrvContent." />
+    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll')" Text="Unable to find dbgcore.dll at '$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll'." />
+    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbghelp.dll')" Text="Unable to find dbghelp.dll at '$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbghelp.dll'." />
+    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformSymSrvContent)$(DebuggingPlatformPackageArchitecture)\symsrv.dll')" Text="Unable to find symsrv.dll at '$(MicrosoftDebuggingPlatformSymSrvContent)$(DebuggingPlatformPackageArchitecture)\symsrv.dll'." />
+    <ItemGroup>
+      <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll" />
+      <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbghelp.dll" />
+      <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformSymSrvContent)$(DebuggingPlatformPackageArchitecture)\symsrv.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DebuggingPlatformDll)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Fonts\CascadiaMono.ttf">
