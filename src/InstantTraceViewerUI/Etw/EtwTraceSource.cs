@@ -1,14 +1,22 @@
-﻿using Microsoft.Diagnostics.Tracing;
+﻿using Hexa.NET.ImGui;
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
+using Microsoft.Win32.SafeHandles;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
-using InstantTraceViewer;
+using System.Xml.Linq;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Threading;
+using FILETIME = System.Runtime.InteropServices.ComTypes.FILETIME;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -21,7 +29,7 @@ namespace InstantTraceViewerUI.Etw
         TelemetryMeasures = 0x0000400000000000,
     }
 
-    internal partial class EtwTraceSource : ITraceSource
+    internal partial class EtwTraceSource : ITraceSource, ITraceSourceGuiExtensions
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
@@ -51,7 +59,8 @@ namespace InstantTraceViewerUI.Etw
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
         private readonly TraceEventSession? _etwSession;
-        private readonly ETWTraceEventSource _etwSource;
+        private readonly TraceEventDispatcher _etwSource;
+        private readonly SymbolTraceEventParser _symbolEventParser;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
@@ -64,8 +73,16 @@ namespace InstantTraceViewerUI.Etw
         private ListBuilder<EtwRecord> _traceRecords = new ListBuilder<EtwRecord>();
         private int _generationId = 1;
 
-        private ConcurrentDictionary<int, string> _threadNames = new();
-        private ConcurrentDictionary<int, string> _processNames = new();
+        private ProcessDatabase _processDatabase = new();
+        private List<IDisposable> _moduleRevokers = new();
+        private SymbolResolverV2 _symbolResolver = new SymbolResolverV2(
+            @"c:\windows\system32;" +
+            @"d:\repos\cloud1\binlocal\WinX64;" + 
+            @"D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;" + 
+            @"d:\repos\cloud1\binlocal\WinX64\Symbols;" +
+            @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
+            @"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
+            @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
 
         private bool isDisposed;
 
@@ -77,9 +94,11 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
+
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -89,6 +108,7 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = displayName;
             _etwSession = null;
             _etwSource = etwSource;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
             _processingThread = new Thread(() => ProcessThread());
@@ -96,7 +116,7 @@ namespace InstantTraceViewerUI.Etw
         }
 
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
-        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
+        public static IEnumerable<string> EtlFileExtensions => new[] { ".etl", ".etlx" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
         private void AddEvent(EtwRecord record)
         {
@@ -120,6 +140,7 @@ namespace InstantTraceViewerUI.Etw
         {
             SubscribeToKernelEvents();
             SubscribeToDynamicEvents();
+            SubscribeToSymbolEvents();
 
             try
             {
@@ -128,7 +149,13 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new EtwRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
+                AddEvent(new EtwRecord
+                {
+                    ProviderName = "Instant Trace Viewer",
+                    Name = "Internal Error",
+                    Level = TraceEventLevel.Critical,
+                    NamedValues = [new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" }]
+                });
             }
         }
 
@@ -160,18 +187,19 @@ namespace InstantTraceViewerUI.Etw
                 // but then this disallows non-kernel providers being enabled. To avoid the problem we simply remove these special keywords.
                 // Oddly WPR can enable these keywords along with non-kernel providers, so the Microsoft.Diagnostics.Tracing library restrictions may be out of date?
                 KernelTraceEventParser.Keywords NonOSKeywords = (KernelTraceEventParser.Keywords)unchecked((int)0xf84c0000);
-                KernelTraceEventParser.Keywords allowedKernelKeywords = profile.KernelKeywords & ~NonOSKeywords;
+                KernelTraceEventParser.Keywords allowedKernelStackwalkKeywords = profile.KernelStackwalkKeywords & ~NonOSKeywords;
+                KernelTraceEventParser.Keywords allowedKernelKeywords = (profile.KernelKeywords & ~NonOSKeywords) | allowedKernelStackwalkKeywords;
                 if (allowedKernelKeywords != KernelTraceEventParser.Keywords.None)
                 {
                     // EnableKernelProvider will always enable Process and Thread events.
                     kernelProcessThreadProviderEnabled = true;
-                    etwSession.EnableKernelProvider(allowedKernelKeywords);
+                    etwSession.EnableKernelProvider(allowedKernelKeywords, allowedKernelStackwalkKeywords);
                 }
 
                 foreach (var provider in profile.Providers)
                 {
                     // Make sure to keep in sync with TogglePause() method
-                    etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
+                    etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword, CreateProviderOptions(provider));
                 }
 
                 // Example of enabling processor CPU counter support. Not investigated yet. Search perfview codebase for examples of use.
@@ -207,9 +235,9 @@ namespace InstantTraceViewerUI.Etw
 
         public string DisplayName { get; private set; }
 
-        public int LostEvents => _etwSource.EventsLost;
+        public int LostEvents => (_etwSource as ETWTraceEventSource)?.EventsLost ?? 0;
 
-        public bool CanClear => _etwSource.IsRealTime;
+        public bool CanClear => (_etwSource as ETWTraceEventSource)?.IsRealTime ?? false;
 
         public void Clear()
         {
@@ -218,6 +246,12 @@ namespace InstantTraceViewerUI.Etw
             {
                 _traceRecords = new();
                 _generationId++;
+
+                foreach (var module in _moduleRevokers)
+                {
+                    module.Dispose();
+                }
+                _moduleRevokers.Clear();
             }
             finally
             {
@@ -227,7 +261,7 @@ namespace InstantTraceViewerUI.Etw
             GC.Collect();
         }
 
-        public bool CanPause => _etwSource.IsRealTime;
+        public bool CanPause => (_etwSource as ETWTraceEventSource)?.IsRealTime ?? false;
         public bool IsPaused { get; private set; }
         public void TogglePause()
         {
@@ -249,7 +283,7 @@ namespace InstantTraceViewerUI.Etw
                     }
                     else
                     {
-                        _etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword);
+                        _etwSession.EnableProvider(provider.Name, provider.Level, provider.MatchAnyKeyword, CreateProviderOptions(provider));
                     }
                 }
                 catch (Exception ex)
@@ -259,6 +293,11 @@ namespace InstantTraceViewerUI.Etw
                     Debug.Fail($"Failed to toggle ETW session providers: {ex.Message}"); // To check if this actually happens in practice when testing.
                 }
             }
+        }
+
+        private static TraceEventProviderOptions? CreateProviderOptions(EtwSessionEnabledProvider provider)
+        {
+            return provider.StackwalkEnabled ? new TraceEventProviderOptions { StacksEnabled = true } : null;
         }
 
         // ETW data streams in very quickly, so no need to indicate to user that it is loading.
@@ -293,6 +332,7 @@ namespace InstantTraceViewerUI.Etw
                 return new EtwTraceTableSnapshot
                 {
                     RecordSnapshot = _traceRecords.CreateSnapshot(),
+                    ProcessDatabase = _processDatabase,
                     GenerationId = _generationId,
                     Schema = _schema,
                 };
@@ -303,35 +343,107 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
+        bool _renderSymbolManager = false;
+
+
+        public void RenderToolstripExtras(IUiCommands uiCommands)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("\ue697 Symbols"))
+            {
+                ImGui.OpenPopup("EtwSymbols");
+            }
+            if (ImGui.BeginPopup("EtwSymbols"))
+            {
+                if (ImGui.MenuItem("Manage symbols", "", _renderSymbolManager))
+                {
+                    _renderSymbolManager = !_renderSymbolManager;
+                }
+
+                ImGui.EndPopup();
+            }
+        }
+
+        public void RenderActiveWindows(IUiCommands uiCommands)
+        {
+            if (_renderSymbolManager)
+            {
+                _symbolResolver.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
+            }
+        }
+
+
         private void UpdateProcessNameTable(IReadOnlyList<EtwRecord> traceRecords)
         {
             // Microsoft.Diagnostics.Tracing will track process names when the Kernel provider is enabled, otherwise we need to do it.
             // If this is not a realtime session, then no point in trying to look up process names--they could be from a different machine or be reused at this point.
-            if (!_etwSource.IsRealTime || _kernelProcessThreadProviderEnabled)
+            if (!((_etwSource as ETWTraceEventSource)?.IsRealTime ?? false) || _kernelProcessThreadProviderEnabled)
             {
                 return;
             }
 
+            HashSet<int> processNameLookupAttemptedPids = new();
             foreach (var record in traceRecords)
             {
-                _processNames.GetOrAdd(record.ProcessId, _ =>
+                if (record.ProcessId < 0)
                 {
-                    try
+                    continue;
+                }
+
+                if (!processNameLookupAttemptedPids.Add(record.ProcessId) ||
+                    _processDatabase.GetProcessName(record.ProcessId, record.Timestamp) != null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    TryAddLiveProcessToDatabase(record.ProcessId);
+                }
+                catch
+                {
+                    Debug.WriteLine($"Failed to get process name for pid {record.ProcessId})");
+                }
+            }
+        }
+
+        private unsafe void TryAddLiveProcessToDatabase(int processId)
+        {
+            HANDLE processHandle = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+            if (!processHandle.IsNull)
+            {
+                try
+                {
+                    FILETIME creationTime;
+                    FILETIME exitTime;
+                    FILETIME kernelTime;
+                    FILETIME userTime;
+                    using SafeFileHandle safeProcessHandle = new((nint)processHandle.Value, ownsHandle: false);
+                    if (!PInvoke.GetProcessTimes(safeProcessHandle, out creationTime, out exitTime, out kernelTime, out userTime))
                     {
-                        // We could go lower-level if it is useful and PInvoke QueryFullProcessImageName and open the process handle with PROCESS_QUERY_LIMITED_INFORMATION,
-                        // but since this is a realtime session, we're probably elevated already and shouldn't have problems. This would also avoid the need for a try-catch.
-                        // However we now have no way to know if the process terminated and the process id could be re-used in the future.
-                        using (var process = Process.GetProcessById(record.ProcessId))
-                        {
-                            return process.ProcessName;
-                        }
+                        return;
                     }
-                    catch
+
+                    const int MaxProcessImagePathLength = 32768;
+                    char* imagePathBuffer = stackalloc char[MaxProcessImagePathLength];
+                    uint imagePathLength = MaxProcessImagePathLength;
+                    if (!PInvoke.QueryFullProcessImageName(processHandle, PROCESS_NAME_FORMAT.PROCESS_NAME_WIN32, imagePathBuffer, &imagePathLength))
                     {
-                        Debug.WriteLine($"Failed to get process name for pid {record.ProcessId})");
-                        return null; // Avoid querying again.
+                        return;
                     }
-                });
+
+                    string imagePath = new string(imagePathBuffer, 0, (int)imagePathLength);
+                    string processName = Path.GetFileNameWithoutExtension(imagePath);
+                    if (!string.IsNullOrEmpty(processName))
+                    {
+                        long creationTimeFT = (long)(((ulong)(uint)creationTime.dwHighDateTime << 32) | (uint)creationTime.dwLowDateTime);
+                        _processDatabase.SetProcessName(processId, processName, DateTime.FromFileTime(creationTimeFT));
+                    }
+                }
+                finally
+                {
+                    PInvoke.CloseHandle(processHandle);
+                }
             }
         }
 
@@ -344,6 +456,12 @@ namespace InstantTraceViewerUI.Etw
                     _etwSource.Dispose();
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
+
+                    foreach (var module in _moduleRevokers)
+                    {
+                        module.Dispose();
+                    }
+                    _moduleRevokers.Clear();
                 }
 
                 isDisposed = true;

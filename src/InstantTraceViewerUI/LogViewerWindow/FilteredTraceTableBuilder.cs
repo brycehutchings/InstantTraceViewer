@@ -87,6 +87,23 @@ namespace InstantTraceViewerUI
         public int GetFullTableRowIndex(int filteredRowIndex)
             => _visibleRowIndiciesSnapshot[filteredRowIndex];
 
+        public IEnumerable<(int FullTableRowIndex, int? VisibleTableRowIndex)> GetFullTableRowIndices()
+        {
+            int visibleIndex = 0;
+            for (int fullIndex = 0; fullIndex < FullTable.RowCount; fullIndex++)
+            {
+                if (visibleIndex < _visibleRowIndiciesSnapshot.Count && _visibleRowIndiciesSnapshot[visibleIndex] == fullIndex)
+                {
+                    yield return (fullIndex, visibleIndex);
+                    visibleIndex++;
+                }
+                else
+                {
+                    yield return (fullIndex, null);
+                }
+            }
+        }
+
         public string GetColumnValueString(int filteredRowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
             => FullTable.GetColumnValueString(GetFullTableRowIndex(filteredRowIndex), column, allowMultiline);
 
@@ -104,6 +121,9 @@ namespace InstantTraceViewerUI
 
         public UnifiedOpcode GetColumnValueUnifiedOpcode(int filteredRowIndex, TraceSourceSchemaColumn column)
             => FullTable.GetColumnValueUnifiedOpcode(GetFullTableRowIndex(filteredRowIndex), column);
+
+        public UnifiedLifecycleEvent GetLifecycleEvent(int filteredRowIndex)
+            => FullTable.GetLifecycleEvent(GetFullTableRowIndex(filteredRowIndex));
 
         public TraceTableSchema Schema => FullTable.Schema;
 

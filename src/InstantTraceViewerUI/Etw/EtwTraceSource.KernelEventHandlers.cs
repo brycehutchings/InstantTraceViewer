@@ -1,8 +1,12 @@
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
-using InstantTraceViewer;
+using System.IO;
+using System.Text;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -141,6 +145,23 @@ namespace InstantTraceViewerUI.Etw
             //
             _etwSource.Kernel.ThreadCSwitch += OnThreadCSwitch;
 
+            _etwSource.Kernel.PerfInfoSample += (SampledProfileTraceData data) =>
+            {
+                var newRecord = CreateBaseTraceRecord(data);
+                var namedValues = new List<NamedValue>();
+                namedValues.Add(new NamedValue("IP", data.InstructionPointer));
+                //TraceCallStack callstack = _traceLog?.GetCallStackForEvent(data);
+                //if (callstack != null)
+                //{
+                //    namedValues.Add(new NamedValue("CallStack", callstack.ToString()));
+                //}
+#pragma warning disable CS0618 // Type or member is obsolete
+                namedValues.Add(new NamedValue("TimeStampQPC", data.TimeStampQPC));
+#pragma warning restore CS0618 // Type or member is obsolete
+                newRecord.NamedValues = namedValues.ToArray();
+                AddEvent(newRecord);
+            };
+
             //
             // Keywords.Dispatcher
             //
@@ -149,10 +170,10 @@ namespace InstantTraceViewerUI.Etw
             //
             // Keywords.ImageLoad
             //
-            _etwSource.Kernel.ImageLoad += OnImageLoadUnload;
-            _etwSource.Kernel.ImageUnload += OnImageLoadUnload;
-            _etwSource.Kernel.ImageDCStart += OnImageLoadUnload;
-            _etwSource.Kernel.ImageDCStop += OnImageLoadUnload;
+            _etwSource.Kernel.ImageLoad += OnImageLoad;
+            _etwSource.Kernel.ImageUnload += OnImageLoad;
+            _etwSource.Kernel.ImageDCStart += OnImageLoad;
+            _etwSource.Kernel.ImageDCStop += OnImageLoad;
 
             //
             // Keywords.Thread
@@ -208,28 +229,33 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
         }
 
-        private void OnImageLoadUnload(ImageLoadTraceData obj)
+        private void OnImageLoad(ImageLoadTraceData obj)
         {
+            TraceEventOpcodeExtended opcode = (TraceEventOpcodeExtended)obj.Opcode;
+            if (opcode == TraceEventOpcodeExtended.Stop || opcode == TraceEventOpcodeExtended.DataCollectionStop)
+            {
+                _processDatabase.ImageUnload(obj.ProcessID, obj.ImageBase, obj.TimeStamp);
+            }
+            else if (opcode == TraceEventOpcodeExtended.Load || opcode == TraceEventOpcodeExtended.DataCollectionStart)
+            {
+                _processDatabase.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, obj.TimeStamp);
+                _moduleRevokers.Add(_symbolResolver.RegisterModule(new SymbolResolverV2.Module { FileName = obj.FileName, SizeOfImage = (ulong)obj.ImageSize, TimeDateStamp = (uint)obj.TimeDateStamp }));
+            }
+
             if (IsPaused)
             {
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
-#if false
             var newRecord = CreateBaseTraceRecord(obj);
-
-            // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
-            DateTimeOffset timeDateStamp = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(obj.TimeDateStamp).ToLocalTime();
-
             newRecord.NamedValues = [
                 new NamedValue("File", obj.FileName),
                 new NamedValue("ImageBase", obj.ImageBase),
-                new NamedValue("ImageSize", obj.ImageSize),
-                new NamedValue("TimeDateStamp", timeDateStamp.ToString("yyyy-MM-dd HH:mm:ss")),
-                new NamedValue("CheckSum", obj.ImageChecksum)];
+                new NamedValue("SizeOfImage", (uint)obj.ImageSize),
+                new NamedValue("CheckSum", (uint)obj.ImageChecksum),
+                new NamedValue("TimeDateStamp", (uint)obj.TimeDateStamp),
+            ];
             AddEvent(newRecord);
-#endif
         }
 
         private void OnStackWalkStack(StackWalkStackTraceData obj)
@@ -239,7 +265,51 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+
+            var stackFrames = new Dictionary<string, object>();
+            for (int i = 0; i < obj.FrameCount; i++)
+            {
+                ulong ip = obj.InstructionPointer(i);
+
+                LoadedImage? loadedImage = _processDatabase.GetLoadedImage(newRecord.ProcessId, ip, obj.TimeStamp);
+                if (loadedImage.HasValue) {
+                    ulong relativeVirtualAddress = ip - loadedImage.Value.ImageBase;
+
+                    string moduleName = Path.GetFileName(loadedImage.Value.FileName);
+                    if (string.IsNullOrEmpty(moduleName))
+                    {
+                        moduleName = loadedImage.Value.FileName;
+                    }
+
+                    if (_processDatabase.GetProcessName(obj.ProcessID, obj.TimeStamp) == "MrShell")
+                    {
+                        //ResolvedSymbol? resolvedSymbol = _symbolResolver.ResolveAsync(
+                        //    new Symbols.Module { FileName = loadedImage.Value.FileName, SizeOfImage = loadedImage.Value.ImageSize, TimeDateStamp = loadedImage.Value.TimeDateStamp }, relativeVirtualAddress).GetAwaiter().GetResult();
+                        //if (resolvedSymbol.HasValue)
+                        //{
+                        //    // Symbol found.
+                        //    stackFrames.Add(i.ToString(), $"{resolvedSymbol.Value.ModuleName}!{resolvedSymbol.Value.SymbolName}+0x{resolvedSymbol.Value.Displacement:X}");
+                        //}
+                        //else
+                        //{
+                        //    // Module known but symbol not found. Show module and relative virtual address.
+                        //    stackFrames.Add(i.ToString(), $"{moduleName}+0x{relativeVirtualAddress:X}");
+                        //}
+                    }
+                }
+                else
+                {
+                    // Unknown module, this is strange! Just show the IP.
+                    stackFrames.Add(i.ToString(), $"0x{obj.InstructionPointer(i):X}");
+                }
+            }
+
+            newRecord.NamedValues = [
+                new NamedValue("EventTimeStampQPC", obj.EventTimeStampQPC),
+                new NamedValue("FrameCount", obj.FrameCount),
+                new NamedValue("Frames", stackFrames)];
+            AddEvent(newRecord);
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
@@ -250,6 +320,15 @@ namespace InstantTraceViewerUI.Etw
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.NamedValues = [
+                new NamedValue("OldThreadID", obj.OldThreadID),
+                new NamedValue("NewThreadID", obj.NewThreadID),
+                new NamedValue("OldThreadPriority", obj.OldThreadPriority),
+                new NamedValue("NewThreadPriority", obj.NewThreadPriority),
+                new NamedValue("OldThreadState", obj.OldThreadState),
+                new NamedValue("OldThreadWaitReason", obj.OldThreadWaitReason)];
+            AddEvent(newRecord);
         }
 
         private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)
@@ -423,27 +502,23 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
         {
-            _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
+            _processDatabase.SetThreadName(data.ThreadID, data.ThreadName, data.TimeStamp);
 
             if (IsPaused)
             {
                 return; // We still want to update the names but not add events.
             }
+
+            var newRecord = CreateBaseTraceRecord(data);
+            newRecord.NamedValues = [new NamedValue("ThreadName", data.ThreadName)];
+            AddEvent(newRecord);
         }
 
         private void OnThreadEvent(ThreadTraceData data)
         {
             if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                if (!string.IsNullOrEmpty(data.ThreadName))
-                {
-                    _threadNames.AddOrUpdate(data.ThreadID, data.ThreadName, (key, oldValue) => data.ThreadName);
-                }
-                else
-                {
-                    // In case a thread id is reused, we want to make sure we don't have stale data. We need to use a timestamp if we want to keep old and new names around.
-                    _threadNames.TryRemove(data.ThreadID, out _);
-                }
+                _processDatabase.SetThreadName(data.ThreadID, data.ThreadName, data.TimeStamp);
             }
 
             if (IsPaused)
@@ -451,14 +526,27 @@ namespace InstantTraceViewerUI.Etw
                 return; // We still want to update the names but not add events.
             }
 
-            // IGNORED: Very noisy--Do we think anyone will want to see the thread events?
+            var newRecord = CreateBaseTraceRecord(data);
+
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop ||
+                data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
+            {
+                newRecord.InternalFlags = InternalFlags.ThreadLifecycle;
+            }
+
+            if (!string.IsNullOrEmpty(data.ThreadName))
+            {
+                newRecord.NamedValues = [new NamedValue("ThreadName", data.ThreadName)];
+            }
+
+            AddEvent(newRecord);
         }
 
         private void OnProcessEvent(ProcessTraceData data)
         {
             if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                _processNames.AddOrUpdate(data.ProcessID, data.ProcessName, (key, oldValue) => data.ProcessName);
+                _processDatabase.SetProcessName(data.ProcessID, data.ProcessName, data.TimeStamp);
             }
 
             if (IsPaused)
@@ -466,13 +554,13 @@ namespace InstantTraceViewerUI.Etw
                 return; // We still want to update the names but not add events.
             }
 
-            if ((data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStart) ||
-                data.Opcode.HasFlag(TraceEventOpcode.DataCollectionStop)) && (_etwSession?.IsRealTime ?? false))
-            {
-                return; // DCStart/DCStop events are not useful in real-time mode. Lots of spam at the start.
-            }
-
             var newRecord = CreateBaseTraceRecord(data);
+
+            if (data.Opcode == TraceEventOpcode.Start || data.Opcode == TraceEventOpcode.Stop ||
+                data.Opcode == TraceEventOpcode.DataCollectionStart || data.Opcode == TraceEventOpcode.DataCollectionStop)
+            {
+                newRecord.InternalFlags = InternalFlags.ProcessLifecycle;
+            }
 
             var namedValues = new List<NamedValue>();
 

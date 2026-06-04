@@ -16,7 +16,17 @@
     {
         None,
         Start,
-        Stop
+        Stop,
+    }
+
+    // name sucks.... want it more generic like "SpecialType"?
+    public enum UnifiedLifecycleEvent
+    {
+        None,
+        ThreadStart,
+        ThreadStop,
+        ProcessStart,
+        ProcessStop,
     }
 
     public interface ITraceTableSnapshot
@@ -46,6 +56,8 @@
         UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column);
 
         UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column);
+
+        UnifiedLifecycleEvent GetLifecycleEvent(int rowIndex);
     }
 
     public interface ITraceSource : IDisposable

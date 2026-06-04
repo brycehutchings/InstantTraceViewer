@@ -56,5 +56,7 @@
         {
             throw new NotImplementedException();
         }
+
+        public UnifiedLifecycleEvent GetLifecycleEvent(int rowIndex) => UnifiedLifecycleEvent.None;
     }
 }

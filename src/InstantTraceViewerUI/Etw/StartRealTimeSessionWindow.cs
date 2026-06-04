@@ -16,12 +16,30 @@ namespace InstantTraceViewerUI.Etw
         private const string WindowName = "Start real-time ETW session";
         private const string ImportOverwritePopupName = "Import WPRP?";
         private const string RecentWprpPopupName = "Recent WPRP files";
+        private const string ProviderNameSuggestionsWindowName = "Registered ETW providers";
         private static int s_nextWindowId;
 
         private static readonly IReadOnlyList<KernelTraceEventParser.Keywords> KernelKeywords =
             Enum.GetValues<KernelTraceEventParser.Keywords>()
                 .Where(keyword => keyword != KernelTraceEventParser.Keywords.None && IsSingleKeyword(keyword))
                 .ToList();
+
+        private static readonly KernelTraceEventParser.Keywords StackwalkKernelKeywords =
+            KernelTraceEventParser.Keywords.Profile |
+            KernelTraceEventParser.Keywords.SystemCall |
+            KernelTraceEventParser.Keywords.Thread |
+            KernelTraceEventParser.Keywords.ContextSwitch |
+            KernelTraceEventParser.Keywords.Dispatcher |
+            KernelTraceEventParser.Keywords.ImageLoad |
+            KernelTraceEventParser.Keywords.Process |
+            KernelTraceEventParser.Keywords.DiskIOInit |
+            KernelTraceEventParser.Keywords.VirtualAlloc |
+            KernelTraceEventParser.Keywords.VAMap |
+            KernelTraceEventParser.Keywords.MemoryHardFaults |
+            KernelTraceEventParser.Keywords.Memory |
+            KernelTraceEventParser.Keywords.FileIOInit |
+            KernelTraceEventParser.Keywords.Registry |
+            KernelTraceEventParser.Keywords.AdvancedLocalProcedureCalls;
 
         private static readonly IReadOnlyDictionary<KernelTraceEventParser.Keywords, string> KernelKeywordHelpText = new Dictionary<KernelTraceEventParser.Keywords, string>
         {
@@ -64,10 +82,17 @@ namespace InstantTraceViewerUI.Etw
         };
 
         private readonly int _windowId = ++s_nextWindowId;
+        private readonly ImGuiListClipperPtr _providerNameClipper = ImGui.ImGuiListClipper();
+        private readonly List<KeyValuePair<string, Guid>> _providerNameMatches = new();
+        private IReadOnlyList<KeyValuePair<string, Guid>>? _registeredProviders;
+        private bool _providerNameSuggestionsOpen;
+        private bool _providerNameSuggestionsHovered;
+        private bool _providerNameSuggestionsMouseDown;
         private EtwSessionProfile _profile = CreateDefaultProfile();
         private string _newProviderName = "";
         private TraceEventLevel _newProviderLevel = TraceEventLevel.Verbose;
         private string _newProviderKeywords = "0xFFFFFFFFFFFFFFFF";
+        private bool _newProviderStackwalkEnabled;
         private string _pendingImportWprpFile = "";
         private string _errorMessage = "";
         private bool _closeRequested;
@@ -141,7 +166,7 @@ namespace InstantTraceViewerUI.Etw
         private void DrawProviders()
         {
             Vector2 tableSize = new Vector2(-1, ImGui.GetContentRegionAvail().Y);
-            if (ImGui.BeginTable("EtwProviders", 5,
+            if (ImGui.BeginTable("EtwProviders", 6,
                 ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable,
                 tableSize))
             {
@@ -150,6 +175,7 @@ namespace InstantTraceViewerUI.Etw
                 ImGui.TableSetupColumn("Description", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableSetupColumn("Level", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 8);
                 ImGui.TableSetupColumn("Keywords", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 12);
+                ImGui.TableSetupColumn("Stackwalk", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 7);
                 ImGui.TableSetupColumn("Action", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 5);
                 ImGui.TableHeadersRow();
 
@@ -172,6 +198,13 @@ namespace InstantTraceViewerUI.Etw
                     ImGui.TextUnformatted($"0x{provider.MatchAnyKeyword:X}");
 
                     ImGui.TableNextColumn();
+                    bool stackwalkEnabled = provider.StackwalkEnabled;
+                    if (ImGui.Checkbox("##ProviderStackwalk", ref stackwalkEnabled))
+                    {
+                        provider.StackwalkEnabled = stackwalkEnabled;
+                    }
+
+                    ImGui.TableNextColumn();
                     if (ImGui.Button("Remove"))
                     {
                         _profile.Providers.RemoveAt(i);
@@ -183,8 +216,7 @@ namespace InstantTraceViewerUI.Etw
 
                 ImGui.TableNextRow();
                 ImGui.TableNextColumn();
-                ImGui.SetNextItemWidth(-1);
-                ImGui.InputTextWithHint("##NewProviderName", "Provider name or GUID", ref _newProviderName, ImGuiWidgets.GetInputTextBufferSize(_newProviderName, 256));
+                DrawNewProviderNameInput();
 
                 ImGui.TableNextColumn();
                 ImGui.TextUnformatted("n/a");
@@ -195,6 +227,9 @@ namespace InstantTraceViewerUI.Etw
                 ImGui.TableNextColumn();
                 ImGui.SetNextItemWidth(-1);
                 ImGui.InputText("##NewProviderKeywords", ref _newProviderKeywords, ImGuiWidgets.GetInputTextBufferSize(_newProviderKeywords, 32));
+
+                ImGui.TableNextColumn();
+                ImGui.Checkbox("##NewProviderStackwalk", ref _newProviderStackwalkEnabled);
 
                 ImGui.TableNextColumn();
                 if (ImGui.Button("Add"))
@@ -217,15 +252,17 @@ namespace InstantTraceViewerUI.Etw
             ImGui.PopStyleColor();
 
             Vector2 tableSize = new Vector2(-1, ImGui.GetContentRegionAvail().Y);
-            if (ImGui.BeginTable("EtwKernelKeywords", 2, ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV | ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY, tableSize))
+            if (ImGui.BeginTable("EtwKernelKeywords", 3, ImGuiTableFlags.BordersOuter | ImGuiTableFlags.BordersV | ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY, tableSize))
             {
                 ImGui.TableSetupScrollFreeze(0, 1);
                 ImGui.TableSetupColumn("Keyword", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 12);
+                ImGui.TableSetupColumn("Stackwalk", ImGuiTableColumnFlags.WidthFixed, ImGui.GetFontSize() * 7);
                 ImGui.TableSetupColumn("Help", ImGuiTableColumnFlags.WidthStretch, 1);
                 ImGui.TableHeadersRow();
 
                 foreach (KernelTraceEventParser.Keywords keyword in KernelKeywords)
                 {
+                    ImGui.PushID(keyword.ToString());
                     ImGui.TableNextRow();
                     ImGui.TableNextColumn();
                     bool enabled = _profile.KernelKeywords.HasFlag(keyword);
@@ -238,6 +275,25 @@ namespace InstantTraceViewerUI.Etw
                         else
                         {
                             _profile.KernelKeywords &= ~keyword;
+                            _profile.KernelStackwalkKeywords &= ~keyword;
+                        }
+                    }
+
+                    ImGui.TableNextColumn();
+                    if (SupportsStackwalk(keyword))
+                    {
+                        bool stackwalkEnabled = _profile.KernelStackwalkKeywords.HasFlag(keyword);
+                        if (ImGui.Checkbox("##KernelStackwalk", ref stackwalkEnabled))
+                        {
+                            if (stackwalkEnabled)
+                            {
+                                _profile.KernelKeywords |= keyword;
+                                _profile.KernelStackwalkKeywords |= keyword;
+                            }
+                            else
+                            {
+                                _profile.KernelStackwalkKeywords &= ~keyword;
+                            }
                         }
                     }
 
@@ -246,6 +302,7 @@ namespace InstantTraceViewerUI.Etw
                     {
                         ImGui.TextUnformatted(helpText);
                     }
+                    ImGui.PopID();
                 }
 
                 ImGui.EndTable();
@@ -278,12 +335,100 @@ namespace InstantTraceViewerUI.Etw
             float startButtonWidth = ImGui.GetFontSize() * 6;
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + ImGui.GetContentRegionAvail().X - startButtonWidth);
 
-            ImGui.BeginDisabled(string.IsNullOrWhiteSpace(_profile.DisplayName) || (_profile.KernelKeywords == KernelTraceEventParser.Keywords.None && _profile.Providers.Count == 0));
+            ImGui.BeginDisabled(string.IsNullOrWhiteSpace(_profile.DisplayName) || !HasConfiguredSessionOptions());
             if (ImGui.Button("Start", new Vector2(startButtonWidth, 0)))
             {
                 StartSession(uiCommands);
             }
             ImGui.EndDisabled();
+        }
+
+        private void DrawNewProviderNameInput()
+        {
+            ImGui.SetNextItemWidth(-1);
+            ImGui.InputTextWithHint("##NewProviderName", "Provider name or GUID", ref _newProviderName, ImGuiWidgets.GetInputTextBufferSize(_newProviderName, 256));
+
+            Vector2 inputMin = ImGui.GetItemRectMin();
+            Vector2 inputMax = ImGui.GetItemRectMax();
+            Vector2 suggestionsPos = new Vector2(inputMin.X, inputMax.Y);
+            Vector2 suggestionsSize = new Vector2(inputMax.X - inputMin.X, ImGui.GetTextLineHeightWithSpacing() * 12);
+            bool mouseOverSuggestions = ImGui.IsMouseHoveringRect(suggestionsPos, suggestionsPos + suggestionsSize);
+            if (ImGui.IsItemActive())
+            {
+                _providerNameSuggestionsOpen = true;
+            }
+
+            if (mouseOverSuggestions && ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                _providerNameSuggestionsMouseDown = true;
+            }
+            else if (!ImGui.IsMouseDown(ImGuiMouseButton.Left))
+            {
+                _providerNameSuggestionsMouseDown = false;
+            }
+
+            bool keepSuggestionsOpenForMouse = _providerNameSuggestionsHovered || mouseOverSuggestions || _providerNameSuggestionsMouseDown;
+            bool showSuggestions = _providerNameSuggestionsOpen && (ImGui.IsItemActive() || keepSuggestionsOpenForMouse);
+            _providerNameSuggestionsHovered = false;
+
+            if (showSuggestions)
+            {
+                ImGui.SetNextWindowPos(suggestionsPos, ImGuiCond.Always);
+                ImGui.SetNextWindowSize(suggestionsSize, ImGuiCond.Always);
+                if (ImGui.Begin($"{ProviderNameSuggestionsWindowName}###{ProviderNameSuggestionsWindowName}_{_windowId}",
+                    ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing | ImGuiWindowFlags.NoNavFocus))
+                {
+                    IReadOnlyList<KeyValuePair<string, Guid>> providers = GetMatchingRegisteredProviders(_newProviderName);
+                    if (providers.Count == 0)
+                    {
+                        ImGui.BeginDisabled();
+                        ImGui.Selectable("No matching registered providers");
+                        ImGui.EndDisabled();
+                    }
+                    else
+                    {
+                        _providerNameClipper.Begin(providers.Count);
+                        while (_providerNameClipper.Step())
+                        {
+                            for (int i = _providerNameClipper.DisplayStart; i < _providerNameClipper.DisplayEnd; i++)
+                            {
+                                KeyValuePair<string, Guid> provider = providers[i];
+                                if (ImGui.Selectable($"{provider.Key} ({provider.Value})"))
+                                {
+                                    _newProviderName = provider.Key;
+                                    _providerNameSuggestionsOpen = false;
+                                }
+                            }
+                        }
+                        _providerNameClipper.End();
+                    }
+
+                    _providerNameSuggestionsHovered = ImGui.IsWindowHovered(ImGuiHoveredFlags.RootAndChildWindows);
+                    ImGui.End();
+                }
+            }
+        }
+
+        private IReadOnlyList<KeyValuePair<string, Guid>> GetMatchingRegisteredProviders(string filter)
+        {
+            _registeredProviders ??= TraceEventProviders.GetPublishedProviders()
+                .Select(providerGuid => new KeyValuePair<string, Guid>(TraceEventProviders.GetProviderName(providerGuid), providerGuid))
+                .OrderBy(provider => provider.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _providerNameMatches.Clear();
+
+            filter = filter.Trim();
+            foreach (KeyValuePair<string, Guid> provider in _registeredProviders)
+            {
+                if (filter.Length == 0 ||
+                    provider.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    provider.Value.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase))
+                {
+                    _providerNameMatches.Add(provider);
+                }
+            }
+
+            return _providerNameMatches;
         }
 
         private void DrawImportOverwriteConfirmation()
@@ -350,7 +495,9 @@ namespace InstantTraceViewerUI.Etw
 
         private bool HasConfiguredSessionOptions()
         {
-            return _profile.Providers.Count > 0 || _profile.KernelKeywords != KernelTraceEventParser.Keywords.None;
+            return _profile.Providers.Count > 0 ||
+                _profile.KernelKeywords != KernelTraceEventParser.Keywords.None ||
+                _profile.KernelStackwalkKeywords != KernelTraceEventParser.Keywords.None;
         }
 
         private void AddProvider()
@@ -375,9 +522,11 @@ namespace InstantTraceViewerUI.Etw
                 Description = "",
                 Level = _newProviderLevel,
                 MatchAnyKeyword = keywords,
+                StackwalkEnabled = _newProviderStackwalkEnabled,
             });
             _newProviderName = "";
             _newProviderKeywords = "0xFFFFFFFFFFFFFFFF";
+            _newProviderStackwalkEnabled = false;
         }
 
         private void RequestImportWprp(string file)
@@ -488,6 +637,11 @@ namespace InstantTraceViewerUI.Etw
         {
             int value = (int)keyword;
             return value != 0 && (value & (value - 1)) == 0;
+        }
+
+        private static bool SupportsStackwalk(KernelTraceEventParser.Keywords keyword)
+        {
+            return (StackwalkKernelKeywords & keyword) == keyword;
         }
 
         private static EtwSessionProfile CreateDefaultProfile()

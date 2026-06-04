@@ -47,3 +47,31 @@ CommDlgExtendedError
 
 // Packaging detection (NativeInterop.cs)
 GetCurrentPackageFullName
+
+// Process lookup
+OpenProcess
+QueryFullProcessImageName
+GetProcessTimes
+PROCESS_ACCESS_RIGHTS
+
+// Debug Help Library (dbghelp.dll)
+SymInitializeW
+SymCleanup
+SymSetOptions
+SymGetOptions
+SymSetParentWindow
+SymRegisterCallbackW64
+SymFindFileInPathW
+SymLoadModuleExW
+SymUnloadModule64
+SymFromAddrW
+SymSrvGetFileIndexInfoW
+SYMBOL_INFOW
+SYMSRV_INDEX_INFOW
+SYMOPT_CASE_INSENSITIVE
+SYMOPT_UNDNAME
+SYMOPT_DEFERRED_LOADS
+SYMOPT_LOAD_LINES
+SYMOPT_EXACT_SYMBOLS
+SYMOPT_DEBUG
+CBA_DEBUG_INFO

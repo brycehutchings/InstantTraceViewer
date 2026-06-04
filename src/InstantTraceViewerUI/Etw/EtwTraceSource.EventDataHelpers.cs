@@ -16,7 +16,7 @@ namespace InstantTraceViewerUI.Etw
             newRecord.ThreadId = data.ThreadID;
             newRecord.Timestamp = data.TimeStamp;
             newRecord.Level = data.Level;
-            newRecord.OpCode = (byte)data.Opcode;
+            newRecord.OpCode = (TraceEventOpcodeExtended)data.Opcode;
             newRecord.Keywords = (ulong)data.Keywords;
 
             // Extract process and thread IDs from events without them (e.g. some Kernel events).
@@ -35,8 +35,6 @@ namespace InstantTraceViewerUI.Etw
                 }
             }
 
-            newRecord.ProcessName = _processNames.TryGetValue(newRecord.ProcessId, out string processName) ? processName : null;
-            newRecord.ThreadName = _threadNames.TryGetValue(newRecord.ThreadId, out string threadName) ? threadName : null;
             newRecord.ProviderName = data.ProviderName;
             newRecord.Name = data.TaskName;
 

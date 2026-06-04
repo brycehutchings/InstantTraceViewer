@@ -1,8 +1,7 @@
-﻿using Microsoft.Diagnostics.Tracing;
+﻿using InstantTraceViewer;
+using Microsoft.Diagnostics.Tracing;
 using System;
-using System.Collections.Generic;
 using System.Text;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -10,11 +9,25 @@ namespace InstantTraceViewerUI.Etw
     {
         public ListBuilderSnapshot<EtwRecord> RecordSnapshot { get; init; }
 
+        public ProcessDatabase ProcessDatabase { get; init; }
+
         public TraceTableSchema Schema { get; init; }
 
         public int RowCount => RecordSnapshot.Count;
 
         public int GenerationId { get; init; }
+
+        private string GetProcessName(int rowIndex)
+        {
+            EtwRecord traceRecord = RecordSnapshot[rowIndex];
+            return ProcessDatabase.GetProcessName(traceRecord.ProcessId, traceRecord.Timestamp);
+        }
+
+        private string GetThreadName(int rowIndex)
+        {
+            EtwRecord traceRecord = RecordSnapshot[rowIndex];
+            return ProcessDatabase.GetThreadName(traceRecord.ThreadId, traceRecord.Timestamp);
+        }
 
         public string GetColumnValueString(int rowIndex, TraceSourceSchemaColumn column, bool allowMultiline = false)
         {
@@ -22,15 +35,23 @@ namespace InstantTraceViewerUI.Etw
 
             if (column == EtwTraceSource.ColumnProcess)
             {
-                return
-                    traceRecord.ProcessId == -1 ? string.Empty :
-                    !string.IsNullOrEmpty(traceRecord.ProcessName) ? $"{traceRecord.ProcessId} ({traceRecord.ProcessName})" : traceRecord.ProcessId.ToString();
+                string processName = GetProcessName(rowIndex);
+                return traceRecord.ProcessId switch
+                {
+                    -1 => string.Empty,
+                    _ when !string.IsNullOrEmpty(processName) => $"{traceRecord.ProcessId} ({processName})",
+                    _ => traceRecord.ProcessId.ToString(),
+                };
             }
             else if (column == EtwTraceSource.ColumnThread)
             {
-                return
-                    traceRecord.ThreadId == -1 ? string.Empty :
-                    !string.IsNullOrEmpty(traceRecord.ThreadName) ? $"{traceRecord.ThreadId} ({traceRecord.ThreadName})" : traceRecord.ThreadId.ToString();
+                string threadName = GetThreadName(rowIndex);
+                return traceRecord.ThreadId switch
+                {
+                    -1 => string.Empty,
+                    _ when !string.IsNullOrEmpty(threadName) => $"{traceRecord.ThreadId} ({threadName})",
+                    _ => traceRecord.ThreadId.ToString(),
+                };
             }
             else if (column == EtwTraceSource.ColumnProvider)
             {
@@ -39,9 +60,11 @@ namespace InstantTraceViewerUI.Etw
             else if (column == EtwTraceSource.ColumnLevel)
             {
                 // Shorten "Informational" to "Info" to save space.
-                return
-                    traceRecord.Level == TraceEventLevel.Informational ? "Info" :
-                    traceRecord.Level.ToString();
+                return traceRecord.Level switch
+                {
+                    TraceEventLevel.Informational => "Info",
+                    _ => traceRecord.Level.ToString(),
+                };
             }
             else if (column == EtwTraceSource.ColumnTime)
             {
@@ -49,10 +72,7 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (column == EtwTraceSource.ColumnOpCode)
             {
-                return
-                    traceRecord.OpCode == 0 ? string.Empty :
-                    traceRecord.OpCode == 10 ? "Load" :
-                    traceRecord.OpCode == 11 ? "Terminate" : ((TraceEventOpcode)traceRecord.OpCode).ToString();
+                return traceRecord.OpCode.ToString();
             }
             else if (column == EtwTraceSource.ColumnKeywords)
             {
@@ -98,9 +118,11 @@ namespace InstantTraceViewerUI.Etw
                     string friendlyName;
                     if (value is int intValue && CodeLookup.TryGetFriendlyName(name, intValue, out friendlyName))
                     {
-                        customValue = intValue == 0 ?
-                            $"0 [{friendlyName}]" :
-                            $"0x{intValue:X8} [{friendlyName}]";
+                        customValue = intValue switch
+                        {
+                            0 => $"0 [{friendlyName}]",
+                            _ => $"0x{intValue:X8} [{friendlyName}]",
+                        };
                         return true;
                     }
 
@@ -115,37 +137,71 @@ namespace InstantTraceViewerUI.Etw
         }
 
         public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
-            => column == EtwTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
-               column == EtwTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadName :
-               throw new NotSupportedException();
+            => column switch
+            {
+                _ when column == EtwTraceSource.ColumnProcess => GetProcessName(rowIndex),
+                _ when column == EtwTraceSource.ColumnThread => GetThreadName(rowIndex),
+                _ => throw new NotSupportedException(),
+            };
 
         public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
-            => column == EtwTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
-               column == EtwTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
-               throw new NotSupportedException();
+            => column switch
+            {
+                _ when column == EtwTraceSource.ColumnProcess => RecordSnapshot[rowIndex].ProcessId,
+                _ when column == EtwTraceSource.ColumnThread => RecordSnapshot[rowIndex].ThreadId,
+                _ => throw new NotSupportedException(),
+            };
 
         public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)
-            =>  column == EtwTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
-                throw new NotSupportedException();
+            => column switch
+            {
+                _ when column == EtwTraceSource.ColumnTime => RecordSnapshot[rowIndex].Timestamp,
+                _ => throw new NotSupportedException(),
+            };
 
         public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
-            => column == EtwTraceSource.ColumnLevel ? ConvertLevel(RecordSnapshot[rowIndex].Level) :
-               throw new NotSupportedException();
+            => column switch
+            {
+                _ when column == EtwTraceSource.ColumnLevel => ConvertLevel(RecordSnapshot[rowIndex].Level),
+                _ => throw new NotSupportedException(),
+            };
 
         public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
-            => column == EtwTraceSource.ColumnOpCode ? ConvertOpcode(RecordSnapshot[rowIndex].OpCode) :
-               throw new NotSupportedException();
+            => column switch
+            {
+                _ when column == EtwTraceSource.ColumnOpCode => ConvertOpcode(RecordSnapshot[rowIndex].OpCode),
+                _ => throw new NotSupportedException(),
+            };
+
+        public UnifiedLifecycleEvent GetLifecycleEvent(int rowIndex)
+            => ConvertLifecycleEvent(RecordSnapshot[rowIndex]);
 
         private UnifiedLevel ConvertLevel(TraceEventLevel level)
-            => level == TraceEventLevel.Critical ? UnifiedLevel.Fatal :
-               level == TraceEventLevel.Error ? UnifiedLevel.Error :
-               level == TraceEventLevel.Warning ? UnifiedLevel.Warning :
-               level == TraceEventLevel.Verbose ? UnifiedLevel.Verbose : UnifiedLevel.Info;
+            => level switch
+            {
+                TraceEventLevel.Critical => UnifiedLevel.Fatal,
+                TraceEventLevel.Error => UnifiedLevel.Error,
+                TraceEventLevel.Warning => UnifiedLevel.Warning,
+                TraceEventLevel.Verbose => UnifiedLevel.Verbose,
+                _ => UnifiedLevel.Info,
+            };
 
-        public UnifiedOpcode ConvertOpcode(int opCode)
-            => opCode == (int)TraceEventOpcode.Start ? UnifiedOpcode.Start :
-               opCode == (int)TraceEventOpcode.DataCollectionStart ? UnifiedOpcode.Start :
-               opCode == (int)TraceEventOpcode.Stop ? UnifiedOpcode.Stop :
-               opCode == (int)TraceEventOpcode.DataCollectionStop ? UnifiedOpcode.Stop : UnifiedOpcode.None;
+        public UnifiedOpcode ConvertOpcode(TraceEventOpcodeExtended opCode)
+            => opCode switch
+            {
+                TraceEventOpcodeExtended.Start or TraceEventOpcodeExtended.DataCollectionStart => UnifiedOpcode.Start,
+                TraceEventOpcodeExtended.Stop or TraceEventOpcodeExtended.DataCollectionStop => UnifiedOpcode.Stop,
+                _ => UnifiedOpcode.None,
+            };
+
+        public UnifiedLifecycleEvent ConvertLifecycleEvent(EtwRecord record)
+            => (record.InternalFlags, ConvertOpcode(record.OpCode)) switch
+            {
+                (InternalFlags.ThreadLifecycle, UnifiedOpcode.Start) => UnifiedLifecycleEvent.ThreadStart,
+                (InternalFlags.ThreadLifecycle, UnifiedOpcode.Stop) => UnifiedLifecycleEvent.ThreadStop,
+                (InternalFlags.ProcessLifecycle, UnifiedOpcode.Start) => UnifiedLifecycleEvent.ProcessStart,
+                (InternalFlags.ProcessLifecycle, UnifiedOpcode.Stop) => UnifiedLifecycleEvent.ProcessStop,
+                _ => UnifiedLifecycleEvent.None,
+            };
     }
 }

@@ -19,9 +19,7 @@ namespace InstantTraceViewerUI
 {
     internal unsafe class ThreadTimelineWindow
     {
-        private const string PopupName = "Thread Timeline";
-
-        private record struct PidTidKey(int Pid, int Tid);
+        private record struct TrackKey(int Pid, string? ProcessName, int Tid);
 
         private readonly string _name;
         private readonly string _parentWindowId;
@@ -53,7 +51,7 @@ namespace InstantTraceViewerUI
 
             // Some of the information in this struct like Level, Depth and Color could be determined by looking up the event in the table with this row index
             // but it would be slower so we cache the information that is needed for per-frame rendering above and use this for tooltips and other things that are not per-frame.
-            public int VisibleRowIndex;
+            public int? VisibleRowIndex;
         }
 
         class Track
@@ -75,6 +73,7 @@ namespace InstantTraceViewerUI
             //
             public string? ProcessName;
             public string? ThreadName;
+            public bool HasNonLifecycleEvents;
             public List<Bar> Bars = new();
             public List<InstantEvent> InstantEvents = new();
         }
@@ -92,8 +91,14 @@ namespace InstantTraceViewerUI
             public int MaxInstantEventDepth;
             public List<InstantEvent> InstantEvents;
 
-            public string UniqueKey => $"{UniqueProcessKey}_{ThreadId}_{ThreadName}";
+            public bool IsLifecycleOnly;
+
+            public bool IsProcessTrack => ThreadId == -1;
+
+            public string UniqueKey => IsProcessTrack ? UniqueProcessKey : $"{UniqueProcessKey}_{ThreadId}_{ThreadName}";
             public string UniqueProcessKey => $"{ProcessId}_{ProcessName}";
+            public string ProcessDescription => string.IsNullOrEmpty(ProcessName) ? $"{ProcessId}" : $"{ProcessId} ({ProcessName})";
+            public string TrackDescription => IsProcessTrack ? ProcessDescription : string.IsNullOrEmpty(ThreadName) ? $"{ThreadId}" : $"{ThreadId} ({ThreadName})";
         }
 
         class ComputedTracks
@@ -102,7 +107,7 @@ namespace InstantTraceViewerUI
             public IReadOnlyList<ComputedTrack> Tracks;
 
             // Snapshot of the trace table used to compute the Tracks.
-            public ITraceTableSnapshot TraceTableSnapshot;
+            public FilteredTraceTableSnapshot TraceTableSnapshot;
 
             public DateTime StartTraceTable => TraceTableSnapshot.GetTimestamp(0);
 
@@ -112,6 +117,8 @@ namespace InstantTraceViewerUI
         private Task<ComputedTracks> _computedTracksTask = null;
         private ComputedTracks _latestComputedTracks;
         private List<string> _pinnedTracks = new(); // Value is ComputedTrack UniqueKey.
+        private HashSet<string> _pinnedTracksSet = new();
+        private bool _showLifecycleOnlyTracks = false;
         private DateTime _startZoomRange = DateTime.MinValue;
         private DateTime _endZoomRange = DateTime.MaxValue;
         private bool _isMouseHoveringTable = false;
@@ -131,7 +138,7 @@ namespace InstantTraceViewerUI
         // This is reset every frame and only set if a click happens on an event.
         public int? ClickedVisibleRowIndex { get; set; }
 
-        public bool DrawWindow(IUiCommands uiCommands, ITraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
+        public bool DrawWindow(IUiCommands uiCommands, FilteredTraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
             ImGui.SetNextWindowSizeConstraints(new Vector2(600, 200), new Vector2(float.MaxValue, float.MaxValue));
@@ -140,7 +147,7 @@ namespace InstantTraceViewerUI
             // uses SHIFT+MouseMove to pan, we need to disable the window moving because ImGui allows windows to move by
             // click+dragging anywhere there is no input control.
             ImGuiWindowFlags flags = _isMouseHoveringTable ? ImGuiWindowFlags.NoMove : ImGuiWindowFlags.None;
-            if (ImGui.Begin($"{PopupName} - {_name}###ThreadTimeline_{_parentWindowId}", ref _open, flags))
+            if (ImGui.Begin($"Thread Timeline - {_name}###ThreadTimeline_{_parentWindowId}", ref _open, flags))
             {
                 DrawTimelineGraph(traceTable, lastSelectedVisibleRowIndex, viewerRules, startWindow, endWindow);
             }
@@ -153,13 +160,9 @@ namespace InstantTraceViewerUI
         public static bool IsSupported(TraceTableSchema schema)
             => schema.TimestampColumn != null && schema.NameColumn != null && schema.ProcessIdColumn != null && schema.ThreadIdColumn != null;
 
-        private void DrawTimelineGraph(ITraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
+        private void DrawTimelineGraph(FilteredTraceTableSnapshot traceTable, int? lastSelectedVisibleRowIndex, ViewerRules viewerRules, DateTime? startWindow, DateTime? endWindow)
         {
             Trace.Assert(IsSupported(traceTable.Schema));
-
-            bool latestComputedTracksOutOfDate = _latestComputedTracks != null &&
-                (_latestComputedTracks.TraceTableSnapshot.GenerationId != traceTable.GenerationId ||
-                  _latestComputedTracks.TraceTableSnapshot.RowCount != traceTable.RowCount);
 
             bool? expandCollapse = null; // true=expand, false=collapse, null=no change
             if (ImGui.Button("\uF31E Expand All"))
@@ -201,6 +204,9 @@ namespace InstantTraceViewerUI
             ImGui.EndDisabled();
 
             ImGui.SameLine();
+            ImGui.Checkbox("Show lifecycle-only tracks", ref _showLifecycleOnlyTracks);
+
+            ImGui.SameLine();
             ImGuiWidgets.HelpIconToolip(
                 "How to navigate with the mouse:\n\n" +
                 "CTRL + Scroll Wheel --- Zoom in and out centered on mouse cursor\n" +
@@ -208,6 +214,9 @@ namespace InstantTraceViewerUI
                 "CTRL + Click --- Jump to hovered event");
 
             // Re-compute tracks if the trace table has changed since the last computation, or if there is no cached result yet.
+            bool latestComputedTracksOutOfDate = _latestComputedTracks != null &&
+                (_latestComputedTracks.TraceTableSnapshot.GenerationId != traceTable.GenerationId ||
+                  _latestComputedTracks.TraceTableSnapshot.RowCount != traceTable.RowCount);
             if ((_latestComputedTracks == null || latestComputedTracksOutOfDate) && _computedTracksTask == null)
             {
                 _computedTracksTask = Task.Run(() => ComputeTracks(traceTable));
@@ -257,12 +266,12 @@ namespace InstantTraceViewerUI
             if (ImGui.BeginTable("ScopesTable", 2, ImGuiTableFlags.Resizable | ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.BordersInnerH | ImGuiTableFlags.ScrollY))
             {
                 // ToList() because the underlying collection might be modified later.
-                var visiblePinnedTracks = _pinnedTracks
+                var pinnedTracks = _pinnedTracks
                     .SelectMany(trackKey => _latestComputedTracks.Tracks.Where(t => t.UniqueKey == trackKey))
                     .ToList();
 
                 // Freeze pinned tracks so they are always visible. Plus one because we also want to pin the timeline. Plus one more if we have pinned tracks because that is the separator row.
-                ImGui.TableSetupScrollFreeze(0, visiblePinnedTracks.Count + 1 + (visiblePinnedTracks.Any() ? 1 : 0));
+                ImGui.TableSetupScrollFreeze(0, pinnedTracks.Count + 1 + (pinnedTracks.Any() ? 1 : 0));
 
                 float dpiBase = ImGui.GetFontSize();
                 ImGui.TableSetupColumn("Thread", ImGuiTableColumnFlags.WidthFixed, 10.0f * dpiBase);
@@ -273,12 +282,12 @@ namespace InstantTraceViewerUI
                 DrawTimeline(_startZoomRange, _endZoomRange, startWindow, endWindow, lastSelectedVisibleRowIndex);
 
                 List<object> hoveredEvents = new(); // Contains 0 or more 'Bar' and 'InstantEvent' objects.
-                foreach (ComputedTrack track in visiblePinnedTracks)
+                foreach (ComputedTrack track in pinnedTracks)
                 {
                     DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: true, hoveredEvents);
                 }
 
-                if (visiblePinnedTracks.Any())
+                if (pinnedTracks.Any())
                 {
                     // Blank row to separate pinned tracks from the rest. Fill color matches border color so it looks like a solid thick separator.
                     // If this is removed, the ScrollFreeze math needs to change too.
@@ -290,14 +299,10 @@ namespace InstantTraceViewerUI
 
                 string? previousProcessKey = null;
                 bool isOpen = false;
-                foreach (var track in _latestComputedTracks.Tracks)
+                foreach (var track in _latestComputedTracks.Tracks
+                    .Where(track => !_pinnedTracksSet.Contains(track.UniqueKey)) // Pinned tracks were already rendered.
+                    .Where(track => track.IsProcessTrack || _showLifecycleOnlyTracks || !track.IsLifecycleOnly))
                 {
-                    bool isPinned = visiblePinnedTracks.Any(pinnedTrack => pinnedTrack.UniqueKey == track.UniqueKey);
-                    if (isPinned)
-                    {
-                        continue; // Pinned tracks were already rendered.
-                    }
-
                     if (previousProcessKey != track.UniqueProcessKey)
                     {
                         if (isOpen)
@@ -313,9 +318,14 @@ namespace InstantTraceViewerUI
                             ImGui.SetNextItemOpen(!expandCollapse.Value, ImGuiCond.Always);
                         }
 
-                        string processDescription = string.IsNullOrEmpty(track.ProcessName) ? $"{track.ProcessId}" : $"{track.ProcessId} ({track.ProcessName})";
-                        isOpen = ImGui.TreeNodeEx(processDescription, ImGuiTreeNodeFlags.SpanFullWidth);
+                        isOpen = ImGui.TreeNodeEx(track.ProcessDescription, ImGuiTreeNodeFlags.SpanFullWidth);
                         ImGui.TableNextColumn();
+
+                        // Show process lifecycle when collapsed
+                        if (!isOpen && track.IsProcessTrack)
+                        {
+                            DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: false, hoveredEvents, useCurrentRow: true);
+                        }
 
                         previousProcessKey = track.UniqueProcessKey;
                     }
@@ -325,7 +335,7 @@ namespace InstantTraceViewerUI
                         continue;
                     }
 
-                    DrawTrack(track, _startZoomRange, _endZoomRange, isPinned, hoveredEvents);
+                    DrawTrack(track, _startZoomRange, _endZoomRange, isPinned: false, hoveredEvents);
                 }
 
                 if (isOpen)
@@ -340,7 +350,7 @@ namespace InstantTraceViewerUI
                 if (hoveredEvents.Count > 0)
                 {
                     bool clickable = false;
-                    if (ImGui.IsKeyDown(ImGuiKey.ModCtrl))
+                    if (ImGui.IsKeyDown(ImGuiKey.ModCtrl) && hoveredEvents.Any(e => GetVisibleRowIndex(e).HasValue))
                     {
                         clickable = true;
                         ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
@@ -373,7 +383,8 @@ namespace InstantTraceViewerUI
                 var eventNames = hoveredEvents.Select(e => e switch
                 {
                     Bar bar => _latestComputedTracks.TraceTableSnapshot.GetName(bar.VisibleRowIndex),
-                    InstantEvent instantEvent => _latestComputedTracks.TraceTableSnapshot.GetName(instantEvent.VisibleRowIndex),
+                    InstantEvent { VisibleRowIndex: int visibleRowIndex } => _latestComputedTracks.TraceTableSnapshot.GetName(visibleRowIndex),
+                    InstantEvent => null,
                     _ => throw new InvalidOperationException("Unexpected event type.")
                 });
 
@@ -387,12 +398,7 @@ namespace InstantTraceViewerUI
 
                 if (clickable && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
                 {
-                    ClickedVisibleRowIndex = hoveredEvents.First() switch
-                    {
-                        Bar bar => bar.VisibleRowIndex,
-                        InstantEvent instantEvent => instantEvent.VisibleRowIndex,
-                        _ => throw new InvalidOperationException("Unexpected event type.")
-                    };
+                    ClickedVisibleRowIndex = hoveredEvents.Select(GetVisibleRowIndex).FirstOrDefault(rowIndex => rowIndex.HasValue);
                 }
             }
             else if (hoveredEvents.SingleOrDefault() is Bar bar)
@@ -411,9 +417,20 @@ namespace InstantTraceViewerUI
                     ClickedVisibleRowIndex = instantEvent.VisibleRowIndex;
                 }
 
-                DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex);
+                if (instantEvent.VisibleRowIndex.HasValue)
+                {
+                    DrawEventDetails(_latestComputedTracks.TraceTableSnapshot, instantEvent.VisibleRowIndex.Value);
+                }
             }
         }
+
+        private static int? GetVisibleRowIndex(object timelineEvent)
+            => timelineEvent switch
+            {
+                Bar bar => bar.VisibleRowIndex,
+                InstantEvent instantEvent => instantEvent.VisibleRowIndex,
+                _ => throw new InvalidOperationException("Unexpected event type.")
+            };
 
         private static void DrawEventDetails(ITraceTableSnapshot traceTable, int visibleRowIndex, TimeSpan? duration = null)
         {
@@ -536,7 +553,7 @@ namespace InstantTraceViewerUI
             }
         }
 
-        private void DrawTrack(ComputedTrack track, DateTime startRange, DateTime endRange, bool isPinned, List<object> hoveredEvents)
+        private void DrawTrack(ComputedTrack track, DateTime startRange, DateTime endRange, bool isPinned, List<object> hoveredEvents, bool useCurrentRow = false)
         {
             TimeSpan rangeDuration = endRange - startRange;
 
@@ -547,31 +564,40 @@ namespace InstantTraceViewerUI
             float tickLevelHeight = (float)Math.Round(barHeight / 6.0f);
             float tickHalfWidth = (float)Math.Round(barHeight / 4.0f);
 
-            ImGui.TableNextRow();
-            ImGui.TableNextColumn();
+            if (!useCurrentRow)
+            {
+                ImGui.TableNextRow();
+                ImGui.TableNextColumn();
+            }
 
             ImGui.PushID(track.UniqueKey);
 
-            if (isPinned)
+            if (!useCurrentRow)
             {
-                if (ImGuiWidgets.UndecoratedButton("\uE68F", "Unpin"))
+                if (isPinned)
                 {
-                    _pinnedTracks.Remove(track.UniqueKey);
+                    if (ImGuiWidgets.UndecoratedButton("\uE68F", "Unpin"))
+                    {
+                        _pinnedTracks.Remove(track.UniqueKey);
+                        _pinnedTracksSet.Remove(track.UniqueKey);
+                    }
                 }
-            }
-            else
-            {
-                if (ImGuiWidgets.UndecoratedButton("\uF08D", "Pin to top"))
+                else
                 {
-                    _pinnedTracks.Add(track.UniqueKey);
+                    if (ImGuiWidgets.UndecoratedButton("\uF08D", "Pin to top"))
+                    {
+                        if (_pinnedTracksSet.Add(track.UniqueKey))
+                        {
+                            _pinnedTracks.Add(track.UniqueKey);
+                        }
+                    }
                 }
+                ImGui.SameLine();
+
+                ImGui.TextUnformatted(track.TrackDescription);
+
+                ImGui.TableNextColumn();
             }
-            ImGui.SameLine();
-
-            string threadDescription = string.IsNullOrEmpty(track.ThreadName) ? $"{track.ThreadId}" : $"{track.ThreadId} ({track.ThreadName})";
-            ImGui.TextUnformatted(threadDescription);
-
-            ImGui.TableNextColumn();
 
             ImDrawListPtr drawList = ImGui.GetWindowDrawList();
 
@@ -592,43 +618,7 @@ namespace InstantTraceViewerUI
                 float minTextRenderLengthPixels = textLineHeight * 0.2f;
                 foreach (var bar in track.Bars)
                 {
-                    if (bar.Stop.Ticks < startRange.Ticks || bar.Start.Ticks > endRange.Ticks)
-                    {
-                        continue; // Skip if the bar is outside the range.
-                    }
-
-                    long startRelativeTicks = bar.Start.Ticks - startRange.Ticks;
-                    long stopRelativeTicks = bar.Stop.Ticks - startRange.Ticks;
-
-                    // Truncate the bar so it doesn't draw outside the range.
-                    startRelativeTicks = Math.Max(startRelativeTicks, 0);
-                    stopRelativeTicks = Math.Min(stopRelativeTicks, endRange.Ticks - startRange.Ticks);
-
-                    Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackTopLeft;
-                    Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackTopLeft;
-
-                    // The earlier IsItemVisible check will ensure some part of the track is visible, but the part the mouse is hovering over might be clipped so
-                    // we need to check if the mouse point is visible in addition to if it is over the bar.
-                    bool isHovered = (mousePos.Y >= min.Y && mousePos.Y < max.Y && mousePos.X >= min.X && mousePos.X < max.X) &&
-                        ImGui.IsRectVisible(mousePos, mousePos);
-
-                    uint barColor = isHovered ? DarkenColor(bar.Color) : bar.Color;
-                    drawList.AddRectFilled(min, max, barColor);
-
-                    // Don't bother rendering any text in a bar unless it has some space to see something
-                    if (max.X - min.X >= minTextRenderLengthPixels)
-                    {
-                        float centerX = ((max.X - min.X) - ImGui.CalcTextSize(bar.Name).X) / 2.0f;
-                        Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
-                        drawList.AddText(null /* default font  */, 0.0f /* default font size */,
-                            min + new Vector2(centerX, -1), ImGui.GetColorU32(0xFFFFFFFF), bar.Name, 0.0f /* no text wrap */,
-                            ref clipRect);
-                    }
-
-                    if (isHovered)
-                    {
-                        hoveredEvents.Add(bar);
-                    }
+                    DrawBar(drawList, bar, startRange, endRange, trackTopLeft, tickToPixel, barHeight, minTextRenderLengthPixels, mousePos, hoveredEvents);
                 }
 
                 Func<DateTime, int, Vector2> getTickTop = (timestamp, depth) =>
@@ -707,6 +697,43 @@ namespace InstantTraceViewerUI
             ImGui.PopID();
         }
 
+        private static void DrawBar(ImDrawListPtr drawList, Bar bar, DateTime startRange, DateTime endRange, Vector2 trackTopLeft, float tickToPixel, float barHeight, float minTextRenderLengthPixels, Vector2 mousePos, List<object> hoveredEvents)
+        {
+            if (bar.Stop.Ticks < startRange.Ticks || bar.Start.Ticks > endRange.Ticks)
+            {
+                return;
+            }
+
+            long startRelativeTicks = bar.Start.Ticks - startRange.Ticks;
+            long stopRelativeTicks = bar.Stop.Ticks - startRange.Ticks;
+
+            startRelativeTicks = Math.Max(startRelativeTicks, 0);
+            stopRelativeTicks = Math.Min(stopRelativeTicks, endRange.Ticks - startRange.Ticks);
+
+            Vector2 min = new Vector2(startRelativeTicks * tickToPixel, bar.Depth * barHeight) + trackTopLeft;
+            Vector2 max = new Vector2(stopRelativeTicks * tickToPixel + 1 /* +1 otherwise 0 width is invisible */, (bar.Depth + 1) * barHeight) + trackTopLeft;
+
+            bool isHovered = (mousePos.Y >= min.Y && mousePos.Y < max.Y && mousePos.X >= min.X && mousePos.X < max.X) &&
+                ImGui.IsRectVisible(mousePos, mousePos);
+
+            uint barColor = isHovered ? DarkenColor(bar.Color) : bar.Color;
+            drawList.AddRectFilled(min, max, barColor);
+
+            if (max.X - min.X >= minTextRenderLengthPixels)
+            {
+                float centerX = ((max.X - min.X) - ImGui.CalcTextSize(bar.Name).X) / 2.0f;
+                Vector4 clipRect = new(min.X, min.Y, max.X, max.Y);
+                drawList.AddText(null /* default font  */, 0.0f /* default font size */,
+                    min + new Vector2(centerX, -1), ImGui.GetColorU32(0xFFFFFFFF), bar.Name, 0.0f /* no text wrap */,
+                    ref clipRect);
+            }
+
+            if (isHovered)
+            {
+                hoveredEvents.Add(bar);
+            }
+        }
+
         private void ApplyZoomPanAndClamp()
         {
             _startZoomRange = ClampDateTime(_startZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
@@ -780,48 +807,71 @@ namespace InstantTraceViewerUI
             _endZoomRange = ClampDateTime(_endZoomRange, _latestComputedTracks.StartTraceTable, _latestComputedTracks.EndTraceTable);
         }
 
-        private static ComputedTracks ComputeTracks(ITraceTableSnapshot traceTable)
+        private static ComputedTracks ComputeTracks(FilteredTraceTableSnapshot traceTable)
         {
             var stopwatch = Stopwatch.StartNew();
 
-            Dictionary<PidTidKey, Track> tracks = new();
+            ITraceTableSnapshot fullTraceTable = traceTable.FullTable;
+            Dictionary<TrackKey, Track> tracks = new();
+            Dictionary<int, TrackKey> activeProcessTrackKeys = new();
 
-            for (int i = 0; i < traceTable.RowCount; i++)
+            foreach ((int fullTableRowIndex, int? visibleRowIndex) in traceTable.GetFullTableRowIndices())
             {
-                PidTidKey trackKey = new PidTidKey(traceTable.GetProcessId(i), traceTable.GetThreadId(i));
+                if (!visibleRowIndex.HasValue)
+                {
+                    continue;
+                }
 
-                // If PID or TID is 0 or -1 (these are values from ETW parsing sometimes) then there is no process/thread attributed to the event.
-                // For example, a Kernel Process Start event has no associated thread.
-                if (trackKey.Pid <= 0 || trackKey.Tid <= 0)
+                int visibleTableRowIndex = visibleRowIndex.Value;
+
+                int processId = fullTraceTable.GetProcessId(fullTableRowIndex);
+                DateTime traceEventTime = fullTraceTable.GetTimestamp(fullTableRowIndex);
+                string name = fullTraceTable.GetName(fullTableRowIndex);
+                UnifiedOpcode opcode = fullTraceTable.Schema.UnifiedOpcodeColumn != null ? fullTraceTable.GetUnifiedOpcode(fullTableRowIndex) : UnifiedOpcode.None;
+                UnifiedLifecycleEvent lifecycleEvent = fullTraceTable.GetLifecycleEvent(fullTableRowIndex);
+                string processName = fullTraceTable.GetColumnValueNameForId(fullTableRowIndex, fullTraceTable.Schema.ProcessIdColumn);
+
+                TrackKey trackKey = lifecycleEvent switch
+                {
+                    UnifiedLifecycleEvent.ProcessStart => new TrackKey(processId, processName, -1),
+                    UnifiedLifecycleEvent.ProcessStop when activeProcessTrackKeys.TryGetValue(processId, out TrackKey activeProcessTrackKey) => activeProcessTrackKey,
+                    _ => new TrackKey(processId, processName, fullTraceTable.GetThreadId(fullTableRowIndex))
+                };
+
+                bool isProcessLifecycleEvent = lifecycleEvent is UnifiedLifecycleEvent.ProcessStart or UnifiedLifecycleEvent.ProcessStop;
+                bool isLifecycleStart = lifecycleEvent is UnifiedLifecycleEvent.ThreadStart or UnifiedLifecycleEvent.ProcessStart;
+                bool isLifecycleStop = lifecycleEvent is UnifiedLifecycleEvent.ThreadStop or UnifiedLifecycleEvent.ProcessStop;
+                bool isLifecycleEvent = lifecycleEvent != UnifiedLifecycleEvent.None;
+
+                // Non-process tracks need a valid thread id. Process lifecycle tracks intentionally use TID -1 for the process row.
+                if (trackKey.Pid <= 0 || (trackKey.Tid <= 0 && !isProcessLifecycleEvent))
                 {
                     continue;
                 }
 
                 if (!tracks.TryGetValue(trackKey, out Track? track))
                 {
-                    track = new Track();
+                    track = new Track { ProcessName = processName };
                     tracks.Add(trackKey, track);
                 }
 
-                if (track.ProcessName == null)
+                if (track.ThreadName == null && trackKey.Tid != -1)
                 {
-                    track.ProcessName = traceTable.GetColumnValueNameForId(i, traceTable.Schema.ProcessIdColumn);
-                }
-                if (track.ThreadName == null)
-                {
-                    track.ThreadName = traceTable.GetColumnValueNameForId(i, traceTable.Schema.ThreadIdColumn);
+                    track.ThreadName = fullTraceTable.GetColumnValueNameForId(fullTableRowIndex, fullTraceTable.Schema.ThreadIdColumn);
                 }
 
-                DateTime traceEventTime = traceTable.GetTimestamp(i);
-                string name = traceTable.GetName(i);
+                track.HasNonLifecycleEvents |= !isLifecycleEvent;
 
-                UnifiedOpcode opcode = traceTable.Schema.UnifiedOpcodeColumn != null ? traceTable.GetUnifiedOpcode(i) : UnifiedOpcode.None;
-                if (opcode == UnifiedOpcode.Start)
+                if (opcode == UnifiedOpcode.Start || isLifecycleStart)
                 {
                     // Push the start time onto the stack.
-                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name, VisibleRowIndex = i });
+                    track.StartEvents.Push(new Track.StartEvent { Timestamp = traceEventTime, Name = name, VisibleRowIndex = visibleTableRowIndex });
+                    if (lifecycleEvent == UnifiedLifecycleEvent.ProcessStart)
+                    {
+                        activeProcessTrackKeys[processId] = trackKey;
+                    }
                 }
-                else if (opcode == UnifiedOpcode.Stop)
+                else if (opcode == UnifiedOpcode.Stop || isLifecycleStop)
                 {
                     if (track.StartEvents.TryPeek(out Track.StartEvent startEvent))
                     {
@@ -833,12 +883,16 @@ namespace InstantTraceViewerUI
 
                         track.StartEvents.Pop();
                         track.Bars.Add(new Bar { Start = startEvent.Timestamp, Stop = traceEventTime, Depth = track.StartEvents.Count, Name = name, Color = GenerateColorFromName(name), VisibleRowIndex = startEvent.VisibleRowIndex });
+                        if (lifecycleEvent == UnifiedLifecycleEvent.ProcessStop)
+                        {
+                            activeProcessTrackKeys.Remove(processId);
+                        }
                     }
                 }
                 else
                 {
-                    UnifiedLevel level = traceTable.Schema.UnifiedLevelColumn == null ? UnifiedLevel.Info : traceTable.GetUnifiedLevel(i);
-                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = level, Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = i });
+                    UnifiedLevel level = fullTraceTable.Schema.UnifiedLevelColumn == null ? UnifiedLevel.Info : fullTraceTable.GetUnifiedLevel(fullTableRowIndex);
+                    track.InstantEvents.Add(new InstantEvent { Timestamp = traceEventTime, Level = level, Depth = track.StartEvents.Count, Color = GenerateColorFromName(name), VisibleRowIndex = visibleRowIndex });
                 }
             }
 
@@ -860,10 +914,11 @@ namespace InstantTraceViewerUI
                 // Group by Pid+ProcessName, ordered so that the most active processes are at the top. Bars count as two events (start/stop), instant events count as one.
                 // We group by Pid+Process name because PIDs can be reused so this can prevent separate instances to be combined.
                 // The UI also expects all tracks for a process to be grouped together so that the process name is shown only once.
-                foreach (var processTracks in tracks.GroupBy(t => (t.Key.Pid, t.Value.ProcessName)).OrderByDescending(tg => tg.Sum(tg2 => (tg2.Value.Bars.Count * 2) + tg2.Value.InstantEvents.Count)))
+                foreach (var groupedProcessTracks in tracks.GroupBy(t => (t.Key.Pid, t.Value.ProcessName)).OrderByDescending(tg => tg.Sum(tg2 => (tg2.Value.Bars.Count * 2) + tg2.Value.InstantEvents.Count)))
                 {
-                    // Next order the tracks for the process by thread id so they are easy to visually search.
-                    foreach (var track in processTracks.OrderBy(t => t.Key.Tid))
+                    // Next order the tracks for the process by thread id so they are easy to visually search while ensuring
+                    // the process lifecycle track (with Tid -1) is always at the top of the process group.
+                    foreach (var track in groupedProcessTracks.OrderBy(t => t.Key.Tid == -1 ? 0 : 1).ThenBy(t => t.Key.Tid))
                     {
                         if (track.Value.Bars.Count == 0 && track.Value.InstantEvents.Count == 0)
                         {
@@ -879,7 +934,8 @@ namespace InstantTraceViewerUI
                             MaxBarDepth = track.Value.Bars.Count > 0 ? track.Value.Bars.Max(b => b.Depth) : 0,
                             Bars = track.Value.Bars,
                             MaxInstantEventDepth = track.Value.InstantEvents.Count > 0 ? track.Value.InstantEvents.Max(b => b.Depth) : 0,
-                            InstantEvents = track.Value.InstantEvents
+                            InstantEvents = track.Value.InstantEvents,
+                            IsLifecycleOnly = !track.Value.HasNonLifecycleEvents
                         });
                     }
                 }
