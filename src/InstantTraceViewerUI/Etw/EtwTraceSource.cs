@@ -1,4 +1,5 @@
-﻿using Microsoft.Diagnostics.Tracing;
+﻿using InstantTraceViewer;
+using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
@@ -8,7 +9,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -57,15 +57,13 @@ namespace InstantTraceViewerUI.Etw
         private readonly int _sessionNum;
         private readonly Thread _processingThread;
 
-        private readonly ReaderWriterLockSlim _pendingTraceRecordsLock = new ReaderWriterLockSlim();
-        private List<EtwRecord> _pendingTraceRecords = new();
-
         private readonly ReaderWriterLockSlim _traceRecordsLock = new ReaderWriterLockSlim();
         private ListBuilder<EtwRecord> _traceRecords = new ListBuilder<EtwRecord>();
         private int _generationId = 1;
 
         private ConcurrentDictionary<int, string> _threadNames = new();
         private ConcurrentDictionary<int, string> _processNames = new();
+        private EtwModuleTracker _moduleTracker = new();
 
         private bool isDisposed;
 
@@ -98,24 +96,6 @@ namespace InstantTraceViewerUI.Etw
         // Autologgers save the etl extensions with a number suffix. Associate a handful of them too.
         public static IEnumerable<string> EtlFileExtensions => new[] { ".etl" }.Concat(Enumerable.Range(1, 15).Select(i => $".{i:D3}"));
 
-        private void AddEvent(EtwRecord record)
-        {
-            if (IsPaused)
-            {
-                return;
-            }
-
-            _pendingTraceRecordsLock.EnterWriteLock();
-            try
-            {
-                _pendingTraceRecords.Add(record);
-            }
-            finally
-            {
-                _pendingTraceRecordsLock.ExitWriteLock();
-            }
-        }
-
         private void ProcessThread()
         {
             SubscribeToKernelEvents();
@@ -128,7 +108,13 @@ namespace InstantTraceViewerUI.Etw
             }
             catch (Exception ex)
             {
-                AddEvent(new EtwRecord { NamedValues = new[] { new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" } } });
+                AddPendingRecord(new EtwRecord
+                {
+                    ProviderName = "Instant Trace Viewer",
+                    Name = "Internal Error",
+                    Level = TraceEventLevel.Critical,
+                    NamedValues = [new NamedValue { Value = $"Failed to process ETW session: {ex.Message}" }]
+                });
             }
         }
 
@@ -266,28 +252,21 @@ namespace InstantTraceViewerUI.Etw
 
         public ITraceTableSnapshot CreateSnapshot()
         {
-            // By moving out the pending records, there is only brief contention on the 'pendingTraceRecords' list.
-            // It is important to not block the ETW event callback or events might get dropped.
-            List<EtwRecord> pendingTraceRecordsLocal;
-            _pendingTraceRecordsLock.EnterWriteLock();
-            try
+            List<EtwRecord>? pendingTraceRecordsLocal = TakeReadyPendingRecords();
+            if (pendingTraceRecordsLocal != null)
             {
-                pendingTraceRecordsLocal = _pendingTraceRecords;
-                _pendingTraceRecords = new();
+                UpdateProcessNameTable(pendingTraceRecordsLocal);
             }
-            finally
-            {
-                _pendingTraceRecordsLock.ExitWriteLock();
-            }
-
-            UpdateProcessNameTable(pendingTraceRecordsLocal);
 
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                foreach (var record in pendingTraceRecordsLocal)
+                if (pendingTraceRecordsLocal != null)
                 {
-                    _traceRecords.Add(record);
+                    foreach (var record in pendingTraceRecordsLocal)
+                    {
+                        _traceRecords.Add(record);
+                    }
                 }
 
                 return new EtwTraceTableSnapshot

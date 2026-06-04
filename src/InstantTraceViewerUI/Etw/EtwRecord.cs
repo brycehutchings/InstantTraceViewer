@@ -26,6 +26,8 @@ namespace InstantTraceViewerUI.Etw
 
         public ulong Keywords;
 
+        public double TimestampRelativeMSec; // Needed for Stackwalk correlation.
+
         public DateTime Timestamp;
     }
 }

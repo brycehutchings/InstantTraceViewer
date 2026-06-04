@@ -1,13 +1,16 @@
+using InstantTraceViewer;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Collections.Generic;
-using InstantTraceViewer;
+using System.Linq;
 
 namespace InstantTraceViewerUI.Etw
 {
     internal partial class EtwTraceSource : ITraceSource
     {
+        private const string InstructionPointerName = "InstructionPointer";
+
         // Copied from Microsoft.Diagnostics.Tracing.Parsers.Kernel in order to improve naming.
         [Flags]
         public enum KernelFileCreateOptions
@@ -134,7 +137,26 @@ namespace InstantTraceViewerUI.Etw
 
         private void SubscribeToKernelEvents()
         {
-            _etwSource.Kernel.StackWalkStack += OnStackWalkStack;
+#if false
+            _etwSource.Kernel.All += (obj) =>
+            {
+                var newRecord = CreateBaseTraceRecord(obj);
+                var namedValues = new List<NamedValue>();
+                namedValues.Add(new NamedValue("TimeStampRelativeMSec", obj.TimeStampRelativeMSec));
+                foreach (var payloadName in obj.PayloadNames)
+                {
+                    namedValues.Add(new NamedValue(payloadName, obj.PayloadByName(payloadName)));
+                }
+
+                newRecord.NamedValues = namedValues.ToArray();
+                AddPendingRecord(newRecord);
+            };
+#endif
+
+            //
+            // Keywords.Profile
+            //
+            _etwSource.Kernel.PerfInfoSample += Kernel_PerfInfoSample;
 
             //
             // Keywords.ContextSwitch
@@ -149,10 +171,10 @@ namespace InstantTraceViewerUI.Etw
             //
             // Keywords.ImageLoad
             //
-            _etwSource.Kernel.ImageLoad += OnImageLoadUnload;
-            _etwSource.Kernel.ImageUnload += OnImageLoadUnload;
-            _etwSource.Kernel.ImageDCStart += OnImageLoadUnload;
-            _etwSource.Kernel.ImageDCStop += OnImageLoadUnload;
+            _etwSource.Kernel.ImageLoad += OnImageLoad;
+            _etwSource.Kernel.ImageUnload += OnImageLoad;
+            _etwSource.Kernel.ImageDCStart += OnImageLoad;
+            _etwSource.Kernel.ImageDCStop += OnImageLoad;
 
             //
             // Keywords.Thread
@@ -206,29 +228,47 @@ namespace InstantTraceViewerUI.Etw
             _etwSource.Kernel.FileIODirNotify += FileIO_DirEnum;
 
             _etwSource.Kernel.FileIOOperationEnd += Kernel_FileIOOperationEnd;
+
+            //
+            // StackWalk can be enabled for most Kernel keywords.
+            //
+            _etwSource.Kernel.StackWalkStack += OnStackWalkStack;
         }
 
-        private void OnImageLoadUnload(ImageLoadTraceData obj)
+        private void Kernel_PerfInfoSample(SampledProfileTraceData obj)
         {
+            var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.NamedValues = [new NamedValue(InstructionPointerName, ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer))];
+            AddPendingRecord(newRecord);
+        }
+
+        private void OnImageLoad(ImageLoadTraceData obj)
+        {
+            if (obj.Opcode == TraceEventOpcode.Stop)
+            {
+                _moduleTracker.ImageUnload(obj.ProcessID, obj.ImageBase, obj.TimeStamp);
+            }
+            else if (obj.Opcode == (TraceEventOpcode)10/*Load*/ || obj.Opcode == TraceEventOpcode.DataCollectionStart)
+            {
+                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, obj.TimeStamp);
+            }
+
+            // Better for analysis or graphical visualization. Too noisy for logs.
+#if false
             if (IsPaused)
             {
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
-#if false
             var newRecord = CreateBaseTraceRecord(obj);
-
-            // TimeDateStamp is from the PE header and is seconds since January 1, 1970 UTC.
-            DateTimeOffset timeDateStamp = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(obj.TimeDateStamp).ToLocalTime();
-
             newRecord.NamedValues = [
                 new NamedValue("File", obj.FileName),
                 new NamedValue("ImageBase", obj.ImageBase),
-                new NamedValue("ImageSize", obj.ImageSize),
-                new NamedValue("TimeDateStamp", timeDateStamp.ToString("yyyy-MM-dd HH:mm:ss")),
-                new NamedValue("CheckSum", obj.ImageChecksum)];
-            AddEvent(newRecord);
+                new NamedValue("SizeOfImage", (uint)obj.ImageSize),
+                new NamedValue("CheckSum", (uint)obj.ImageChecksum),
+                new NamedValue("TimeDateStamp", (uint)obj.TimeDateStamp),
+            ];
+            AddPendingRecord(newRecord);
 #endif
         }
 
@@ -239,7 +279,34 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
+            Dictionary<string, object> GetStackFrames()
+            {
+                var stackFrames = new Dictionary<string, object>();
+                for (int i = 0; i < obj.FrameCount; i++)
+                {
+                    stackFrames.Add(i.ToString(), ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer(i)));
+                }
+                return stackFrames;
+            }
+
+            // Every Stackwalk is associated with an earlier event which we inject the stackwalk into.
+            bool found = UpdatePendingRecord(obj.ThreadID, obj.EventTimeStampRelativeMSec, (ref record) =>
+            {
+                // InstructionPointer is emitted by PerfInfoSample, but it's the same as the top of the stack. Since we have the stack, we can remove it.
+                var namedValuesCopy = record.NamedValues.Where(nv => nv.Name != InstructionPointerName).ToList();
+                namedValuesCopy.Add(new NamedValue("StackWalk", GetStackFrames()));
+                record.NamedValues = namedValuesCopy.ToArray();
+            });
+
+            // If we couldn't attach the stackwalk to an existing event, create a new one just for the stackwalk.
+            if (!found)
+            {
+                var newRecord = CreateBaseTraceRecord(obj);
+                newRecord.NamedValues = [
+                    new NamedValue("RelativeMSec", obj.EventTimeStampRelativeMSec - obj.TimeStampRelativeMSec),
+                    new NamedValue("StackWalk", GetStackFrames())];
+                AddPendingRecord(newRecord);
+            }
         }
 
         private void OnThreadCSwitch(CSwitchTraceData obj)
@@ -249,7 +316,15 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            // Better for analysis or graphical visualization. Too noisy for logs.
+            var newRecord = CreateBaseTraceRecord(obj);
+            newRecord.NamedValues = [
+                new NamedValue("OldThreadID", obj.OldThreadID),
+                new NamedValue("NewThreadID", obj.NewThreadID),
+                new NamedValue("OldThreadPriority", obj.OldThreadPriority),
+                new NamedValue("NewThreadPriority", obj.NewThreadPriority),
+                new NamedValue("OldThreadState", obj.OldThreadState),
+                new NamedValue("OldThreadWaitReason", obj.OldThreadWaitReason)];
+            AddPendingRecord(newRecord);
         }
 
         private void OnDispatcherReadyThread(DispatcherReadyThreadTraceData obj)
@@ -279,7 +354,7 @@ namespace InstantTraceViewerUI.Etw
                     new NamedValue("CreateDisposition", (KernelFileCreateDisposition)obj.CreateDisposition),
                     new NamedValue("FileAttributes", obj.FileAttributes),
                     new NamedValue("ShareAccess", obj.ShareAccess)];
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             }
         }
 
@@ -298,7 +373,7 @@ namespace InstantTraceViewerUI.Etw
 #else
             var newRecord = CreateBaseTraceRecord(obj);
             newRecord.NamedValues = [new NamedValue("NtStatus", obj.NtStatus.ToString("X"))];
-            AddEvent(newRecord);
+            AddPendingRecord(newRecord);
 #endif
         }
 
@@ -314,7 +389,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 var newRecord = CreateBaseTraceRecord(obj);
                 newRecord.NamedValues = [new NamedValue("File", obj.FileName)];
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             }
         }
 
@@ -330,7 +405,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 var newRecord = CreateBaseTraceRecord(obj);
                 newRecord.NamedValues = [new NamedValue("File", obj.FileName)];
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             }
         }
 
@@ -357,7 +432,7 @@ namespace InstantTraceViewerUI.Etw
                 }
 
                 newRecord.NamedValues = namedValues.ToArray();
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             }
         }
 
@@ -372,7 +447,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 var newRecord = CreateBaseTraceRecord(obj);
                 newRecord.NamedValues = [new NamedValue("File", obj.FileName)];
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             }
         }
 
@@ -402,7 +477,7 @@ namespace InstantTraceViewerUI.Etw
                 }
 
                 newRecord.NamedValues = namedValues.ToArray();
-                AddEvent(newRecord);
+                AddPendingRecord(newRecord);
             }
         }
 
@@ -418,7 +493,7 @@ namespace InstantTraceViewerUI.Etw
             newRecord.NamedValues = [
                 new NamedValue("Directory", obj.DirectoryName),
                 new NamedValue("File", obj.FileName)];
-            AddEvent(newRecord);
+            AddPendingRecord(newRecord);
         }
 
         private void OnThreadSetName(ThreadSetNameTraceData data)
@@ -498,7 +573,7 @@ namespace InstantTraceViewerUI.Etw
 
             newRecord.NamedValues = namedValues.ToArray();
 
-            AddEvent(newRecord);
+            AddPendingRecord(newRecord);
         }
     }
 }
