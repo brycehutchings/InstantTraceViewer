@@ -1,4 +1,5 @@
 using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
@@ -250,7 +251,19 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (obj.Opcode == (TraceEventOpcode)10/*Load*/ || obj.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, obj.TimeStamp);
+                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, _lastImagePdbInfo.PdbFileName, _lastImagePdbInfo.PdbAge, _lastImagePdbInfo.PdbSig, obj.TimeStamp);
+
+                _moduleRevokers.Add(_symbolResolver.RegisterModule(new SymbolResolver.Module
+                {
+                    FileName = obj.FileName,
+                    SizeOfImage = (ulong)obj.ImageSize,
+                    TimeDateStamp = (uint)obj.TimeDateStamp,
+                    // _lastImagePdbInfo is data from SymbolTraceEventParser that provides extra information needed to load the correct PDB file.
+                    PdbFileName = _lastImagePdbInfo.PdbFileName,
+                    PdbAge = _lastImagePdbInfo.PdbAge,
+                    PdbSig = _lastImagePdbInfo.PdbSig
+                }));
+                _lastImagePdbInfo = new();
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.

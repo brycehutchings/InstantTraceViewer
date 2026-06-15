@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace InstantTraceViewerUI.Etw
 {
-    public readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, uint TimeDateStamp, uint CheckSum, DateTime LoadTime, DateTime? UnloadTime)
+    public readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, uint TimeDateStamp, uint CheckSum, string PdbFileName, int PdbAge, Guid PdbSig, DateTime LoadTime, DateTime? UnloadTime)
     {
         public ulong ImageEnd => ImageBase + ImageSize;
     }
@@ -18,7 +18,7 @@ namespace InstantTraceViewerUI.Etw
         // The largest image size ever observed across all processes. Used as an upper bound to early-exit the backward scan in GetLoadedImage.
         private ulong _maxImageSize;
 
-        public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, DateTime loadTime)
+        public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, string pdbFileName, int pdbAge, Guid pdbSig, DateTime loadTime)
         {
             lock (_loadedImages)
             {
@@ -31,7 +31,7 @@ namespace InstantTraceViewerUI.Etw
                 _maxImageSize = Math.Max(_maxImageSize, imageSize);
 
                 int insertIndex = FindFirstImageWithBaseGreaterThan(loadedImages, imageBase);
-                loadedImages.Insert(insertIndex, new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, loadTime, null));
+                loadedImages.Insert(insertIndex, new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, pdbFileName, pdbAge, pdbSig, loadTime, null));
             }
         }
 
