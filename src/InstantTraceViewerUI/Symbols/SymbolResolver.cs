@@ -578,17 +578,37 @@ namespace InstantTraceViewerUI.Symbols
 
                     if (Path.Exists(module.PdbFileName))
                     {
-                        // TODO: Use SymSrvGetFileIndexInfoW to check guid and age. If match, use this path and skip search.
-                        // Docs say SymFindFileInPathW strips and path from the FileName (3rd) argument. So if the PDB is local but not in the search path, presumably SymFindFileInPathW won't find it.
+                        var localPdbIdentity = GetPdbSignatureAndAge(module.PdbFileName);
+                        if (localPdbIdentity == null)
+                        {
+                            WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' exists, but failed to read PDB index info. LastError={Marshal.GetLastPInvokeError()}.");
+                        }
+                        else if (localPdbIdentity.Value.PdbSig == module.PdbSig && localPdbIdentity.Value.PdbAge == (uint)module.PdbAge)
+                        {
+                            WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' found with matching PdbSig={localPdbIdentity.Value.PdbSig} PdbAge={localPdbIdentity.Value.PdbAge}.");
+                            symbolData.PdbPath = module.PdbFileName;
+                            return;
+                        }
+                        else
+                        {
+                            WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' mismatched. Expected PdbSig={module.PdbSig} PdbAge={module.PdbAge}; actual PdbSig={localPdbIdentity.Value.PdbSig} PdbAge={localPdbIdentity.Value.PdbAge}.");
+                        }
                     }
 
                     unsafe
                     {
                         Span<char> foundFile = stackalloc char[MaxPathBufferLength];
                         Guid pdbSig = module.PdbSig;
+
+                        // dbghelp only matches files in plain (non-symbol-server) directories by name, and SYMOPT_EXACT_SYMBOLS
+                        // does not reliably reject a name-matching but signature-mismatching PDB there. We pass a callback that
+                        // validates each candidate's signature/age and keeps the search going past mismatches (e.g. a stale PDB in
+                        // a build output directory) so dbghelp advances to later path entries (such as the symbol servers).
+                        FindPdbContext findContext = new() { ExpectedSig = module.PdbSig, ExpectedAge = (uint)module.PdbAge };
+                        bool found;
                         lock (DbgHelpLock)
                         {
-                            bool found = PInvoke.SymFindFileInPathW(
+                            found = PInvoke.SymFindFileInPathW(
                                 _sessionHandle,
                                 null,
                                 module.PdbFileName,
@@ -597,18 +617,18 @@ namespace InstantTraceViewerUI.Symbols
                                 0,
                                 SYM_FIND_ID_OPTION.SSRVOPT_GUIDPTR,
                                 foundFile,
-                                null,
-                                null);
+                                &FindFileInPathCallback,
+                                &findContext);
+                        }
 
-                            if (!found)
-                            {
-                                WriteTraceLine($"[FindPdb]: PDB lookup failed. LastError={Marshal.GetLastPInvokeError()}.");
-                                return;
-                            }
+                        if (!found)
+                        {
+                            WriteTraceLine($"[FindPdb]: No matching PDB found by SymFindFileInPathW. LastError={Marshal.GetLastPInvokeError()}.");
+                            return;
                         }
 
                         string pdbPath = StringFromNullTerminated(foundFile);
-                        WriteTraceLine($"[FindPdb]: Found at '{pdbPath}'.");
+                        WriteTraceLine($"[FindPdb]: Found matching PDB at '{pdbPath}'.");
                         symbolData.PdbPath = pdbPath;
                     }
                 }
@@ -618,6 +638,60 @@ namespace InstantTraceViewerUI.Symbols
                     WriteTraceLine($"[FindPdb]: Searching for PDB based on module TimeDateStamp and SizeOfImage is not yet supported.");
                 }
             }
+        }
+
+        private struct FindPdbContext
+        {
+            public Guid ExpectedSig;
+            public uint ExpectedAge;
+        }
+
+        // SymFindFileInPathW invokes this for each candidate file it locates. Returning TRUE continues the search to the next
+        // entry in the symbol path; returning FALSE accepts the candidate and ends the search. dbghelp matches files in plain
+        // directories by name only and does not reliably reject a signature mismatch there (even with SYMOPT_EXACT_SYMBOLS), so
+        // we validate each candidate here and keep searching past mismatches until the correct PDB is found (e.g. on a symbol server).
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+        private static unsafe BOOL FindFileInPathCallback(PCWSTR filename, void* context)
+        {
+            string candidatePath = filename.ToString();
+            FindPdbContext* expected = (FindPdbContext*)context;
+
+            (Guid PdbSig, uint PdbAge)? candidateIdentity = GetPdbSignatureAndAge(candidatePath);
+            if (candidateIdentity == null)
+            {
+                WriteTraceLine($"[FindPdb]: Candidate '{candidatePath}' rejected; failed to read PDB index info. LastError={Marshal.GetLastPInvokeError()}.");
+                return true; // Continue searching.
+            }
+
+            if (candidateIdentity.Value.PdbSig == expected->ExpectedSig && candidateIdentity.Value.PdbAge == expected->ExpectedAge)
+            {
+                WriteTraceLine($"[FindPdb]: Candidate '{candidatePath}' accepted with PdbSig={candidateIdentity.Value.PdbSig} PdbAge={candidateIdentity.Value.PdbAge}.");
+                return false; // Accept and end search.
+            }
+
+            WriteTraceLine($"[FindPdb]: Candidate '{candidatePath}' rejected. Expected PdbSig={expected->ExpectedSig} PdbAge={expected->ExpectedAge}; actual PdbSig={candidateIdentity.Value.PdbSig} PdbAge={candidateIdentity.Value.PdbAge}.");
+            return true; // Continue searching.
+        }
+
+        private static unsafe (Guid PdbSig, uint PdbAge)? GetPdbSignatureAndAge(string pdbPath)
+        {
+            SYMSRV_INDEX_INFOW indexInfo = new()
+            {
+                sizeofstruct = (uint)sizeof(SYMSRV_INDEX_INFOW),
+            };
+
+            fixed (char* pdbPathLocal = pdbPath)
+            {
+                lock (DbgHelpLock)
+                {
+                    if (!PInvoke.SymSrvGetFileIndexInfoW(pdbPathLocal, &indexInfo, 0))
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            return (indexInfo.guid, indexInfo.age);
         }
 
         private static IDisposable BeginCurrentModuleDataScope(SymbolData? moduleData)
