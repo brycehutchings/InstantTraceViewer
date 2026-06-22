@@ -292,12 +292,12 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            Dictionary<string, object> GetStackFrames()
+            StackFrame[] GetStackFrames()
             {
-                var stackFrames = new Dictionary<string, object>();
+                var stackFrames = new StackFrame[obj.FrameCount];
                 for (int i = 0; i < obj.FrameCount; i++)
                 {
-                    stackFrames.Add(i.ToString(), ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer(i)));
+                    stackFrames[i] = ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer(i));
                 }
                 return stackFrames;
             }

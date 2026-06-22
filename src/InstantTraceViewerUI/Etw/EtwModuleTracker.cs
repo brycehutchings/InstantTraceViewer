@@ -6,7 +6,7 @@ using System.Numerics;
 
 namespace InstantTraceViewerUI.Etw
 {
-    public readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, uint TimeDateStamp, uint CheckSum, string PdbFileName, int PdbAge, Guid PdbSig, DateTime LoadTime, DateTime? UnloadTime)
+    internal readonly record struct LoadedImage(string FileName, ulong ImageBase, ulong ImageSize, uint TimeDateStamp, uint CheckSum, string PdbFileName, int PdbAge, Guid PdbSig, RegisteredModule RegisteredModule, DateTime LoadTime, DateTime? UnloadTime)
     {
         public ulong ImageEnd => ImageBase + ImageSize;
     }
@@ -43,7 +43,7 @@ namespace InstantTraceViewerUI.Etw
                 _maxImageSize = Math.Max(_maxImageSize, imageSize);
 
                 int insertIndex = FindFirstImageWithBaseGreaterThan(loadedImages, imageBase);
-                loadedImages.Insert(insertIndex, new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, pdbFileName, pdbAge, pdbSig, loadTime, null));
+                loadedImages.Insert(insertIndex, new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, pdbFileName, pdbAge, pdbSig, registeredModule, loadTime, null));
             }
 
             lock (_registeredModules)
@@ -149,7 +149,7 @@ namespace InstantTraceViewerUI.Etw
                             {
                                 if (ImGui.Button("Find Symbols"))
                                 {
-                                    SymbolResolver.Instance.FindSymbols(registeredModule.Key, registeredModule.Module);
+                                    SymbolResolver.Instance.TryLoadSymbols(registeredModule.Key, registeredModule.Module);
                                     _selectedDiagnosticLog = registeredModule;
                                 }
                             }

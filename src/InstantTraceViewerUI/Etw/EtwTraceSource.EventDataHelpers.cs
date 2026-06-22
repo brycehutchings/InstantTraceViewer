@@ -1,7 +1,8 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -56,15 +57,23 @@ namespace InstantTraceViewerUI.Etw
             return newRecord;
         }
 
-        private string ResolveInstructionPointer(int processId, DateTime timestamp, ulong instructionPointer)
+        private StackFrame ResolveInstructionPointer(int processId, DateTime timestamp, ulong instructionPointer)
         {
             LoadedImage? loadedImage = _moduleTracker.GetLoadedImage(processId, instructionPointer, timestamp);
             if (!loadedImage.HasValue)
             {
-                return $"0x{instructionPointer:X}";
+                return new StackFrame(instructionPointer, null);
             }
 
             ulong relativeVirtualAddress = instructionPointer - loadedImage.Value.ImageBase;
+
+#if false
+            string? symbolName = SymbolResolver.Instance.ResolveSymbol(loadedImage.Value.RegisteredModule, relativeVirtualAddress);
+            if (!string.IsNullOrEmpty(symbolName))
+            {
+                return new StackFrame(instructionPointer, symbolName);
+            }
+#endif
 
             string moduleName = Path.GetFileName(loadedImage.Value.FileName);
             if (string.IsNullOrEmpty(moduleName))
@@ -72,7 +81,7 @@ namespace InstantTraceViewerUI.Etw
                 moduleName = loadedImage.Value.FileName;
             }
 
-            return $"{moduleName}+0x{relativeVirtualAddress:X}";
+            return new StackFrame(instructionPointer, $"{moduleName}+0x{relativeVirtualAddress:X}");
         }
     }
 }

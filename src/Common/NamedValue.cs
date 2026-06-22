@@ -4,6 +4,8 @@ namespace InstantTraceViewer
 {
     public delegate bool TryGetCustomizedValue(string? name, object value, out string customValue);
 
+    public record struct StackFrame(ulong InstructionPointer, string? ResolvedName);
+
     public struct NamedValue
     {
         private static readonly IFormatProvider FormatProvider = System.Globalization.CultureInfo.InvariantCulture;
@@ -97,6 +99,10 @@ namespace InstantTraceViewer
             else if (value is byte[] byteArrayValue)
             {
                 return BitConverter.ToString(byteArrayValue).Replace("-", " ");
+            }
+            else if (value is StackFrame stackFrameValue)
+            {
+                return stackFrameValue.ResolvedName ?? $"0x{stackFrameValue.InstructionPointer:X}";
             }
             else if (value is Array arrayValue)
             {

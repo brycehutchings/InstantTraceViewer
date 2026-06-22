@@ -3,8 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -15,16 +13,6 @@ using Windows.Win32.System.Diagnostics.Debug;
 
 namespace InstantTraceViewerUI.Symbols
 {
-    public class SymbolModule
-    {
-        IntPtr _dbgHelpSessionHandle;
-
-        internal SymbolModule(IntPtr dbgHelpSessionHandle)
-        {
-            _dbgHelpSessionHandle = dbgHelpSessionHandle;
-        }
-    }
-
     public class SymbolKey
     {
     }
@@ -52,6 +40,8 @@ namespace InstantTraceViewerUI.Symbols
             // public string? ResolvedBinaryPath { get; set; }
 
             public string? PdbPath { get; set; }
+
+            public ulong LoadedSymbolBase { get; set; }
 
             public StringBuilder DiagnosticLog { get; } = new();
 
@@ -117,6 +107,8 @@ namespace InstantTraceViewerUI.Symbols
         }
 
         private const int MaxPathBufferLength = 32768;
+        private const ulong SyntheticSymbolBaseAlignment = 0x10000;
+        private const ulong FirstSyntheticSymbolBase = 0x100000000;
 
         public readonly record struct Module(string FileName, ulong SizeOfImage, uint TimeDateStamp, string PdbFileName, int PdbAge, Guid PdbSig);
 
@@ -164,6 +156,7 @@ namespace InstantTraceViewerUI.Symbols
         private static long NextHandleValue = 1;
 
         private DbgHelpSessionHandle? _sessionHandle;
+        private ulong _nextSyntheticSymbolBase = FirstSyntheticSymbolBase;
 
         // A SymbolData also serves as its own SymbolKey, so the set dedups loaded modules by symbol identity.
         private readonly HashSet<SymbolData> _symbolCache = new();
@@ -272,10 +265,43 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
-        public void FindSymbols(SymbolKey key, in Module module)
+        public void TryLoadSymbols(SymbolKey key, in Module module)
         {
-            FindPdb(module, (SymbolData)key);
+            SymbolData symbolData = (SymbolData)key;
+            lock (symbolData)
+            {
+                using (BeginCurrentModuleDataScope(symbolData))
+                {
+                    string? pdbPath = FindPdb(module);
+                    if (!string.IsNullOrEmpty(pdbPath))
+                    {
+                        symbolData.PdbPath = pdbPath;
+
+                        LoadModule(module, symbolData);
+                    }
+                }
+            }
         }
+
+#if false // needs review
+        public string? ResolveSymbol(RegisteredModule registeredModule, ulong relativeVirtualAddress)
+        {
+            SymbolData symbolData = (SymbolData)registeredModule.Key;
+
+            lock (symbolData)
+            {
+                if (symbolData.LoadedSymbolBase == 0)
+                {
+                    return null;
+                }
+
+                using (BeginCurrentModuleDataScope(symbolData))
+                {
+                    return ResolveLoadedSymbol(registeredModule.Module, symbolData.LoadedSymbolBase, relativeVirtualAddress);
+                }
+            }
+        }
+#endif
 
         public string? GetPdbPath(SymbolKey key)
         {
@@ -304,219 +330,160 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
-#if false
-        public ResolvedSymbol? Resolve(in Module moduleLookupRequest, ulong relativeVirtualAddress)
+        // Expects 'PdbPath' is a valid PDB file to load. Caller must lock symbolData.
+        // TODO: This is a bit awkward because the module that loads the symbol may determine symbol name (part before !) but we share
+        // the loaded symbol base across all modules with the same signature. Is there a better way to handle this while avoiding loading the same PDB multiple times?
+        private void LoadModule(in Module module, SymbolData symbolData)
         {
-            ModuleData moduleData = GetOrAddModuleData(moduleLookupRequest);
-            using (BeginCurrentModuleDataScope(moduleData))
+            if (symbolData.LoadedSymbolBase != 0)
             {
-                lock (DbgHelpLock)
-                {
-                    // Need to find binary to get symbol information.
-                    string? binaryPath = FindBinary(moduleLookupRequest, findMethod: FindBinaryMethod.Default);
-                    if (binaryPath == null)
-                    {
-                        return null;
-                    }
+                return;
+            }
+            else if (module.SizeOfImage == 0)
+            {
+                WriteTraceLine($"[LoadModule]: Ignoring module '{module.FileName}' because SizeOfImage is 0.");
+                return;
+            }
 
-                    // TODO
+            string moduleName = Path.GetFileNameWithoutExtension(module.FileName);
+            if (string.IsNullOrEmpty(moduleName))
+            {
+                moduleName = Path.GetFileNameWithoutExtension(module.PdbFileName);
+            }
+            if (string.IsNullOrEmpty(moduleName))
+            {
+                moduleName = module.FileName;
+            }
 
-                    return null;
-                }
+            uint moduleSize = module.SizeOfImage > uint.MaxValue ? uint.MaxValue : (uint)module.SizeOfImage;
+            lock (DbgHelpLock)
+            {
+                ulong syntheticBase = _nextSyntheticSymbolBase;
+                ulong AlignUp(ulong value, ulong alignment) => checked((value + alignment - 1) / alignment * alignment);
+                _nextSyntheticSymbolBase = checked(_nextSyntheticSymbolBase + AlignUp(module.SizeOfImage, SyntheticSymbolBaseAlignment));
+
+                symbolData.LoadedSymbolBase = PInvoke.SymLoadModuleExW(_sessionHandle, null, symbolData.PdbPath, moduleName, syntheticBase, moduleSize, null, 0);
+            }
+
+            if (symbolData.LoadedSymbolBase == 0)
+            {
+                WriteTraceLine($"[LoadModule]: Failed to load symbols from '{symbolData.PdbPath}' for '{module.FileName}'. LastError={Marshal.GetLastPInvokeError()}.");
             }
         }
 
-        public unsafe string? FindBinary(in Module moduleLookupRequest, FindBinaryMethod findMethod)
+#if false // needs review
+        private unsafe string? ResolveLoadedSymbol(in Module module, ulong symbolBase, ulong relativeVirtualAddress)
         {
-            ModuleData? moduleData = TryGetModuleData(moduleLookupRequest);
+            const int MaxSymbolNameLength = 1024;
 
-            // First try the cache.
-            if ((findMethod == FindBinaryMethod.CacheOnly || findMethod == FindBinaryMethod.Default) &&
-                moduleData != null &&
-                !string.IsNullOrEmpty(moduleData.ResolvedBinaryPath))
+            Span<byte> symbolBuffer = stackalloc byte[sizeof(SYMBOL_INFOW) + (MaxSymbolNameLength - 1) * sizeof(char)];
+            fixed (byte* symbolBufferPointer = symbolBuffer)
             {
-                return moduleData.ResolvedBinaryPath;
+                SYMBOL_INFOW* symbolInfo = (SYMBOL_INFOW*)symbolBufferPointer;
+                symbolInfo->SizeOfStruct = (uint)sizeof(SYMBOL_INFOW);
+                symbolInfo->MaxNameLen = MaxSymbolNameLength;
+
+                ulong displacement;
+                bool found;
+                lock (DbgHelpLock)
+                {
+                    found = PInvoke.SymFromAddrW(_sessionHandle, symbolBase + relativeVirtualAddress, out displacement, symbolInfo);
+                }
+
+                if (!found)
+                {
+                    WriteTraceLine($"[ResolveSymbol]: Failed to resolve RVA 0x{relativeVirtualAddress:X} in '{module.FileName}'. LastError={Marshal.GetLastPInvokeError()}.");
+                    return null;
+                }
+
+                char* symbolNameStart = (char*)&symbolInfo->Name;
+                string symbolName = new string(symbolNameStart, 0, checked((int)symbolInfo->NameLen));
+                if (string.IsNullOrEmpty(symbolName))
+                {
+                    return null;
+                }
+
+                string moduleName = Path.GetFileName(module.FileName);
+                if (string.IsNullOrEmpty(moduleName))
+                {
+                    moduleName = module.FileName;
+                }
+
+                if (!symbolName.Contains('!'))
+                {
+                    symbolName = $"{moduleName}!{symbolName}";
+                }
+
+                return displacement == 0 ? symbolName : $"{symbolName}+0x{displacement:X}";
             }
+        }
+#endif
 
-            if (findMethod == FindBinaryMethod.CacheOnly)
+        private string? FindPdb(Module module)
+        {
+            if (module.PdbSig != Guid.Empty && !string.IsNullOrEmpty(module.PdbFileName))
             {
-                return null;
-            }
+                WriteTraceLine($"[FindPdb]: Searching for PDB using PdbSig={module.PdbSig} PdbAge={module.PdbAge} PdbFileName='{module.PdbFileName}'.");
 
-            moduleData ??= GetOrAddModuleData(moduleLookupRequest);
-            using (BeginCurrentModuleDataScope(moduleData))
-            {
-                // Second try the local filesystem at the exact path specified to avoid potentially slow symbol server hit.
-                string? foundBinary = FindBinaryLocal(moduleLookupRequest);
-                if (foundBinary == null)
+                if (Path.Exists(module.PdbFileName))
+                {
+                    var localPdbIdentity = GetPdbSignatureAndAge(module.PdbFileName);
+                    if (localPdbIdentity == null)
+                    {
+                        WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' exists, but failed to read PDB index info. LastError={Marshal.GetLastPInvokeError()}.");
+                    }
+                    else if (localPdbIdentity.Value.PdbSig == module.PdbSig && localPdbIdentity.Value.PdbAge == (uint)module.PdbAge)
+                    {
+                        WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' found with matching PdbSig={localPdbIdentity.Value.PdbSig} PdbAge={localPdbIdentity.Value.PdbAge}.");
+                        return module.PdbFileName;
+                    }
+                    else
+                    {
+                        WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' mismatched. Expected PdbSig={module.PdbSig} PdbAge={module.PdbAge}; actual PdbSig={localPdbIdentity.Value.PdbSig} PdbAge={localPdbIdentity.Value.PdbAge}.");
+                    }
+                }
+
+                unsafe
                 {
                     Span<char> foundFile = stackalloc char[MaxPathBufferLength];
+                    Guid pdbSig = module.PdbSig;
+
+                    // dbghelp only matches files in plain (non-symbol-server) directories by name, and SYMOPT_EXACT_SYMBOLS
+                    // does not reliably reject a name-matching but signature-mismatching PDB there. We pass a callback that
+                    // validates each candidate's signature/age and keeps the search going past mismatches (e.g. a stale PDB in
+                    // a build output directory) so dbghelp advances to later path entries (such as the symbol servers).
+                    FindPdbContext findContext = new() { ExpectedSig = module.PdbSig, ExpectedAge = (uint)module.PdbAge };
                     bool found;
                     lock (DbgHelpLock)
                     {
                         found = PInvoke.SymFindFileInPathW(
                             _sessionHandle,
                             null,
-                            moduleLookupRequest.FileName, // File part of the path is used.
-                            (void*)(nuint)moduleLookupRequest.TimeDateStamp,
-                            checked((uint)moduleLookupRequest.SizeOfImage),
+                            module.PdbFileName,
+                            &pdbSig,
+                            (uint)module.PdbAge,
                             0,
-                            SYM_FIND_ID_OPTION.SSRVOPT_DWORD,
+                            SYM_FIND_ID_OPTION.SSRVOPT_GUIDPTR,
                             foundFile,
-                            null,
-                            null);
+                            &FindFileInPathCallback,
+                            &findContext);
                     }
+
                     if (!found)
                     {
-                        if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
-                        {
-                            WriteTraceLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found by SymFindFileInPathW.");
-                        }
-                        else
-                        {
-                            WriteTraceLine($"SymbolResolver[FindBinary]: Unexpected failure by SymFindFileInPathW. LastError={Marshal.GetLastPInvokeError()}.");
-                        }
+                        WriteTraceLine($"[FindPdb]: No matching PDB found by SymFindFileInPathW. LastError={Marshal.GetLastPInvokeError()}.");
                         return null;
                     }
 
-                    foundBinary = StringFromNullTerminated(foundFile);
-                    WriteTraceLine($"SymbolResolver[FindBinary]: {foundBinary} found via SymFindFileInPathW.");
-                }
-
-                lock (_binaryLookupCache)
-                {
-                    ModuleData value = GetOrAddModuleDataLocked(moduleLookupRequest);
-                    value.ResolvedBinaryPath = foundBinary;
-                }
-
-                return foundBinary;
-            }
-        }
-
-        private static string StringFromNullTerminated(ReadOnlySpan<char> buffer)
-        {
-            int length = buffer.IndexOf('\0');
-            if (length < 0)
-            {
-                length = buffer.Length;
-            }
-
-            return new string(buffer[..length]);
-        }
-#endif
-
-        private string? FindBinaryLocal(in Module moduleLookupRequest)
-        {
-            if (!Path.IsPathFullyQualified(moduleLookupRequest.FileName))
-            {
-                return null;
-            }
-
-            if (!Path.Exists(moduleLookupRequest.FileName))
-            {
-                WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' does not exist.");
-                return null;
-            }
-
-            try
-            {
-                using FileStream fileStream = File.OpenRead(moduleLookupRequest.FileName);
-                using PEReader peReader = new(fileStream);
-                PEHeader? peHeader = peReader.PEHeaders.PEHeader;
-                if (peHeader == null)
-                {
-                    WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' has no PE header.");
-                    return null;
-                }
-
-                uint timeDateStamp = unchecked((uint)peReader.PEHeaders.CoffHeader.TimeDateStamp);
-                uint sizeOfImage = unchecked((uint)peHeader.SizeOfImage);
-                if (timeDateStamp != moduleLookupRequest.TimeDateStamp || sizeOfImage != moduleLookupRequest.SizeOfImage)
-                {
-                    WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' mismatched. Expected TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}; actual TimeDateStamp=0x{timeDateStamp:X8} SizeOfImage=0x{sizeOfImage:X}.");
-                    return null;
-                }
-
-                WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' found locally with matching TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}.");
-                return moduleLookupRequest.FileName;
-            }
-            catch (Exception ex)
-            {
-                WriteTraceLine($"[FindBinary]: Failed to open or parse '{moduleLookupRequest.FileName}': {ex.Message}");
-                return null;
-            }
-        }
-
-        private void FindPdb(Module module, SymbolData symbolData)
-        {
-            using (BeginCurrentModuleDataScope(symbolData))
-            {
-                if (module.PdbSig != Guid.Empty && !string.IsNullOrEmpty(module.PdbFileName))
-                {
-                    WriteTraceLine($"[FindPdb]: Searching for PDB using PdbSig={module.PdbSig} PdbAge={module.PdbAge} PdbFileName='{module.PdbFileName}'.");
-
-                    if (Path.Exists(module.PdbFileName))
-                    {
-                        var localPdbIdentity = GetPdbSignatureAndAge(module.PdbFileName);
-                        if (localPdbIdentity == null)
-                        {
-                            WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' exists, but failed to read PDB index info. LastError={Marshal.GetLastPInvokeError()}.");
-                        }
-                        else if (localPdbIdentity.Value.PdbSig == module.PdbSig && localPdbIdentity.Value.PdbAge == (uint)module.PdbAge)
-                        {
-                            WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' found with matching PdbSig={localPdbIdentity.Value.PdbSig} PdbAge={localPdbIdentity.Value.PdbAge}.");
-                            symbolData.PdbPath = module.PdbFileName;
-                            return;
-                        }
-                        else
-                        {
-                            WriteTraceLine($"[FindPdb]: Local file '{module.PdbFileName}' mismatched. Expected PdbSig={module.PdbSig} PdbAge={module.PdbAge}; actual PdbSig={localPdbIdentity.Value.PdbSig} PdbAge={localPdbIdentity.Value.PdbAge}.");
-                        }
-                    }
-
-                    unsafe
-                    {
-                        Span<char> foundFile = stackalloc char[MaxPathBufferLength];
-                        Guid pdbSig = module.PdbSig;
-
-                        // dbghelp only matches files in plain (non-symbol-server) directories by name, and SYMOPT_EXACT_SYMBOLS
-                        // does not reliably reject a name-matching but signature-mismatching PDB there. We pass a callback that
-                        // validates each candidate's signature/age and keeps the search going past mismatches (e.g. a stale PDB in
-                        // a build output directory) so dbghelp advances to later path entries (such as the symbol servers).
-                        FindPdbContext findContext = new() { ExpectedSig = module.PdbSig, ExpectedAge = (uint)module.PdbAge };
-                        bool found;
-                        lock (DbgHelpLock)
-                        {
-                            found = PInvoke.SymFindFileInPathW(
-                                _sessionHandle,
-                                null,
-                                module.PdbFileName,
-                                &pdbSig,
-                                (uint)module.PdbAge,
-                                0,
-                                SYM_FIND_ID_OPTION.SSRVOPT_GUIDPTR,
-                                foundFile,
-                                &FindFileInPathCallback,
-                                &findContext);
-                        }
-
-                        if (!found)
-                        {
-                            WriteTraceLine($"[FindPdb]: No matching PDB found by SymFindFileInPathW. LastError={Marshal.GetLastPInvokeError()}.");
-                            return;
-                        }
-
-                        string pdbPath = StringFromNullTerminated(foundFile);
-                        WriteTraceLine($"[FindPdb]: Found matching PDB at '{pdbPath}'.");
-                        symbolData.PdbPath = pdbPath;
-                    }
-                }
-                else
-                {
-                    // In theory we can use SymFindFileInPathW to find the module using TimeDateStamp+SizeOfImage, and then get the PdbSig+PdbAge+PdbFileName. Not sure it is needed yet.
-                    WriteTraceLine($"[FindPdb]: Searching for PDB based on module TimeDateStamp and SizeOfImage is not yet supported.");
+                    string pdbPath = StringFromNullTerminated(foundFile);
+                    WriteTraceLine($"[FindPdb]: Found matching PDB at '{pdbPath}'.");
+                    return pdbPath;
                 }
             }
+
+            // In theory we can use SymFindFileInPathW to find the module using TimeDateStamp+SizeOfImage, and then get the PdbSig+PdbAge+PdbFileName. Not sure it is needed yet.
+            WriteTraceLine($"[FindPdb]: Searching for PDB based on module TimeDateStamp and SizeOfImage is not yet supported.");
+            return null;
         }
 
         private struct FindPdbContext
@@ -584,28 +551,6 @@ namespace InstantTraceViewerUI.Symbols
             ResolveModuleTraceSink.WriteLine(message);
         }
 
-#if false
-        private SymbolData? TryGetModuleData(in Module moduleLookupRequest)
-        {
-            lock (_binaryLookupCache)
-            {
-                return _binaryLookupCache.TryGetValue(moduleLookupRequest, out SymbolData? moduleData) ? moduleData : null;
-            }
-        }
-
-        private SymbolData GetOrAddModuleData(in Module module)
-        {
-            lock (_binaryLookupCache)
-            {
-                return GetOrAddModuleDataLocked(module);
-            }
-        }
-
-        private SymbolData GetOrAddModuleDataLocked(in Module module)
-        {
-        }
-#endif
-
         private static string StringFromNullTerminated(ReadOnlySpan<char> buffer)
         {
             int length = buffer.IndexOf('\0');
@@ -636,4 +581,118 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
     }
+
+
+    // This code can be used if there is ever a need to fetch a module from the symbol server. This could be needed if the PdbSig is not available but the TimeDateStamp and SizeOfImage are.
+    // Once the dll/exe is fetched from the symbol server, we could load the PdbSig/PdbAge and then fetch the PDB from the symbol server.
+#if false
+        public unsafe string? FindBinary(in Module moduleLookupRequest, FindBinaryMethod findMethod)
+        {
+            ModuleData? moduleData = TryGetModuleData(moduleLookupRequest);
+
+            // First try the cache.
+            if ((findMethod == FindBinaryMethod.CacheOnly || findMethod == FindBinaryMethod.Default) &&
+                moduleData != null &&
+                !string.IsNullOrEmpty(moduleData.ResolvedBinaryPath))
+            {
+                return moduleData.ResolvedBinaryPath;
+            }
+
+            if (findMethod == FindBinaryMethod.CacheOnly)
+            {
+                return null;
+            }
+
+            moduleData ??= GetOrAddModuleData(moduleLookupRequest);
+            using (BeginCurrentModuleDataScope(moduleData))
+            {
+                // Second try the local filesystem at the exact path specified to avoid potentially slow symbol server hit.
+                string? foundBinary = FindBinaryLocal(moduleLookupRequest);
+                if (foundBinary == null)
+                {
+                    Span<char> foundFile = stackalloc char[MaxPathBufferLength];
+                    bool found;
+                    lock (DbgHelpLock)
+                    {
+                        found = PInvoke.SymFindFileInPathW(
+                            _sessionHandle,
+                            null,
+                            moduleLookupRequest.FileName, // File part of the path is used.
+                            (void*)(nuint)moduleLookupRequest.TimeDateStamp,
+                            checked((uint)moduleLookupRequest.SizeOfImage),
+                            0,
+                            SYM_FIND_ID_OPTION.SSRVOPT_DWORD,
+                            foundFile,
+                            null,
+                            null);
+                    }
+                    if (!found)
+                    {
+                        if (Marshal.GetLastPInvokeError() == 2 /* ERROR_NOT_FOUND */)
+                        {
+                            WriteTraceLine($"SymbolResolver[FindBinary]: '{moduleLookupRequest.FileName}' not found by SymFindFileInPathW.");
+                        }
+                        else
+                        {
+                            WriteTraceLine($"SymbolResolver[FindBinary]: Unexpected failure by SymFindFileInPathW. LastError={Marshal.GetLastPInvokeError()}.");
+                        }
+                        return null;
+                    }
+
+                    foundBinary = StringFromNullTerminated(foundFile);
+                    WriteTraceLine($"SymbolResolver[FindBinary]: {foundBinary} found via SymFindFileInPathW.");
+                }
+
+                lock (_binaryLookupCache)
+                {
+                    ModuleData value = GetOrAddModuleDataLocked(moduleLookupRequest);
+                    value.ResolvedBinaryPath = foundBinary;
+                }
+
+                return foundBinary;
+            }
+        }
+
+        private string? FindBinaryLocal(in Module moduleLookupRequest)
+        {
+            if (!Path.IsPathFullyQualified(moduleLookupRequest.FileName))
+            {
+                return null;
+            }
+
+            if (!Path.Exists(moduleLookupRequest.FileName))
+            {
+                WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' does not exist.");
+                return null;
+            }
+
+            try
+            {
+                using FileStream fileStream = File.OpenRead(moduleLookupRequest.FileName);
+                using PEReader peReader = new(fileStream);
+                PEHeader? peHeader = peReader.PEHeaders.PEHeader;
+                if (peHeader == null)
+                {
+                    WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' has no PE header.");
+                    return null;
+                }
+
+                uint timeDateStamp = unchecked((uint)peReader.PEHeaders.CoffHeader.TimeDateStamp);
+                uint sizeOfImage = unchecked((uint)peHeader.SizeOfImage);
+                if (timeDateStamp != moduleLookupRequest.TimeDateStamp || sizeOfImage != moduleLookupRequest.SizeOfImage)
+                {
+                    WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' mismatched. Expected TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}; actual TimeDateStamp=0x{timeDateStamp:X8} SizeOfImage=0x{sizeOfImage:X}.");
+                    return null;
+                }
+
+                WriteTraceLine($"[FindBinary]: Local file '{moduleLookupRequest.FileName}' found locally with matching TimeDateStamp=0x{moduleLookupRequest.TimeDateStamp:X8} SizeOfImage=0x{moduleLookupRequest.SizeOfImage:X}.");
+                return moduleLookupRequest.FileName;
+            }
+            catch (Exception ex)
+            {
+                WriteTraceLine($"[FindBinary]: Failed to open or parse '{moduleLookupRequest.FileName}': {ex.Message}");
+                return null;
+            }
+        }
+#endif
 }
