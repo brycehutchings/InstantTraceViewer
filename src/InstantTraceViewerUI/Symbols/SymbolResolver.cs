@@ -1,11 +1,9 @@
-using Hexa.NET.ImGui;
 using Microsoft.Win32.SafeHandles;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -31,9 +29,11 @@ namespace InstantTraceViewerUI.Symbols
     {
     }
 
-    public abstract class RegisteredModule : IDisposable
+    internal abstract class RegisteredModule : IDisposable
     {
         public abstract SymbolKey Key { get; init; }
+
+        public abstract SymbolResolver.Module Module { get; init; }
 
         public abstract void Dispose();
     }
@@ -41,26 +41,29 @@ namespace InstantTraceViewerUI.Symbols
     /// <summary>
     /// Resolves module+offset addresses to symbol names using the Windows Debug Help library (dbghelp.dll).
     /// Supports symbol server downloads (e.g. the Microsoft public symbol server) and local symbol/binary stores
-    /// via the search path passed to the constructor.
-    /// 
-    /// All potentially-slow operations (binary lookup, PDB download, module load, symbol resolution) are exposed
-    /// as <c>Async</c> methods and their results are cached on the instance, so repeating the same query is cheap.
-    ///
-    /// Multiple independent instances may exist concurrently; each owns its own caches and dbghelp session, so
-    /// loaded modules from one instance do not affect another. Internally calls into dbghelp are serialized with
-    /// a process-wide lock because the underlying library is not thread-safe.
-    ///
-    /// dbghelp symbol options (<c>SYMOPT_*</c>) are process-global. Configure them once per process via
-    /// <see cref="SetGlobalSymbolOptions(uint)"/> rather than per instance.
+    /// via the search path passed to <see cref="Initialize(uint, string)"/>.
     /// </summary>
-    internal sealed class SymbolResolver : IDisposable
+    internal sealed class SymbolResolver
     {
-        private class SymbolKeyPdbSig : SymbolKey
+        private abstract class SymbolData : SymbolKey
         {
-            public Guid PdbSig;
-            public int PdbAge;
+            public HashSet<Module> Modules { get; } = new();
 
-            public SymbolKeyPdbSig(Guid pdbSig, int pdbAge)
+            // public string? ResolvedBinaryPath { get; set; }
+
+            public string? PdbPath { get; set; }
+
+            public StringBuilder DiagnosticLog { get; } = new();
+
+            public int ReferenceCount { get; set; }
+        }
+
+        private sealed class SymbolDataPdbSig : SymbolData
+        {
+            public readonly Guid PdbSig;
+            public readonly int PdbAge;
+
+            public SymbolDataPdbSig(Guid pdbSig, int pdbAge)
             {
                 PdbSig = pdbSig;
                 PdbAge = pdbAge;
@@ -69,16 +72,16 @@ namespace InstantTraceViewerUI.Symbols
             public override int GetHashCode() => HashCode.Combine(PdbSig, PdbAge);
 
             public override bool Equals(object? obj)
-                => obj is SymbolKeyPdbSig other && PdbSig == other.PdbSig && PdbAge == other.PdbAge;
+                => obj is SymbolDataPdbSig other && PdbSig == other.PdbSig && PdbAge == other.PdbAge;
         }
 
-        private class SymbolKeyPESig : SymbolKey
+        private sealed class SymbolDataPESig : SymbolData
         {
-            public string FileName;
-            public ulong SizeOfImage;
-            public uint TimeDateStamp;
+            public readonly string FileName;
+            public readonly ulong SizeOfImage;
+            public readonly uint TimeDateStamp;
 
-            public SymbolKeyPESig(string fileName, ulong sizeOfImage, uint timeDateStamp)
+            public SymbolDataPESig(string fileName, ulong sizeOfImage, uint timeDateStamp)
             {
                 FileName = fileName;
                 SizeOfImage = sizeOfImage;
@@ -88,7 +91,7 @@ namespace InstantTraceViewerUI.Symbols
             public override int GetHashCode() => HashCode.Combine(FileName, SizeOfImage, TimeDateStamp);
 
             public override bool Equals(object? obj)
-                => obj is SymbolKeyPESig other &&
+                => obj is SymbolDataPESig other &&
                         string.Equals(FileName, other.FileName, StringComparison.OrdinalIgnoreCase) &&
                         SizeOfImage == other.SizeOfImage &&
                         TimeDateStamp == other.TimeDateStamp;
@@ -97,6 +100,7 @@ namespace InstantTraceViewerUI.Symbols
         private class RegisteredModuleRevoker : RegisteredModule
         {
             public override SymbolKey Key { get; init; }
+            public override Module Module { get; init; }
             public SymbolData ModuleData { get; init; }
 
             public override void Dispose()
@@ -114,22 +118,8 @@ namespace InstantTraceViewerUI.Symbols
 
         private const int MaxPathBufferLength = 32768;
 
-        public readonly record struct ModuleKey(string FileName, ulong SizeOfImage, uint TimeDateStamp);
-
         public readonly record struct Module(string FileName, ulong SizeOfImage, uint TimeDateStamp, string PdbFileName, int PdbAge, Guid PdbSig);
 
-        private record class SymbolData
-        {
-            public HashSet<Module> Modules { get; } = new();
-
-            // public string? ResolvedBinaryPath { get; set; }
-
-            public string? PdbPath { get; set; }
-
-            public StringBuilder DiagnosticLog { get; } = new();
-
-            public int ReferenceCount { get; set; }
-        }
 
         private sealed class CurrentSymbolDataScope : IDisposable
         {
@@ -173,43 +163,16 @@ namespace InstantTraceViewerUI.Symbols
 
         private static long NextHandleValue = 1;
 
-        private readonly DbgHelpSessionHandle _sessionHandle;
+        private DbgHelpSessionHandle? _sessionHandle;
 
-        // SymbolKey can be computed from a Module.
-        private readonly Dictionary<SymbolKey, SymbolData> _symbolCache = new();
+        // A SymbolData also serves as its own SymbolKey, so the set dedups loaded modules by symbol identity.
+        private readonly HashSet<SymbolData> _symbolCache = new();
 
-        /// <summary>
-        /// Creates a new resolver with its own dbghelp session and caches.
-        /// </summary>
-        /// <param name="searchPath">
-        /// The dbghelp search path used to locate binaries and PDBs (local directories and/or <c>srv*</c> entries
-        /// for symbol servers). See <see cref="CreateDefaultSearchPath"/> for a sensible default.
-        /// </param>
-        /// <exception cref="InvalidOperationException">Thrown if dbghelp fails to initialize the session.</exception>
-        public SymbolResolver(string searchPath)
+        /// <summary>The process-wide singleton instance. Call <see cref="Initialize(uint, string)"/> before use.</summary>
+        public static readonly SymbolResolver Instance = new();
+
+        private SymbolResolver()
         {
-            ArgumentNullException.ThrowIfNull(searchPath);
-            _sessionHandle = new DbgHelpSessionHandle(new IntPtr(Interlocked.Increment(ref NextHandleValue)));
-
-            WriteTraceLine($"SymbolResolver: Initializing with search path '{searchPath}'.");
-            using (BeginCurrentModuleDataScope(null))
-            {
-                lock (DbgHelpLock)
-                {
-                    if (!PInvoke.SymInitializeW(_sessionHandle, searchPath, fInvadeProcess: false))
-                    {
-                        throw new InvalidOperationException($"SymInitializeW failed. LastError={Marshal.GetLastPInvokeError()}");
-                    }
-
-                    unsafe
-                    {
-                        if (!PInvoke.SymRegisterCallbackW64(_sessionHandle, &DbgHelpCallback, 0))
-                        {
-                            WriteTraceLine($"SymbolResolver: SymRegisterCallbackW64 failed. LastError={Marshal.GetLastPInvokeError()}.");
-                        }
-                    }
-                }
-            }
         }
 
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
@@ -231,17 +194,37 @@ namespace InstantTraceViewerUI.Symbols
         }
 
         /// <summary>
-        /// Sets the process-global dbghelp symbol options (<c>SYMOPT_*</c>). These options are shared by every
-        /// dbghelp session in the process, so this should typically be called once at startup before creating any
-        /// <see cref="SymbolResolver"/> instances.
+        /// Initializes the single process-wide dbghelp session: applies the symbol options (<c>SYMOPT_*</c>), creates the
+        /// session, and registers the diagnostic callback. Must be called once at startup before any other member is used.
         /// </summary>
-        public static void SetGlobalSymbolOptions(uint symbolOptions)
+        /// <param name="symbolOptions">The dbghelp symbol options to apply via <c>SymSetOptions</c>.</param>
+        /// <param name="searchPath">
+        /// The dbghelp search path used to locate binaries and PDBs (local directories and/or <c>srv*</c> entries for
+        /// symbol servers).
+        /// </param>
+        /// <exception cref="InvalidOperationException">Thrown if dbghelp fails to initialize the session.</exception>
+        public unsafe void Initialize(uint symbolOptions, string searchPath)
         {
+            ArgumentNullException.ThrowIfNull(searchPath);
+
             using (BeginCurrentModuleDataScope(null))
             {
                 lock (DbgHelpLock)
                 {
                     PInvoke.SymSetOptions(symbolOptions | PInvoke.SYMOPT_DEBUG);
+
+                    _sessionHandle = new DbgHelpSessionHandle(new IntPtr(Interlocked.Increment(ref NextHandleValue)));
+
+                    WriteTraceLine($"SymbolResolver: Initializing with search path '{searchPath}'.");
+                    if (!PInvoke.SymInitializeW(_sessionHandle, searchPath, fInvadeProcess: false))
+                    {
+                        throw new InvalidOperationException($"SymInitializeW failed. LastError={Marshal.GetLastPInvokeError()}");
+                    }
+
+                    if (!PInvoke.SymRegisterCallbackW64(_sessionHandle, &DbgHelpCallback, 0))
+                    {
+                        WriteTraceLine($"SymbolResolver: SymRegisterCallbackW64 failed. LastError={Marshal.GetLastPInvokeError()}.");
+                    }
                 }
             }
         }
@@ -273,19 +256,51 @@ namespace InstantTraceViewerUI.Symbols
         {
             lock (_symbolCache)
             {
-                SymbolKey symbolKey = (module.PdbSig == Guid.Empty) ? 
-                    new SymbolKeyPESig(module.FileName, module.SizeOfImage, module.TimeDateStamp) :
-                    new SymbolKeyPdbSig(module.PdbSig, module.PdbAge);
+                SymbolData candidate = (module.PdbSig == Guid.Empty) ?
+                    new SymbolDataPESig(module.FileName, module.SizeOfImage, module.TimeDateStamp) :
+                    new SymbolDataPdbSig(module.PdbSig, module.PdbAge);
 
-                if (!_symbolCache.TryGetValue(symbolKey, out SymbolData? moduleData))
+                if (!_symbolCache.TryGetValue(candidate, out SymbolData? symbolData))
                 {
-                    moduleData = new();
-                    _symbolCache.Add(symbolKey, moduleData);
+                    symbolData = candidate;
+                    _symbolCache.Add(symbolData);
                 }
 
-                moduleData.Modules.Add(module);
-                moduleData.ReferenceCount++;
-                return new RegisteredModuleRevoker { Key = symbolKey, ModuleData = moduleData };
+                symbolData.Modules.Add(module);
+                symbolData.ReferenceCount++;
+                return new RegisteredModuleRevoker { Key = symbolData, Module = module, ModuleData = symbolData };
+            }
+        }
+
+        public void FindSymbols(SymbolKey key, in Module module)
+        {
+            FindPdb(module, (SymbolData)key);
+        }
+
+        public string? GetPdbPath(SymbolKey key)
+        {
+            SymbolData symbolData = (SymbolData)key;
+            lock (symbolData)
+            {
+                return symbolData.PdbPath;
+            }
+        }
+
+        public bool HasDiagnosticLog(SymbolKey key)
+        {
+            SymbolData symbolData = (SymbolData)key;
+            lock (symbolData)
+            {
+                return symbolData.DiagnosticLog.Length > 0;
+            }
+        }
+
+        public string GetDiagnosticLog(SymbolKey key)
+        {
+            SymbolData symbolData = (SymbolData)key;
+            lock (symbolData)
+            {
+                return symbolData.DiagnosticLog.ToString();
             }
         }
 
@@ -389,142 +404,6 @@ namespace InstantTraceViewerUI.Symbols
             return new string(buffer[..length]);
         }
 #endif
-
-        private SymbolKey? _selectedDiagnosticLogKey = null;
-
-        public void RenderSymbolManagerWindow(IUiCommands uiCommands, ref bool isOpen)
-        {
-            ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
-
-            if (ImGui.Begin("Symbols", ref isOpen))
-            {
-                // FIXME: Don't take across whole render?
-                lock (_symbolCache)
-                {
-                    // Although we group things by SymbolKey, we present things to user per module for easy searching/sorting.
-                    // That does mean loading symbols for one module may populate symbol information for other modules with same key.
-                    List<(SymbolKey Key, SymbolData Data, Module Module)> symbolDataList = new(_symbolCache.Count);
-                    foreach ((SymbolKey key, SymbolData data) in _symbolCache)
-                    {
-                        foreach (var module in data.Modules)
-                        {
-                            symbolDataList.Add((key, data, module));
-                        }
-                    }
-                    symbolDataList.Sort((left, right) => string.Compare(left.Module.FileName, right.Module.FileName, StringComparison.OrdinalIgnoreCase));
-
-                    if (symbolDataList.Count == 0)
-                    {
-                        ImGui.TextUnformatted("No modules registered.");
-                    }
-
-                    float logHeight = ImGui.GetTextLineHeightWithSpacing() * 8;
-                    Vector2 tableSize = new Vector2(-1, -logHeight - ImGui.GetFrameHeightWithSpacing());
-                    if (ImGui.BeginTable("SymbolModules", 2,
-                        ImGuiTableFlags.ScrollY | ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter |
-                        ImGuiTableFlags.BordersV | ImGuiTableFlags.Resizable | ImGuiTableFlags.Reorderable,
-                        tableSize))
-                    {
-                        float dpiBase = ImGui.GetFontSize();
-
-                        ImGui.TableSetupScrollFreeze(0, 1);
-                        ImGui.TableSetupColumn("Loaded Module", ImGuiTableColumnFlags.WidthStretch, 1.0f);
-                        //ImGui.TableSetupColumn("TimeDateStamp", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
-                        //ImGui.TableSetupColumn("SizeOfImage", ImGuiTableColumnFlags.WidthFixed, dpiBase * 8.0f);
-                        //ImGui.TableSetupColumn("Resolved Module", ImGuiTableColumnFlags.WidthStretch, 0.65f);
-                        ImGui.TableSetupColumn("Symbol", ImGuiTableColumnFlags.WidthFixed, dpiBase * 1.0f);
-                        ImGui.TableHeadersRow();
-
-                        foreach (var symbolData in symbolDataList)
-                        {
-                            ImGui.PushID(HashCode.Combine(symbolData.Key, symbolData.Module));
-
-                            ImGui.TableNextRow();
-
-                            ImGui.TableNextColumn();
-
-                            if (ImGui.CollapsingHeader(symbolData.Module.FileName))
-                            {
-                                string timeDateStampFormatted = symbolData.Module.TimeDateStamp == 0 ? "n/a" : $"0x{symbolData.Module.TimeDateStamp:X8}";
-                                ImGui.Indent();
-                                ImGui.TextUnformatted($"SizeOfImage: {symbolData.Module.SizeOfImage} TimeDateStamp: {timeDateStampFormatted}");
-                                string pdbSigFormatted = symbolData.Module.PdbSig == Guid.Empty ? "n/a" : symbolData.Module.PdbSig.ToString("D");
-                                string pdbAgeFormatted = symbolData.Module.PdbAge == 0 ? "n/a" : $"{symbolData.Module.PdbAge}";
-                                string pdbFileNameFormatted = string.IsNullOrEmpty(symbolData.Module.PdbFileName) ? "n/a" : symbolData.Module.PdbFileName;
-                                ImGui.TextUnformatted($"PdbSig: {pdbSigFormatted} PdbAge: {pdbAgeFormatted} PdbFileName: {pdbFileNameFormatted}");
-                                string resolvedBinaryFormatted = string.IsNullOrEmpty(symbolData.Data.PdbPath) ? "n/a" : symbolData.Data.PdbPath;
-                                ImGui.TextUnformatted($"Pdb: {resolvedBinaryFormatted}");
-                                ImGui.Unindent();
-
-                                //ImGui.TableNextColumn();
-                                //ImGui.TextUnformatted(row.ResolvedBinaryPath ?? "");
-                            }
-
-                            ImGui.TableNextColumn();
-
-                            if (string.IsNullOrEmpty(symbolData.Data.PdbPath))
-                            {
-                                if (ImGui.Button("Find Symbols"))
-                                {
-                                    FindPdb(symbolData.Module, symbolData.Data);
-                                    _selectedDiagnosticLogKey = symbolData.Key;
-                                }
-                            }
-                            else
-                            {
-                                // TODO: Render success icon
-                            }
-
-                            if (symbolData.Data.DiagnosticLog.Length > 0)
-                            {
-                                ImGui.SameLine();
-                                if (ImGui.Button("Show Logs"))
-                                {
-                                    _selectedDiagnosticLogKey = symbolData.Key;
-                                }
-                            }
-
-                            ImGui.PopID();
-                        }
-
-                        ImGui.EndTable();
-                    }
-
-                    string selectedLog = string.Empty;
-                    if (_selectedDiagnosticLogKey != null && _symbolCache.TryGetValue(_selectedDiagnosticLogKey, out SymbolData? selectedSymbolData))
-                    {
-                        selectedLog = selectedSymbolData.DiagnosticLog.ToString();
-                    }
-                    ImGui.InputTextMultiline(
-                        "##SelectedSymbolModuleLog",
-                        ref selectedLog,
-                        ImGuiWidgets.GetInputTextBufferSize(selectedLog, 1),
-                        new Vector2(-1, logHeight),
-                        ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
-                }
-            }
-
-            ImGui.End();
-        }
-
-        public void Dispose()
-        {
-            if (_sessionHandle.IsClosed)
-            {
-                return;
-            }
-
-            using (BeginCurrentModuleDataScope(null))
-            {
-                lock (DbgHelpLock)
-                {
-                    // TODO: PInvoke.SymUnloadModule64(_sessionHandle, BaseAddress);
-                    // TODO: PInvoke.SymCleanup(_sessionHandle);
-                }
-            }
-
-            _sessionHandle.Dispose();
-        }
 
         private string? FindBinaryLocal(in Module moduleLookupRequest)
         {
@@ -740,9 +619,8 @@ namespace InstantTraceViewerUI.Symbols
 
         /// <summary>
         /// Dbghelp uses a pseudo-handle to identify symbol sessions in its APIs.
-        /// Since we want to have multiple independent instances of SymbolResolver that don't interfere with each other's caches,
-        /// we create a separate session for each instance by using a unique pseudo-handle value.
-        /// The actual value of the handle is not important as long as it's unique, so we use an incrementing long value to generate it.
+        /// The actual value of the handle is not important as long as it's unique and nonzero, so we generate it from an
+        /// incrementing long value.
         /// </summary>
         internal sealed class DbgHelpSessionHandle : SafeHandleZeroOrMinusOneIsInvalid
         {

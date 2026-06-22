@@ -251,9 +251,7 @@ namespace InstantTraceViewerUI.Etw
             }
             else if (obj.Opcode == (TraceEventOpcode)10/*Load*/ || obj.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, _lastImagePdbInfo.PdbFileName, _lastImagePdbInfo.PdbAge, _lastImagePdbInfo.PdbSig, obj.TimeStamp);
-
-                _moduleRevokers.Add(_symbolResolver.RegisterModule(new SymbolResolver.Module
+                var registeredModule = SymbolResolver.Instance.RegisterModule(new SymbolResolver.Module
                 {
                     FileName = obj.FileName,
                     SizeOfImage = (ulong)obj.ImageSize,
@@ -262,7 +260,9 @@ namespace InstantTraceViewerUI.Etw
                     PdbFileName = _lastImagePdbInfo.PdbFileName,
                     PdbAge = _lastImagePdbInfo.PdbAge,
                     PdbSig = _lastImagePdbInfo.PdbSig
-                }));
+                });
+
+                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, _lastImagePdbInfo.PdbFileName, _lastImagePdbInfo.PdbAge, _lastImagePdbInfo.PdbSig, obj.TimeStamp, registeredModule);
                 _lastImagePdbInfo = new();
             }
 

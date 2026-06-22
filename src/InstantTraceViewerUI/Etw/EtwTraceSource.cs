@@ -68,15 +68,6 @@ namespace InstantTraceViewerUI.Etw
 
         private ConcurrentDictionary<int, string> _threadNames = new();
         private ConcurrentDictionary<int, string> _processNames = new();
-        private List<IDisposable> _moduleRevokers = new();
-        private SymbolResolver _symbolResolver = new SymbolResolver(
-            @"c:\windows\system32;" +
-            @"d:\repos\cloud1\binlocal\WinX64;" + 
-            @"D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;" + 
-            @"d:\repos\cloud1\binlocal\WinX64\Symbols;" +
-            @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
-            @"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
-            @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
         private EtwModuleTracker _moduleTracker = new();
 
         private bool isDisposed;
@@ -222,11 +213,7 @@ namespace InstantTraceViewerUI.Etw
                 _traceRecords = new();
                 _generationId++;
 
-                foreach (var module in _moduleRevokers)
-                {
-                    module.Dispose();
-                }
-                _moduleRevokers.Clear();
+                _moduleTracker.ClearRegisteredModules();
             }
             finally
             {
@@ -328,7 +315,7 @@ namespace InstantTraceViewerUI.Etw
         {
             if (_renderSymbolManager)
             {
-                _symbolResolver.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
+                _moduleTracker.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
             }
         }
 
@@ -375,11 +362,7 @@ namespace InstantTraceViewerUI.Etw
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
 
-                    foreach (var module in _moduleRevokers)
-                    {
-                        module.Dispose();
-                    }
-                    _moduleRevokers.Clear();
+                    _moduleTracker.ClearRegisteredModules();
                 }
 
                 isDisposed = true;

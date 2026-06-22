@@ -9,8 +9,17 @@ namespace InstantTraceViewerUI
     {
         public static int Main(string[] args)
         {
-            SymbolResolver.SetGlobalSymbolOptions(
-                PInvoke.SYMOPT_EXACT_SYMBOLS | PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS);
+            SymbolResolver.Instance.Initialize(
+                PInvoke.SYMOPT_EXACT_SYMBOLS | PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS,
+                @"c:\windows\system32;" +
+                @"d:\repos\cloud1\binlocal\WinX64;" +
+                @"D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;" +
+                @"d:\repos\cloud1\binlocal\WinX64\Symbols;" +
+                @"d:\repos\cloud2\binlocal\WinX64\Symbols;" +
+                @"d:\repos\cloud3\binlocal\WinX64\Symbols;" +
+                @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
+                //@"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
+                @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
 
             HWND mainHWnd = Win32ImGuiHost.WindowInitialize();
 
