@@ -67,13 +67,11 @@ namespace InstantTraceViewerUI.Etw
 
             ulong relativeVirtualAddress = instructionPointer - loadedImage.Value.ImageBase;
 
-#if false
             string? symbolName = SymbolResolver.Instance.ResolveSymbol(loadedImage.Value.RegisteredModule, relativeVirtualAddress);
             if (!string.IsNullOrEmpty(symbolName))
             {
                 return new StackFrame(instructionPointer, symbolName);
             }
-#endif
 
             string moduleName = Path.GetFileName(loadedImage.Value.FileName);
             if (string.IsNullOrEmpty(moduleName))
@@ -82,6 +80,60 @@ namespace InstantTraceViewerUI.Etw
             }
 
             return new StackFrame(instructionPointer, $"{moduleName}+0x{relativeVirtualAddress:X}");
+        }
+
+        // Invoked when new symbols have been loaded. Walks already-collected records (both committed and pending) and
+        // re-resolves every stack frame so previously unresolved instruction pointers can pick up the new symbols.
+        private void ReResolveAllStackFrames()
+        {
+            _pendingRecordsLock.EnterWriteLock();
+            try
+            {
+                foreach (var record in _pendingRecords)
+                {
+                    ReResolveStackFrames(record);
+                }
+            }
+            finally
+            {
+                _pendingRecordsLock.ExitWriteLock();
+            }
+
+            _traceRecordsLock.EnterWriteLock();
+            try
+            {
+                foreach (var record in _traceRecords.CreateSnapshot())
+                {
+                    ReResolveStackFrames(record);
+                }
+
+                // Bump the generation so consumers re-read the now-updated stack frames.
+                _generationId++;
+            }
+            finally
+            {
+                _traceRecordsLock.ExitWriteLock();
+            }
+        }
+
+        private void ReResolveStackFrames(in EtwRecord record)
+        {
+            if (record.NamedValues == null)
+            {
+                return;
+            }
+
+            // Current stack frames are never nested so this query is sufficient.
+            foreach (var namedValue in record.NamedValues)
+            {
+                if (namedValue.Value is StackFrame[] stackFrames)
+                {
+                    for (int i = 0; i < stackFrames.Length; i++)
+                    {
+                        stackFrames[i] = ResolveInstructionPointer(record.ProcessId, record.Timestamp, stackFrames[i].InstructionPointer);
+                    }
+                }
+            }
         }
     }
 }

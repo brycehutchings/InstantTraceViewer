@@ -265,7 +265,7 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
-        public void TryLoadSymbols(SymbolKey key, in Module module)
+        public bool TryLoadSymbols(SymbolKey key, in Module module)
         {
             SymbolData symbolData = (SymbolData)key;
             lock (symbolData)
@@ -279,11 +279,12 @@ namespace InstantTraceViewerUI.Symbols
 
                         LoadModule(module, symbolData);
                     }
+
+                    return symbolData.LoadedSymbolBase != 0; // LoadedSymbolBase will be set if LoadModule succeeded.
                 }
             }
         }
 
-#if false // needs review
         public string? ResolveSymbol(RegisteredModule registeredModule, ulong relativeVirtualAddress)
         {
             SymbolData symbolData = (SymbolData)registeredModule.Key;
@@ -301,7 +302,6 @@ namespace InstantTraceViewerUI.Symbols
                 }
             }
         }
-#endif
 
         public string? GetPdbPath(SymbolKey key)
         {
@@ -371,7 +371,6 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
-#if false // needs review
         private unsafe string? ResolveLoadedSymbol(in Module module, ulong symbolBase, ulong relativeVirtualAddress)
         {
             const int MaxSymbolNameLength = 1024;
@@ -417,7 +416,6 @@ namespace InstantTraceViewerUI.Symbols
                 return displacement == 0 ? symbolName : $"{symbolName}+0x{displacement:X}";
             }
         }
-#endif
 
         private string? FindPdb(Module module)
         {

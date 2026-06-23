@@ -108,14 +108,32 @@ namespace InstantTraceViewer
             {
                 StringBuilder sb = new();
                 sb.Append('[');
+                // Stack frames can be long so show them on separate lines
+                bool multiline = allowMultiline && arrayValue.Length > 1 && arrayValue is IReadOnlyCollection<StackFrame> stack;
+                if (multiline)
+                {
+                    nestingLevel++;
+                }
                 foreach (object item in arrayValue)
                 {
-                    if (sb.Length > 1)
+                    if (multiline)
+                    {
+                        sb.AppendLine();
+                        sb.Append(' ', nestingLevel * 4);
+                    }
+                    else if (sb.Length > 1)
                     {
                         sb.Append(", ");
                     }
 
                     sb.Append(ObjectToString(name, item, allowMultiline, tryGetCustomizedValue, nestingLevel));
+                }
+
+                if (multiline)
+                {
+                    nestingLevel--;
+                    sb.AppendLine();
+                    sb.Append(' ', nestingLevel * 4);
                 }
                 sb.Append(']');
                 return sb.ToString();

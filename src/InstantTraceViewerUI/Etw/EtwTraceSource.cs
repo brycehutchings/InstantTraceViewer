@@ -51,8 +51,6 @@ namespace InstantTraceViewerUI.Etw
 
         // Fixed name is used because ETW sessions can outlive their processes and there is a low system limit. This way we replace leaked sessions rather than creating new ones.
         private static string SessionNamePrefix = "InstantTraceViewerSession";
-        private static readonly TimeSpan PendingTraceRecordWallclockMinAge = TimeSpan.FromMilliseconds(2000);
-        private static readonly TimeSpan PendingTraceRecordEventTimeMinAge = TimeSpan.FromMilliseconds(100);
 
         private readonly TraceEventSession? _etwSession;
         private readonly TraceEventDispatcher _etwSource;
@@ -84,6 +82,7 @@ namespace InstantTraceViewerUI.Etw
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
+            _moduleTracker.SymbolsLoaded += ReResolveAllStackFrames;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -96,6 +95,7 @@ namespace InstantTraceViewerUI.Etw
             _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
+            _moduleTracker.SymbolsLoaded += ReResolveAllStackFrames;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }

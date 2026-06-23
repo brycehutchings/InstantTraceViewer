@@ -25,6 +25,9 @@ namespace InstantTraceViewerUI.Etw
         private readonly List<RegisteredModule> _registeredModules = new();
         private RegisteredModule? _selectedDiagnosticLog;
 
+        // Raised after symbols are successfully loaded for a module so consumers can re-resolve existing stack frames.
+        public event Action? SymbolsLoaded;
+
         // Height of the resizable diagnostic log region at the bottom of the symbol manager window. Initialized lazily and then
         // owned by the ResizeY child window; we read it back each frame so the table above fills the remaining space (i.e. resizing
         // the window grows/shrinks the table while the log height stays put).
@@ -149,7 +152,10 @@ namespace InstantTraceViewerUI.Etw
                             {
                                 if (ImGui.Button("Find Symbols"))
                                 {
-                                    SymbolResolver.Instance.TryLoadSymbols(registeredModule.Key, registeredModule.Module);
+                                    if (SymbolResolver.Instance.TryLoadSymbols(registeredModule.Key, registeredModule.Module))
+                                    {
+                                        SymbolsLoaded?.Invoke();
+                                    }
                                     _selectedDiagnosticLog = registeredModule;
                                 }
                             }
