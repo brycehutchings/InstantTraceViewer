@@ -43,8 +43,6 @@ namespace InstantTraceViewerUI.Symbols
 
             public ulong LoadedSymbolBase { get; set; }
 
-            public StringBuilder DiagnosticLog { get; } = new();
-
             public int ReferenceCount { get; set; }
         }
 
@@ -113,45 +111,10 @@ namespace InstantTraceViewerUI.Symbols
         public readonly record struct Module(string FileName, ulong SizeOfImage, uint TimeDateStamp, string PdbFileName, int PdbAge, Guid PdbSig);
 
 
-        private sealed class CurrentSymbolDataScope : IDisposable
-        {
-            private readonly SymbolData? _previousSymbolData;
-
-            public CurrentSymbolDataScope(SymbolData? symbolData)
-            {
-                _previousSymbolData = CurrentSymbolData;
-                CurrentSymbolData = symbolData;
-            }
-
-            public void Dispose()
-            {
-                CurrentSymbolData = _previousSymbolData;
-            }
-        }
-
-        private sealed class SymbolDataTraceSink
-        {
-            public void WriteLine(string message)
-            {
-                SymbolData? symbolData = CurrentSymbolData;
-                if (symbolData == null || string.IsNullOrEmpty(message))
-                {
-                    Trace.WriteLine("[No SymbolData] " + message);
-                    return;
-                }
-
-                lock (symbolData)
-                {
-                    symbolData.DiagnosticLog.AppendLine(message);
-                }
-            }
-        }
-
         internal static readonly object DbgHelpLock = new();
-        private static readonly SymbolDataTraceSink ResolveModuleTraceSink = new();
 
-        [ThreadStatic]
-        private static SymbolData? CurrentSymbolData;
+        // Diagnostic output from dbghelp and the symbol search logic, shared across all modules and shown in the Symbols window.
+        private static readonly StringBuilder DiagnosticLog = new();
 
         private static long NextHandleValue = 1;
 
@@ -200,36 +163,30 @@ namespace InstantTraceViewerUI.Symbols
         {
             ArgumentNullException.ThrowIfNull(searchPath);
 
-            using (BeginCurrentModuleDataScope(null))
+            lock (DbgHelpLock)
             {
-                lock (DbgHelpLock)
+                PInvoke.SymSetOptions(symbolOptions | PInvoke.SYMOPT_DEBUG);
+
+                _sessionHandle = new DbgHelpSessionHandle(new IntPtr(Interlocked.Increment(ref NextHandleValue)));
+
+                WriteTraceLine($"SymbolResolver: Initializing with search path '{searchPath}'.");
+                if (!PInvoke.SymInitializeW(_sessionHandle, searchPath, fInvadeProcess: false))
                 {
-                    PInvoke.SymSetOptions(symbolOptions | PInvoke.SYMOPT_DEBUG);
+                    throw new InvalidOperationException($"SymInitializeW failed. LastError={Marshal.GetLastPInvokeError()}");
+                }
 
-                    _sessionHandle = new DbgHelpSessionHandle(new IntPtr(Interlocked.Increment(ref NextHandleValue)));
-
-                    WriteTraceLine($"SymbolResolver: Initializing with search path '{searchPath}'.");
-                    if (!PInvoke.SymInitializeW(_sessionHandle, searchPath, fInvadeProcess: false))
-                    {
-                        throw new InvalidOperationException($"SymInitializeW failed. LastError={Marshal.GetLastPInvokeError()}");
-                    }
-
-                    if (!PInvoke.SymRegisterCallbackW64(_sessionHandle, &DbgHelpCallback, 0))
-                    {
-                        WriteTraceLine($"SymbolResolver: SymRegisterCallbackW64 failed. LastError={Marshal.GetLastPInvokeError()}.");
-                    }
+                if (!PInvoke.SymRegisterCallbackW64(_sessionHandle, &DbgHelpCallback, 0))
+                {
+                    WriteTraceLine($"SymbolResolver: SymRegisterCallbackW64 failed. LastError={Marshal.GetLastPInvokeError()}.");
                 }
             }
         }
 
         public static void SetParentWindow(HWND hwnd)
         {
-            using (BeginCurrentModuleDataScope(null))
+            lock (DbgHelpLock)
             {
-                lock (DbgHelpLock)
-                {
-                    PInvoke.SymSetParentWindow(hwnd);
-                }
+                PInvoke.SymSetParentWindow(hwnd);
             }
         }
 
@@ -270,18 +227,15 @@ namespace InstantTraceViewerUI.Symbols
             SymbolData symbolData = (SymbolData)key;
             lock (symbolData)
             {
-                using (BeginCurrentModuleDataScope(symbolData))
+                string? pdbPath = FindPdb(module);
+                if (!string.IsNullOrEmpty(pdbPath))
                 {
-                    string? pdbPath = FindPdb(module);
-                    if (!string.IsNullOrEmpty(pdbPath))
-                    {
-                        symbolData.PdbPath = pdbPath;
+                    symbolData.PdbPath = pdbPath;
 
-                        LoadModule(module, symbolData);
-                    }
-
-                    return symbolData.LoadedSymbolBase != 0; // LoadedSymbolBase will be set if LoadModule succeeded.
+                    LoadModule(module, symbolData);
                 }
+
+                return symbolData.LoadedSymbolBase != 0; // LoadedSymbolBase will be set if LoadModule succeeded.
             }
         }
 
@@ -296,10 +250,7 @@ namespace InstantTraceViewerUI.Symbols
                     return null;
                 }
 
-                using (BeginCurrentModuleDataScope(symbolData))
-                {
-                    return ResolveLoadedSymbol(registeredModule.Module, symbolData.LoadedSymbolBase, relativeVirtualAddress);
-                }
+                return ResolveLoadedSymbol(registeredModule.Module, symbolData.LoadedSymbolBase, relativeVirtualAddress);
             }
         }
 
@@ -312,21 +263,19 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
-        public bool HasDiagnosticLog(SymbolKey key)
+        public string GetDiagnosticLog()
         {
-            SymbolData symbolData = (SymbolData)key;
-            lock (symbolData)
+            lock (DiagnosticLog)
             {
-                return symbolData.DiagnosticLog.Length > 0;
+                return DiagnosticLog.ToString();
             }
         }
 
-        public string GetDiagnosticLog(SymbolKey key)
+        public void ClearDiagnosticLog()
         {
-            SymbolData symbolData = (SymbolData)key;
-            lock (symbolData)
+            lock (DiagnosticLog)
             {
-                return symbolData.DiagnosticLog.ToString();
+                DiagnosticLog.Clear();
             }
         }
 
@@ -391,7 +340,6 @@ namespace InstantTraceViewerUI.Symbols
 
                 if (!found)
                 {
-                    WriteTraceLine($"[ResolveSymbol]: Failed to resolve RVA 0x{relativeVirtualAddress:X} in '{module.FileName}'. LastError={Marshal.GetLastPInvokeError()}.");
                     return null;
                 }
 
@@ -538,15 +486,16 @@ namespace InstantTraceViewerUI.Symbols
             return (indexInfo.guid, indexInfo.age);
         }
 
-        private static IDisposable BeginCurrentModuleDataScope(SymbolData? moduleData)
-        {
-            return new CurrentSymbolDataScope(moduleData);
-        }
-
         private static void WriteTraceLine(string message)
         {
             Trace.WriteLine(message);
-            ResolveModuleTraceSink.WriteLine(message);
+            if (!string.IsNullOrEmpty(message))
+            {
+                lock (DiagnosticLog)
+                {
+                    DiagnosticLog.AppendLine(message);
+                }
+            }
         }
 
         private static string StringFromNullTerminated(ReadOnlySpan<char> buffer)

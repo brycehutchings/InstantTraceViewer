@@ -23,7 +23,6 @@ namespace InstantTraceViewerUI.Etw
 
         // Symbol handles for the modules tracked here, used by the symbol manager window. Disposed via ClearRegisteredModules.
         private readonly List<RegisteredModule> _registeredModules = new();
-        private RegisteredModule? _selectedDiagnosticLog;
 
         // Raised after symbols are successfully loaded for a module so consumers can re-resolve existing stack frames.
         public event Action? SymbolsLoaded;
@@ -32,6 +31,12 @@ namespace InstantTraceViewerUI.Etw
         // owned by the ResizeY child window; we read it back each frame so the table above fills the remaining space (i.e. resizing
         // the window grows/shrinks the table while the log height stays put).
         private float _logHeight;
+
+        // Modules selected (by symbol key) in the manager window for batch operations like loading several at once.
+        private readonly HashSet<SymbolKey> _selectedSymbolKeys = new();
+
+        // Substring filter applied to the module list. Empty shows everything.
+        private string _moduleFilter = string.Empty;
 
         public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, string pdbFileName, int pdbAge, Guid pdbSig, DateTime loadTime, RegisteredModule registeredModule)
         {
@@ -64,7 +69,7 @@ namespace InstantTraceViewerUI.Etw
                     registeredModule.Dispose();
                 }
                 _registeredModules.Clear();
-                _selectedDiagnosticLog = null;
+                _selectedSymbolKeys.Clear();
             }
         }
 
@@ -89,6 +94,57 @@ namespace InstantTraceViewerUI.Etw
                         }
                     }
                     modules.Sort((left, right) => string.Compare(left.Module.FileName, right.Module.FileName, StringComparison.OrdinalIgnoreCase));
+
+                    // Apply the substring filter to decide which modules are shown (and thus selectable) this frame.
+                    List<RegisteredModule> visibleModules = modules;
+                    if (!string.IsNullOrEmpty(_moduleFilter))
+                    {
+                        visibleModules = new List<RegisteredModule>(modules.Count);
+                        foreach (var registeredModule in modules)
+                        {
+                            if (registeredModule.Module.FileName.Contains(_moduleFilter, StringComparison.OrdinalIgnoreCase))
+                            {
+                                visibleModules.Add(registeredModule);
+                            }
+                        }
+                    }
+
+                    // Toolbar: batch-load symbols for the selected modules, clear the diagnostic log, and filter the list.
+                    ImGui.BeginDisabled(_selectedSymbolKeys.Count == 0);
+                    if (ImGui.Button("Load Selected Modules"))
+                    {
+                        bool anyLoaded = false;
+                        foreach (var registeredModule in modules)
+                        {
+                            if (_selectedSymbolKeys.Contains(registeredModule.Key) &&
+                                string.IsNullOrEmpty(SymbolResolver.Instance.GetPdbPath(registeredModule.Key)))
+                            {
+                                if (SymbolResolver.Instance.TryLoadSymbols(registeredModule.Key, registeredModule.Module))
+                                {
+                                    anyLoaded = true;
+                                }
+                            }
+                        }
+                        if (anyLoaded)
+                        {
+                            SymbolsLoaded?.Invoke();
+                        }
+                    }
+                    ImGui.EndDisabled();
+
+                    string diagnosticLog = SymbolResolver.Instance.GetDiagnosticLog();
+                    if (!string.IsNullOrEmpty(diagnosticLog))
+                    {
+                        ImGui.SameLine();
+                        if (ImGui.Button("Clear Log"))
+                        {
+                            SymbolResolver.Instance.ClearDiagnosticLog();
+                        }
+                    }
+
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(-1);
+                    ImGui.InputTextWithHint("##ModuleFilter", "Filter modules...", ref _moduleFilter, ImGuiWidgets.GetInputTextBufferSize(_moduleFilter, 256), ImGuiInputTextFlags.AutoSelectAll);
 
                     if (modules.Count == 0)
                     {
@@ -118,11 +174,49 @@ namespace InstantTraceViewerUI.Etw
                         float dpiBase = ImGui.GetFontSize();
 
                         ImGui.TableSetupScrollFreeze(0, 1);
-                        ImGui.TableSetupColumn("Loaded Module", ImGuiTableColumnFlags.WidthStretch, 1.0f);
-                        ImGui.TableSetupColumn("Symbol", ImGuiTableColumnFlags.WidthFixed, dpiBase * 1.0f);
+                        ImGui.TableSetupColumn("Module", ImGuiTableColumnFlags.WidthStretch, 1);
+                        ImGui.TableSetupColumn("Symbols?", ImGuiTableColumnFlags.WidthFixed, dpiBase * 4);
                         ImGui.TableHeadersRow();
 
-                        foreach (var registeredModule in modules)
+                        var multiselectIO = ImGui.BeginMultiSelect(ImGuiMultiSelectFlags.ClearOnEscape | ImGuiMultiSelectFlags.BoxSelect2D);
+                        var applyMultiselectRequests = () =>
+                        {
+                            for (int reqIdx = 0; reqIdx < multiselectIO.Requests.Size; reqIdx++)
+                            {
+                                var req = multiselectIO.Requests[reqIdx];
+
+                                long startIndex;
+                                long endIndex;
+                                if (req.Type == ImGuiSelectionRequestType.SetAll)
+                                {
+                                    startIndex = 0;
+                                    endIndex = visibleModules.Count - 1;
+                                }
+                                else
+                                {
+                                    // RangeLastItem can be less than RangeFirstItem with RangeDirection = -1. We don't care about order so ignore direction.
+                                    startIndex = Math.Min(req.RangeFirstItem, req.RangeLastItem);
+                                    endIndex = Math.Max(req.RangeFirstItem, req.RangeLastItem);
+                                }
+
+                                for (long i = startIndex; i <= endIndex; i++)
+                                {
+                                    SymbolKey key = visibleModules[(int)i].Key;
+                                    if (req.Selected != 0)
+                                    {
+                                        _selectedSymbolKeys.Add(key);
+                                    }
+                                    else
+                                    {
+                                        _selectedSymbolKeys.Remove(key);
+                                    }
+                                }
+                            }
+                        };
+                        applyMultiselectRequests();
+
+                        int rowIndex = 0;
+                        foreach (var registeredModule in visibleModules)
                         {
                             SymbolResolver.Module module = registeredModule.Module;
                             ImGui.PushID(HashCode.Combine(registeredModule.Key, module));
@@ -131,50 +225,45 @@ namespace InstantTraceViewerUI.Etw
 
                             ImGui.TableNextColumn();
 
-                            if (ImGui.CollapsingHeader(module.FileName))
+                            bool selected = _selectedSymbolKeys.Contains(registeredModule.Key);
+                            ImGui.SetNextItemSelectionUserData(rowIndex++);
+                            ImGui.Selectable(module.FileName, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap);
+
+                            string? pdbPath = SymbolResolver.Instance.GetPdbPath(registeredModule.Key);
+
+                            if (ImGui.IsItemHovered())
                             {
+                                ImGui.BeginTooltip();
+                                ImGui.TextUnformatted(module.FileName);
+
+                                ImGui.Separator();
                                 string timeDateStampFormatted = module.TimeDateStamp == 0 ? "n/a" : $"0x{module.TimeDateStamp:X8}";
-                                ImGui.Indent();
-                                ImGui.TextUnformatted($"SizeOfImage: {module.SizeOfImage} TimeDateStamp: {timeDateStampFormatted}");
+                                ImGui.TextUnformatted($"Image Size: {module.SizeOfImage}\nTimeDateStamp: {timeDateStampFormatted}");
+
+                                ImGui.Separator();
                                 string pdbSigFormatted = module.PdbSig == Guid.Empty ? "n/a" : module.PdbSig.ToString("D");
                                 string pdbAgeFormatted = module.PdbAge == 0 ? "n/a" : $"{module.PdbAge}";
                                 string pdbFileNameFormatted = string.IsNullOrEmpty(module.PdbFileName) ? "n/a" : module.PdbFileName;
-                                ImGui.TextUnformatted($"PdbSig: {pdbSigFormatted} PdbAge: {pdbAgeFormatted} PdbFileName: {pdbFileNameFormatted}");
-                                string? pdbPath = SymbolResolver.Instance.GetPdbPath(registeredModule.Key);
-                                string resolvedBinaryFormatted = string.IsNullOrEmpty(pdbPath) ? "n/a" : pdbPath;
-                                ImGui.TextUnformatted($"Pdb: {resolvedBinaryFormatted}");
-                                ImGui.Unindent();
+                                ImGui.TextUnformatted($"Pdb Signature: {pdbSigFormatted}\nPdb Age: {pdbAgeFormatted}\nOriginal Pdb FileName: {pdbFileNameFormatted}");
+
+                                ImGui.Separator();
+                                ImGui.TextUnformatted($"Pdb: {pdbPath ?? "<not loaded>"}");
+
+                                ImGui.EndTooltip();
                             }
 
                             ImGui.TableNextColumn();
 
-                            if (string.IsNullOrEmpty(SymbolResolver.Instance.GetPdbPath(registeredModule.Key)))
+                            if (pdbPath != null)
                             {
-                                if (ImGui.Button("Find Symbols"))
-                                {
-                                    if (SymbolResolver.Instance.TryLoadSymbols(registeredModule.Key, registeredModule.Module))
-                                    {
-                                        SymbolsLoaded?.Invoke();
-                                    }
-                                    _selectedDiagnosticLog = registeredModule;
-                                }
-                            }
-                            else
-                            {
-                                // TODO: Render success icon
-                            }
-
-                            if (SymbolResolver.Instance.HasDiagnosticLog(registeredModule.Key))
-                            {
-                                ImGui.SameLine();
-                                if (ImGui.Button("Show Logs"))
-                                {
-                                    _selectedDiagnosticLog = registeredModule;
-                                }
+                                ImGui.TextUnformatted("\uF058"); // "circle-check"
                             }
 
                             ImGui.PopID();
                         }
+
+                        ImGui.EndMultiSelect();
+                        applyMultiselectRequests();
 
                         ImGui.EndTable();
                     }
@@ -196,7 +285,7 @@ namespace InstantTraceViewerUI.Etw
                     uint splitterColor = ImGui.GetColorU32(ImGui.IsItemActive() || ImGui.IsItemHovered() ? ImGuiCol.SeparatorActive : ImGuiCol.Separator);
                     ImGui.GetWindowDrawList().AddLine(new Vector2(splitterMin.X, splitterLineY), new Vector2(splitterMax.X, splitterLineY), splitterColor, 1.0f);
 
-                    string selectedLog = _selectedDiagnosticLog != null ? SymbolResolver.Instance.GetDiagnosticLog(_selectedDiagnosticLog.Key) : string.Empty;
+                    string selectedLog = SymbolResolver.Instance.GetDiagnosticLog();
                     ImGui.InputTextMultiline(
                         "##SelectedSymbolModuleLog",
                         ref selectedLog,
