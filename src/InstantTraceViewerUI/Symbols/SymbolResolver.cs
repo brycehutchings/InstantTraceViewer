@@ -31,7 +31,7 @@ namespace InstantTraceViewerUI.Symbols
     /// Supports symbol server downloads (e.g. the Microsoft public symbol server) and local symbol/binary stores
     /// via the search path passed to <see cref="Initialize(uint, string)"/>.
     /// </summary>
-    internal sealed class SymbolResolver
+    internal sealed class SymbolResolver : IDisposable
     {
         private abstract class SymbolData : SymbolKey
         {
@@ -120,6 +120,7 @@ namespace InstantTraceViewerUI.Symbols
 
         private DbgHelpSessionHandle? _sessionHandle;
         private ulong _nextSyntheticSymbolBase = FirstSyntheticSymbolBase;
+        private bool disposedValue;
 
         // A SymbolData also serves as its own SymbolKey, so the set dedups loaded modules by symbol identity.
         private readonly HashSet<SymbolData> _symbolCache = new();
@@ -129,6 +130,11 @@ namespace InstantTraceViewerUI.Symbols
 
         private SymbolResolver()
         {
+        }
+
+        ~SymbolResolver()
+        {
+            Dispose(disposing: false);
         }
 
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
@@ -526,6 +532,31 @@ namespace InstantTraceViewerUI.Symbols
             {
                 return true;
             }
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                lock (DbgHelpLock)
+                {
+                    if (_sessionHandle != null && !_sessionHandle.IsInvalid)
+                    {
+                        PInvoke.SymCleanup(_sessionHandle);
+                        _sessionHandle.Dispose();
+                        _sessionHandle = null;
+                    }
+                }
+
+                disposedValue = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 

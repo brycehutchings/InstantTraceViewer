@@ -21,6 +21,8 @@ namespace InstantTraceViewerUI
                 //@"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
                 @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
 
+            using var cleanup = SymbolResolver.Instance;
+
             HWND mainHWnd = Win32ImGuiHost.WindowInitialize();
 
             SymbolResolver.SetParentWindow(mainHWnd);
