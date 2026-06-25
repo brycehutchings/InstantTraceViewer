@@ -38,6 +38,9 @@ namespace InstantTraceViewerUI.Etw
         // Substring filter applied to the module list. Empty shows everything.
         private string _moduleFilter = string.Empty;
 
+        // Shows a blocking modal while symbols load on a background thread so the slow dbghelp/network work doesn't stall the UI.
+        private readonly ImGuiWidgets.ProcessingModal _processingModal = new();
+
         public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, string pdbFileName, int pdbAge, Guid pdbSig, DateTime loadTime, RegisteredModule registeredModule)
         {
             lock (_loadedImages)
@@ -110,25 +113,43 @@ namespace InstantTraceViewerUI.Etw
                     }
 
                     // Toolbar: batch-load symbols for the selected modules, clear the diagnostic log, and filter the list.
-                    ImGui.BeginDisabled(_selectedSymbolKeys.Count == 0);
+                    ImGui.BeginDisabled(_selectedSymbolKeys.Count == 0 || _processingModal.IsRunning);
                     if (ImGui.Button("Load Selected Modules"))
                     {
-                        bool anyLoaded = false;
+                        // Snapshot the selected, not-yet-loaded modules so the worker thread never touches ImGui state.
+                        List<(SymbolKey Key, SymbolResolver.Module Module)> toLoad = new();
                         foreach (var registeredModule in modules)
                         {
                             if (_selectedSymbolKeys.Contains(registeredModule.Key) &&
                                 string.IsNullOrEmpty(SymbolResolver.Instance.GetPdbPath(registeredModule.Key)))
                             {
-                                if (SymbolResolver.Instance.TryLoadSymbols(registeredModule.Key, registeredModule.Module))
+                                toLoad.Add((registeredModule.Key, registeredModule.Module));
+                            }
+                        }
+
+                        _processingModal.Start("Loading symbols…", (progress, cancellationToken) =>
+                        {
+                            bool anyLoaded = false;
+                            for (int i = 0; i < toLoad.Count; i++)
+                            {
+                                if (cancellationToken.IsCancellationRequested)
+                                {
+                                    break;
+                                }
+
+                                var (key, module) = toLoad[i];
+                                progress.Report((float)i / toLoad.Count, $"Loading {System.IO.Path.GetFileName(module.FileName)}...");
+                                if (SymbolResolver.Instance.TryLoadSymbols(key, module))
                                 {
                                     anyLoaded = true;
                                 }
                             }
-                        }
-                        if (anyLoaded)
-                        {
-                            SymbolsLoaded?.Invoke();
-                        }
+
+                            if (anyLoaded)
+                            {
+                                SymbolsLoaded?.Invoke();
+                            }
+                        });
                     }
                     ImGui.EndDisabled();
 
@@ -294,6 +315,8 @@ namespace InstantTraceViewerUI.Etw
                         ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
                 }
             }
+
+            _processingModal.Draw(uiCommands);
 
             ImGui.End();
         }

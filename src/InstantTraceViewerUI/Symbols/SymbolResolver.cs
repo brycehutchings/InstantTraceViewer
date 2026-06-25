@@ -41,6 +41,7 @@ namespace InstantTraceViewerUI.Symbols
 
             public string? PdbPath { get; set; }
 
+            // Currently a loaded module is never unloaded so there is no locking around this for protection.
             public ulong LoadedSymbolBase { get; set; }
 
             public int ReferenceCount { get; set; }
@@ -231,18 +232,16 @@ namespace InstantTraceViewerUI.Symbols
         public bool TryLoadSymbols(SymbolKey key, in Module module)
         {
             SymbolData symbolData = (SymbolData)key;
-            lock (symbolData)
+
+            // Important to not lock SymbolData while doing slow operations. Rather than try to be clever with locks,
+            // this method is not thread-safe (only one caller should be invoking this at a time). Other threads might read
+            // these values but that should be fine given their types can be set atomically.
+            symbolData.PdbPath = FindPdb(module);
+            if (!string.IsNullOrEmpty(symbolData.PdbPath))
             {
-                string? pdbPath = FindPdb(module);
-                if (!string.IsNullOrEmpty(pdbPath))
-                {
-                    symbolData.PdbPath = pdbPath;
-
-                    LoadModule(module, symbolData);
-                }
-
-                return symbolData.LoadedSymbolBase != 0; // LoadedSymbolBase will be set if LoadModule succeeded.
+                symbolData.LoadedSymbolBase = TryLoadModule(module, symbolData.PdbPath);
             }
+            return symbolData.LoadedSymbolBase != 0;
         }
 
         public string? ResolveSymbol(RegisteredModule registeredModule, ulong relativeVirtualAddress)
@@ -263,10 +262,13 @@ namespace InstantTraceViewerUI.Symbols
         public string? GetPdbPath(SymbolKey key)
         {
             SymbolData symbolData = (SymbolData)key;
-            lock (symbolData)
-            {
-                return symbolData.PdbPath;
-            }
+            return symbolData.PdbPath;
+        }
+
+        public bool HasSymbolsLoaded(SymbolKey key)
+        {
+            SymbolData symbolData = (SymbolData)key;
+            return symbolData.LoadedSymbolBase != 0;
         }
 
         public string GetDiagnosticLog()
@@ -288,16 +290,12 @@ namespace InstantTraceViewerUI.Symbols
         // Expects 'PdbPath' is a valid PDB file to load. Caller must lock symbolData.
         // TODO: This is a bit awkward because the module that loads the symbol may determine symbol name (part before !) but we share
         // the loaded symbol base across all modules with the same signature. Is there a better way to handle this while avoiding loading the same PDB multiple times?
-        private void LoadModule(in Module module, SymbolData symbolData)
+        private ulong TryLoadModule(in Module module, string pdbPath)
         {
-            if (symbolData.LoadedSymbolBase != 0)
-            {
-                return;
-            }
-            else if (module.SizeOfImage == 0)
+            if (module.SizeOfImage == 0)
             {
                 WriteTraceLine($"[LoadModule]: Ignoring module '{module.FileName}' because SizeOfImage is 0.");
-                return;
+                return 0;
             }
 
             string moduleName = Path.GetFileNameWithoutExtension(module.FileName);
@@ -311,19 +309,22 @@ namespace InstantTraceViewerUI.Symbols
             }
 
             uint moduleSize = module.SizeOfImage > uint.MaxValue ? uint.MaxValue : (uint)module.SizeOfImage;
+            ulong loadedSymbolBase;
             lock (DbgHelpLock)
             {
                 ulong syntheticBase = _nextSyntheticSymbolBase;
                 ulong AlignUp(ulong value, ulong alignment) => checked((value + alignment - 1) / alignment * alignment);
                 _nextSyntheticSymbolBase = checked(_nextSyntheticSymbolBase + AlignUp(module.SizeOfImage, SyntheticSymbolBaseAlignment));
 
-                symbolData.LoadedSymbolBase = PInvoke.SymLoadModuleExW(_sessionHandle, null, symbolData.PdbPath, moduleName, syntheticBase, moduleSize, null, 0);
+                loadedSymbolBase = PInvoke.SymLoadModuleExW(_sessionHandle, null, pdbPath, moduleName, syntheticBase, moduleSize, null, 0);
             }
 
-            if (symbolData.LoadedSymbolBase == 0)
+            if (loadedSymbolBase == 0)
             {
-                WriteTraceLine($"[LoadModule]: Failed to load symbols from '{symbolData.PdbPath}' for '{module.FileName}'. LastError={Marshal.GetLastPInvokeError()}.");
+                WriteTraceLine($"[LoadModule]: Failed to load symbols from '{pdbPath}' for '{module.FileName}'. LastError={Marshal.GetLastPInvokeError()}.");
             }
+
+            return loadedSymbolBase;
         }
 
         private unsafe string? ResolveLoadedSymbol(in Module module, ulong symbolBase, ulong relativeVirtualAddress)
@@ -530,7 +531,7 @@ namespace InstantTraceViewerUI.Symbols
 
             protected override bool ReleaseHandle()
             {
-                return true;
+                return true; // Doesn't actually close the handle. It's not real.
             }
         }
 
