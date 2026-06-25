@@ -38,6 +38,12 @@ namespace InstantTraceViewerUI.Etw
         // Substring filter applied to the module list. Empty shows everything.
         private string _moduleFilter = string.Empty;
 
+        // Pid whose modules are shown in the manager window. -1 means all processes (no process filter).
+        private int _processFilterPid = -1;
+
+        // Search text typed into the process filter dropdown to narrow the list of processes shown.
+        private string _processFilterSearch = string.Empty;
+
         // Shows a blocking modal while symbols load on a background thread so the slow dbghelp/network work doesn't stall the UI.
         private readonly ImGuiWidgets.ProcessingModal _processingModal = new();
 
@@ -76,12 +82,53 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
-        public void RenderSymbolManagerWindow(IUiCommands uiCommands, ref bool isOpen)
+        public void RenderSymbolManagerWindow(IUiCommands uiCommands, IReadOnlyDictionary<int, string> processNames, ref bool isOpen)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
             if (ImGui.Begin("Symbols", ref isOpen))
             {
+                // Snapshot per-process module data up front (under its own lock) so the process filter combo and the
+                // module list can be built without nesting the _loadedImages and _registeredModules locks.
+                List<int> pidsWithModules;
+                HashSet<SymbolKey>? processModuleKeys = null;
+                lock (_loadedImages)
+                {
+                    pidsWithModules = new List<int>(_loadedImages.Count);
+                    foreach (var kvp in _loadedImages)
+                    {
+                        if (kvp.Value.Count > 0)
+                        {
+                            pidsWithModules.Add(kvp.Key);
+                        }
+                    }
+
+                    if (_processFilterPid != -1 && _loadedImages.TryGetValue(_processFilterPid, out var filteredImages))
+                    {
+                        processModuleKeys = new HashSet<SymbolKey>();
+                        foreach (var image in filteredImages)
+                        {
+                            processModuleKeys.Add(image.RegisteredModule.Key);
+                        }
+                    }
+                }
+
+                // The selected process may no longer have any modules (e.g. after a Clear); fall back to showing everything.
+                if (_processFilterPid != -1 && !pidsWithModules.Contains(_processFilterPid))
+                {
+                    _processFilterPid = -1;
+                    processModuleKeys = null;
+                }
+
+                // Order processes for the combo by name (then pid) so related processes group together regardless of pid.
+                pidsWithModules.Sort((left, right) =>
+                {
+                    string leftName = GetProcessName(left, processNames);
+                    string rightName = GetProcessName(right, processNames);
+                    int cmp = string.Compare(leftName, rightName, StringComparison.OrdinalIgnoreCase);
+                    return cmp != 0 ? cmp : left.CompareTo(right);
+                });
+
                 // FIXME: Don't take across whole render?
                 lock (_registeredModules)
                 {
@@ -98,17 +145,24 @@ namespace InstantTraceViewerUI.Etw
                     }
                     modules.Sort((left, right) => string.Compare(left.Module.FileName, right.Module.FileName, StringComparison.OrdinalIgnoreCase));
 
-                    // Apply the substring filter to decide which modules are shown (and thus selectable) this frame.
+                    // Apply the process and substring filters to decide which modules are shown (and thus selectable) this frame.
                     List<RegisteredModule> visibleModules = modules;
-                    if (!string.IsNullOrEmpty(_moduleFilter))
+                    bool hasProcessFilter = processModuleKeys != null;
+                    bool hasTextFilter = !string.IsNullOrEmpty(_moduleFilter);
+                    if (hasProcessFilter || hasTextFilter)
                     {
                         visibleModules = new List<RegisteredModule>(modules.Count);
                         foreach (var registeredModule in modules)
                         {
-                            if (registeredModule.Module.FileName.Contains(_moduleFilter, StringComparison.OrdinalIgnoreCase))
+                            if (hasTextFilter && !registeredModule.Module.FileName.Contains(_moduleFilter, StringComparison.OrdinalIgnoreCase))
                             {
-                                visibleModules.Add(registeredModule);
+                                continue;
                             }
+                            if (hasProcessFilter && !processModuleKeys!.Contains(registeredModule.Key))
+                            {
+                                continue;
+                            }
+                            visibleModules.Add(registeredModule);
                         }
                     }
 
@@ -161,6 +215,47 @@ namespace InstantTraceViewerUI.Etw
                         {
                             SymbolResolver.Instance.ClearDiagnosticLog();
                         }
+                    }
+
+                    ImGui.SameLine();
+                    ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
+                    string processComboPreview = _processFilterPid == -1 ? "All processes" : FormatProcessLabel(_processFilterPid, processNames);
+                    if (ImGui.BeginCombo("##ProcessFilter", processComboPreview))
+                    {
+                        // Focus the search box the moment the popup opens so the user can type to filter right away.
+                        if (ImGui.IsWindowAppearing())
+                        {
+                            _processFilterSearch = string.Empty;
+                            ImGui.SetKeyboardFocusHere();
+                        }
+                        ImGui.SetNextItemWidth(-1);
+                        ImGui.InputTextWithHint("##ProcessFilterSearch", "Search process...", ref _processFilterSearch, ImGuiWidgets.GetInputTextBufferSize(_processFilterSearch, 256));
+
+                        bool hasProcessSearch = !string.IsNullOrEmpty(_processFilterSearch);
+                        if (!hasProcessSearch && ImGui.Selectable("All processes", _processFilterPid == -1))
+                        {
+                            _processFilterPid = -1;
+                        }
+
+                        foreach (int pid in pidsWithModules)
+                        {
+                            string label = FormatProcessLabel(pid, processNames);
+                            if (hasProcessSearch && !label.Contains(_processFilterSearch, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+                            bool isSelected = pid == _processFilterPid;
+                            if (ImGui.Selectable(label, isSelected))
+                            {
+                                _processFilterPid = pid;
+                            }
+                            if (isSelected)
+                            {
+                                ImGui.SetItemDefaultFocus();
+                            }
+                        }
+
+                        ImGui.EndCombo();
                     }
 
                     ImGui.SameLine();
@@ -370,6 +465,17 @@ namespace InstantTraceViewerUI.Etw
             }
 
             return null;
+        }
+
+        private static string GetProcessName(int pid, IReadOnlyDictionary<int, string> processNames)
+            => processNames != null && processNames.TryGetValue(pid, out string name) && !string.IsNullOrEmpty(name)
+                ? name
+                : string.Empty;
+
+        private static string FormatProcessLabel(int pid, IReadOnlyDictionary<int, string> processNames)
+        {
+            string name = GetProcessName(pid, processNames);
+            return string.IsNullOrEmpty(name) ? pid.ToString() : $"{pid} ({name})";
         }
 
         private static int FindFirstImageWithBaseGreaterThan(List<LoadedImage> loadedImages, ulong imageBase)

@@ -315,7 +315,7 @@ namespace InstantTraceViewerUI.Etw
         {
             if (_renderSymbolManager)
             {
-                _moduleTracker.RenderSymbolManagerWindow(uiCommands, ref _renderSymbolManager);
+                _moduleTracker.RenderSymbolManagerWindow(uiCommands, _processNames, ref _renderSymbolManager);
             }
         }
 
