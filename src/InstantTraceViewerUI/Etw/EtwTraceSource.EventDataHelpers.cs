@@ -11,6 +11,7 @@ namespace InstantTraceViewerUI.Etw
         // Sometimes the tracing library will show this provider name is shown as "MSNT_SystemTrace" and other times as "Kernel Provider" (and maybe other names?).
         // https://learn.microsoft.com/en-us/windows/win32/etw/msnt-systemtrace
         public readonly static Guid SystemProvider = Guid.Parse("{9e814aad-3204-11d2-9a82-006008a86939}");
+        public readonly static Guid Win32kProvider = Guid.Parse("{8c416c79-d49b-4f01-a467-e56d3aa8234c}");
 
         private EtwRecord CreateBaseTraceRecord(TraceEvent data)
         {
