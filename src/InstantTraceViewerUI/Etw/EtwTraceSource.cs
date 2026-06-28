@@ -212,8 +212,6 @@ namespace InstantTraceViewerUI.Etw
             {
                 _traceRecords = new();
                 _generationId++;
-
-                _moduleTracker.ClearRegisteredModules();
             }
             finally
             {
@@ -362,7 +360,7 @@ namespace InstantTraceViewerUI.Etw
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
 
-                    _moduleTracker.ClearRegisteredModules();
+                    // TODO: _moduleTracker.Dispose();
                 }
 
                 isDisposed = true;
