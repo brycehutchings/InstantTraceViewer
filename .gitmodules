@@ -1,9 +1,0 @@
-[submodule "ThirdParty/cimgui"]
-	path = ThirdParty/cimgui
-	url = https://github.com/cimgui/cimgui
-[submodule "ThirdParty/ImGuiNET"]
-	path = ThirdParty/ImGuiNET
-	url = https://github.com/ImGuiNET/ImGui.NET
-[submodule "ThirdParty/freetype"]
-	path = ThirdParty/freetype
-	url = https://github.com/freetype/freetype
