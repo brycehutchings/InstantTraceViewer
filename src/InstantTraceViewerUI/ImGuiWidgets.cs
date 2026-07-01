@@ -3,11 +3,138 @@ using HexaGen.Runtime;
 using System;
 using System.Numerics;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InstantTraceViewerUI
 {
     internal static class ImGuiWidgets
     {
+        /// <summary>
+        /// Runs a slow operation on a background thread while showing a blocking "processing" modal dialog.
+        /// Call <see cref="Start"/> to begin an operation and <see cref="Draw"/> every frame to render the
+        /// modal until the operation completes. The worker may optionally report progress and observe the
+        /// cancellation token (a Cancel button is always shown).
+        /// </summary>
+        public sealed class ProcessingModal
+        {
+            // Passed to the worker so it can optionally report a 0..1 fraction and a status message.
+            public sealed class Progress
+            {
+                private readonly ProcessingModal _owner;
+
+                internal Progress(ProcessingModal owner) => _owner = owner;
+
+                public void Report(float fraction, string? status = null)
+                {
+                    lock (_owner._progressLock)
+                    {
+                        _owner._fraction = fraction;
+                        if (status != null)
+                        {
+                            _owner._status = status;
+                        }
+                    }
+                }
+            }
+
+            // Everything after "###" is the popup identity; the text before it is the visible title.
+            private readonly string _popupId = $"###ProcessingModal_{Guid.NewGuid():N}";
+            private readonly object _progressLock = new();
+
+            private Task? _task;
+            private CancellationTokenSource? _cts;
+            private bool _doOpen;
+            private string _title = string.Empty;
+            private float _fraction = -1f; // Negative means indeterminate (animated bar).
+            private string? _status;
+
+            public bool IsRunning => _task is { IsCompleted: false };
+
+            public void Start(string title, Action<Progress, CancellationToken> work)
+            {
+                if (IsRunning)
+                {
+                    return; // Ignore a new request while one is already running.
+                }
+
+                _cts?.Dispose();
+                _cts = new CancellationTokenSource();
+                _title = title;
+                _fraction = -1f;
+                _status = null;
+                _doOpen = true;
+
+                CancellationToken token = _cts.Token;
+                Progress progress = new(this);
+                _task = Task.Run(() => work(progress, token));
+            }
+
+            // Call once per frame. Renders the modal while the operation runs and auto-closes it on completion.
+            public void Draw(IUiCommands uiCommands)
+            {
+                if (_task == null)
+                {
+                    return;
+                }
+
+                if (_doOpen)
+                {
+                    ImGui.OpenPopup(_popupId);
+                    _doOpen = false;
+                }
+
+                if (ImGui.BeginPopupModal($"{_title}{_popupId}", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoSavedSettings))
+                {
+                    float fraction;
+                    string? status;
+                    lock (_progressLock)
+                    {
+                        fraction = _fraction;
+                        status = _status;
+                    }
+
+                    ImGui.TextUnformatted(status ?? _title);
+
+                    Vector2 barSize = new(ImGui.GetFontSize() * 20, 0);
+                    if (fraction < 0)
+                    {
+                        // Indeterminate: a time-based negative value animates the bar.
+                        ImGui.ProgressBar(-1.0f * (float)ImGui.GetTime(), barSize, "");
+                    }
+                    else
+                    {
+                        ImGui.ProgressBar(fraction, barSize);
+                    }
+
+                    ImGui.BeginDisabled(_cts!.IsCancellationRequested);
+                    if (ImGui.Button("Cancel"))
+                    {
+                        _cts.Cancel();
+                    }
+                    ImGui.EndDisabled();
+
+                    if (_task.IsCompleted)
+                    {
+                        ImGui.CloseCurrentPopup();
+
+                        Exception? error = _task.IsFaulted ? (_task.Exception?.InnerException ?? _task.Exception) : null;
+
+                        _cts.Dispose();
+                        _cts = null;
+                        _task = null;
+
+                        if (error != null)
+                        {
+                            uiCommands.ShowMessageBox(error.Message, _title, isError: true);
+                        }
+                    }
+
+                    ImGui.EndPopup();
+                }
+            }
+        }
+
         public struct CurrentInputTextState
         {
             public uint Id;

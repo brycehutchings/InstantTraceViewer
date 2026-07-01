@@ -7,10 +7,10 @@ namespace InstantTraceViewerUI.Etw
 {
     internal partial class EtwTraceSource
     {
+        private delegate void RecordUpdater(ref EtwRecord record);
+
         private static readonly TimeSpan PendingRecordWallclockMinAge = TimeSpan.FromMilliseconds(2000);
         private static readonly TimeSpan PendingRecordEventTimeMinAge = TimeSpan.FromMilliseconds(100);
-
-        private delegate void RecordUpdater(ref EtwRecord record);
 
         private readonly ReaderWriterLockSlim _pendingRecordsLock = new ReaderWriterLockSlim();
         private DateTime _pendingRecordsStartTime = DateTime.MinValue;

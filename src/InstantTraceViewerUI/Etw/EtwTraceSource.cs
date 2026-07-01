@@ -1,4 +1,6 @@
-﻿using InstantTraceViewer;
+﻿using Hexa.NET.ImGui;
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
@@ -21,7 +23,7 @@ namespace InstantTraceViewerUI.Etw
         TelemetryMeasures = 0x0000400000000000,
     }
 
-    internal partial class EtwTraceSource : ITraceSource
+    internal partial class EtwTraceSource : ITraceSource, ITraceSourceGuiExtensions
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
@@ -51,7 +53,8 @@ namespace InstantTraceViewerUI.Etw
         private static string SessionNamePrefix = "InstantTraceViewerSession";
 
         private readonly TraceEventSession? _etwSession;
-        private readonly ETWTraceEventSource _etwSource;
+        private readonly TraceEventDispatcher _etwSource;
+        private readonly SymbolTraceEventParser _symbolEventParser;
         private readonly bool _kernelProcessThreadProviderEnabled;
 
         private readonly int _sessionNum;
@@ -75,9 +78,11 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = $"{displayName} (ETW)";
             _etwSession = etwSession;
             _etwSource = etwSession.Source;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
+            _moduleTracker.SymbolsLoaded += ReResolveAllStackFrames;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -87,8 +92,10 @@ namespace InstantTraceViewerUI.Etw
             DisplayName = displayName;
             _etwSession = null;
             _etwSource = etwSource;
+            _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
+            _moduleTracker.SymbolsLoaded += ReResolveAllStackFrames;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -100,6 +107,7 @@ namespace InstantTraceViewerUI.Etw
         {
             SubscribeToKernelEvents();
             SubscribeToDynamicEvents();
+            SubscribeToSymbolEvents();
 
             try
             {
@@ -282,6 +290,34 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
+        bool _renderSymbolManager = false;
+        public void RenderToolstripExtras(IUiCommands uiCommands)
+        {
+            ImGui.SameLine();
+            if (ImGui.Button("\ue697 Symbols"))
+            {
+                ImGui.OpenPopup("EtwSymbols");
+            }
+            if (ImGui.BeginPopup("EtwSymbols"))
+            {
+                if (ImGui.MenuItem("Manage symbols", "", _renderSymbolManager))
+                {
+                    _renderSymbolManager = !_renderSymbolManager;
+                }
+
+                ImGui.EndPopup();
+            }
+        }
+
+        public void RenderActiveWindows(IUiCommands uiCommands)
+        {
+            if (_renderSymbolManager)
+            {
+                _moduleTracker.RenderSymbolManagerWindow(uiCommands, _processNames, ref _renderSymbolManager);
+            }
+        }
+
+
         private void UpdateProcessNameTable(IReadOnlyList<EtwRecord> traceRecords)
         {
             // Microsoft.Diagnostics.Tracing will track process names when the Kernel provider is enabled, otherwise we need to do it.
@@ -323,6 +359,8 @@ namespace InstantTraceViewerUI.Etw
                     _etwSource.Dispose();
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);
+
+                    // TODO: _moduleTracker.Dispose();
                 }
 
                 isDisposed = true;
