@@ -127,17 +127,21 @@ namespace InstantTraceViewerUI.Logcat
                 _processNames.AddOrUpdate(process.ProcessId, _ => process.Name, (_, _) => process.Name);
             }
 
-            // `pm list packages -U` groups multiple package names under the same UID when a
-            // sharedUserId is in use (e.g. UID 1000 covers many system packages). Concatenate them
-            // so the UID column still surfaces every mapped name.
+            // `pm list packages -U` groups multiple package names under the same UID when a sharedUserId is in use
+            // (e.g. UID 1000 covers many system packages). Concatenate them so the UID column still surfaces every mapped name.
             foreach (var package in _adbClient.ListPackagesAsync(_device, CancellationToken.None).GetAwaiter().GetResult())
             {
                 _uidPackageNames.AddOrUpdate(
                     package.Uid,
                     _ => package.PackageName,
-                    (_, existing) => existing.Contains(package.PackageName) ? existing : $"{existing},{package.PackageName}");
+                    (_, existing) => ContainsPackageToken(existing, package.PackageName) ? existing : $"{existing},{package.PackageName}");
             }
         }
+
+        // Returns true if commaJoinedPackages already lists candidate as a comma-separated token. Wrapping both strings in commas
+        // avoids substring false positives (e.g. "com.example" being considered "contained in" "com.example.foo").
+        private static bool ContainsPackageToken(string commaJoinedPackages, string candidate)
+            => $",{commaJoinedPackages},".Contains($",{candidate},", StringComparison.Ordinal);
 
         public bool CanPause => true;
         public bool IsPaused { get; private set; }
@@ -279,7 +283,7 @@ namespace InstantTraceViewerUI.Logcat
                                 _uidPackageNames.AddOrUpdate(
                                     uid.Value,
                                     _ => packageName,
-                                    (_, existing) => existing.Contains(packageName) ? existing : $"{existing},{packageName}");
+                                    (_, existing) => ContainsPackageToken(existing, packageName) ? existing : $"{existing},{packageName}");
                             }
                         }
                     }

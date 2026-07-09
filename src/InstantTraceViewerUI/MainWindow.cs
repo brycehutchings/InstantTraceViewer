@@ -455,7 +455,7 @@ namespace InstantTraceViewerUI
                             {
                                 _adbDevices = _adbDevicesTask.GetAwaiter().GetResult();
                             }
-                            catch (SocketException ex)
+                            catch (Exception ex) when (ex is SocketException or IOException or AdbException)
                             {
                                 _adbDevicesException = ex;
                                 _adbDevices = Array.Empty<AdbDevice>();
@@ -470,7 +470,7 @@ namespace InstantTraceViewerUI
                     if (_adbDevicesException != null)
                     {
                         // TODO: See if adb.exe is in the PATH and offer to start the server.
-                        ImGui.TextUnformatted("ADB server not running");
+                        ImGui.TextUnformatted($"ADB error: {_adbDevicesException.Message}");
                     }
                     else if (_adbDevices == null)
                     {
