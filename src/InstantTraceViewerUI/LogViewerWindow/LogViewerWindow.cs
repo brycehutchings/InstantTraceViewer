@@ -765,9 +765,18 @@ namespace InstantTraceViewerUI
             if (_traceSource.TraceSource.CanPause)
             {
                 ImGui.SameLine();
-                if (ImGui.Button(_traceSource.TraceSource.IsPaused ? "\uF04B Resume" : "\uF04C Pause"))
+                bool isPaused = _traceSource.TraceSource.IsPaused;
+                if (isPaused)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button, AppTheme.WarningColor);
+                }
+                if (ImGui.Button(isPaused ? "\uF04B Resume" : "\uF04C Pause"))
                 {
                     _traceSource.TraceSource.TogglePause();
+                }
+                if (isPaused)
+                {
+                    ImGui.PopStyleColor();
                 }
             }
 

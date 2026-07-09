@@ -134,7 +134,7 @@ Examples:
 
             if (!rules.ApplyFiltering)
             {
-                ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.WarningColor));
+                ImGui.PushStyleColor(ImGuiCol.Text, AppTheme.WarningColor);
                 ImGui.TextUnformatted("\uF06A");
                 ImGui.PopStyleColor();
                 ImGui.SameLine();
@@ -179,7 +179,7 @@ Examples:
                     if (rule.ParseResult != null && rule.ParseResult.Expression == null)
                     {
                         ImGui.SameLine();
-                        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.ErrorColor));
+                        ImGui.PushStyleColor(ImGuiCol.Text, AppTheme.ErrorColor);
                         ImGui.TextUnformatted("\uF06A");
                         ImGui.PopStyleColor();
                         if (ImGui.IsItemHovered(ImGuiHoveredFlags.DelayNormal))
@@ -409,7 +409,7 @@ Examples:
                     {
                         var savedPos = ImGui.GetCursorPos();
                         ImGui.SetCursorPos(savedPos + new Vector2(expectedXOffset - 3, -4));
-                        ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.ErrorColor));
+                        ImGui.PushStyleColor(ImGuiCol.Text, AppTheme.ErrorColor);
                         ImGui.TextUnformatted($"^ Expected: {string.Join(", ", autocompleteOptions)}");
                         ImGui.PopStyleColor();
                         ImGui.SetCursorPos(savedPos);
