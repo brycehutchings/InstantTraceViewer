@@ -248,8 +248,10 @@ namespace InstantTraceViewerUI.Logcat
 
         // Matches messages like:
         //   Start proc 12345:com.example.app/u0a123 for activity {com.example.app/com.example.app.MainActivity}
-        // The uidToken group is optional because very old devices don't include the "<pid>:<procName>/<uidToken>" prefix.
-        private static readonly Regex ActivityManagerStartProc = new Regex(@"Start proc (?<pid>\d+)(?::[^\s/]+/(?<uidToken>\S+))?.*\{(?<packageName>[^\s/]+)[/].*}");
+        // procName and uidToken come from the "<pid>:<procName>/<uidToken>" prefix (Android 8+); they are
+        // optional so pre-8 formats still match, in which case procName falls back to packageName below.
+        // procName can differ from packageName when an app declares a process suffix, e.g. "com.example.app:remoteworker".
+        private static readonly Regex ActivityManagerStartProc = new Regex(@"Start proc (?<pid>\d+)(?::(?<procName>[^\s/]+)/(?<uidToken>\S+))?.*\{(?<packageName>[^\s/]+)[/].*}");
 
         private void ProcessSystemMessage(AdbLogEntry androidLogEntry)
         {
@@ -261,11 +263,12 @@ namespace InstantTraceViewerUI.Logcat
                     if (match.Success)
                     {
                         var packageName = match.Groups["packageName"].Value;
+                        var procName = match.Groups["procName"].Success ? match.Groups["procName"].Value : packageName;
 
                         _processNames.AddOrUpdate(
                             int.Parse(match.Groups["pid"].Value),
-                            _ => packageName,
-                            (_, _) => packageName);
+                            _ => procName,
+                            (_, _) => procName);
 
                         if (match.Groups["uidToken"].Success)
                         {

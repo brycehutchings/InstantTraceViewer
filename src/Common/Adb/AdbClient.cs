@@ -59,7 +59,10 @@ namespace InstantTraceViewer.Adb
             IReadOnlyList<AdbLogId> logIds,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            using var connection = await OpenDeviceServiceAsync(device, $"shell:{BuildLogcatCommand(logIds)}", cancellationToken);
+            // Use the "exec:" service (raw pipe, no PTY) instead of "shell:" for the binary "-B"
+            // stream. "shell:" merges the command's stderr into stdout and can apply PTY newline
+            // translation, both of which corrupt the binary output.
+            using var connection = await OpenDeviceServiceAsync(device, $"exec:{BuildLogcatCommand(logIds)}", cancellationToken);
             var parser = new AdbLogcatBinaryParser();
 
             while (true)
