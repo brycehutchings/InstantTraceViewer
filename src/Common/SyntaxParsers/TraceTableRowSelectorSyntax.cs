@@ -287,7 +287,7 @@ namespace InstantTraceViewer
             {
                 return TryParseTimestampPredicate(state, matchedColumn);
             }
-            else if (matchedColumn == _schema.ProcessIdColumn || matchedColumn == _schema.ThreadIdColumn)
+            else if (matchedColumn == _schema.ProcessIdColumn || matchedColumn == _schema.ThreadIdColumn || matchedColumn == _schema.UidColumn)
             {
                 return TryParseMany(state, matchedColumn, TryParseStringPredicate, TryParseIntIdentifierPredicate);
             }
