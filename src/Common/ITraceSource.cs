@@ -115,6 +115,11 @@
         public TraceSourceSchemaColumn? ThreadIdColumn { get; init; }
 
         /// <summary>
+        /// The column which represents the user id (UID) of a row's originating process. Must support queries using GetColumnValueInt.
+        /// </summary>
+        public TraceSourceSchemaColumn? UidColumn { get; init; }
+
+        /// <summary>
         /// The column which represents the provider/data source of the row.
         /// </summary>
         public TraceSourceSchemaColumn? ProviderColumn { get; init; }
@@ -129,6 +134,24 @@
     {
         public static bool IsValidRowIndex(this ITraceTableSnapshot snapshot, int? rowIndex)
             => rowIndex.HasValue && rowIndex.Value >= 0 && rowIndex.Value < snapshot.RowCount;
+
+        public static int? GetColumnIndex(this TraceTableSchema schema, TraceSourceSchemaColumn? column)
+        {
+            if (column == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < schema.Columns.Count; i++)
+            {
+                if (ReferenceEquals(schema.Columns[i], column))
+                {
+                    return i;
+                }
+            }
+
+            return null;
+        }
 
         public static DateTime GetTimestamp(this ITraceTableSnapshot snapshot, int rowIndex)
         {

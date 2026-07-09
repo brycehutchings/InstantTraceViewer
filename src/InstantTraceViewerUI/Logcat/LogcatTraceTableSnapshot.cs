@@ -70,11 +70,28 @@ namespace InstantTraceViewerUI.Logcat
 
             throw new NotImplementedException();
         }
-        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
-            => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
-               column == LogcatTraceSource.ColumnThread ? null :
-               throw new NotSupportedException();
 
+        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            if (column == LogcatTraceSource.ColumnProcess)
+            {
+                return RecordSnapshot[rowIndex].ProcessName;
+            }
+            if (column == LogcatTraceSource.ColumnThread)
+            {
+                return null;
+            }
+            if (column == LogcatTraceSource.ColumnUid)
+            {
+                var record = RecordSnapshot[rowIndex];
+                if (!record.Uid.HasValue)
+                {
+                    return null;
+                }
+                return LogcatTraceSource.KnownSystemUidNames.TryGetValue(record.Uid.Value, out var aidName) ? aidName : record.PackageName;
+            }
+            throw new NotSupportedException();
+        }
 
         public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
@@ -83,6 +100,7 @@ namespace InstantTraceViewerUI.Logcat
         public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
                column == LogcatTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
+               column == LogcatTraceSource.ColumnUid ? (RecordSnapshot[rowIndex].Uid.HasValue ? (int)RecordSnapshot[rowIndex].Uid.Value : -1) :
                throw new NotSupportedException();
 
         public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)

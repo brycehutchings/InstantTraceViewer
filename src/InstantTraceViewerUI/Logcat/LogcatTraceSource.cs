@@ -29,6 +29,7 @@ namespace InstantTraceViewerUI.Logcat
             UnifiedLevelColumn = ColumnPriority,
             ProcessIdColumn = ColumnProcess,
             ThreadIdColumn = ColumnThread,
+            UidColumn = ColumnUid,
             ProviderColumn = ColumnBufferId,
             NameColumn = ColumnTag,
         };
