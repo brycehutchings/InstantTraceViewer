@@ -5,10 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
-using AdvancedSharpAdbClient;
-using AdvancedSharpAdbClient.Models;
+using System.Threading;
+using System.Threading.Tasks;
 using Hexa.NET.ImGui;
 using InstantTraceViewer;
+using InstantTraceViewer.Adb;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 
@@ -25,7 +26,8 @@ namespace InstantTraceViewerUI
         }
 
         private readonly AdbClient _adbClient = new AdbClient();
-        private IReadOnlyList<DeviceData> _adbDevices = null;
+        private Task<IReadOnlyList<AdbDevice>> _adbDevicesTask = null;
+        private IReadOnlyList<AdbDevice> _adbDevices = null;
         private Exception _adbDevicesException = null;
 
         record class MessageBoxData(string Message, string Title, bool IsError);
@@ -445,14 +447,23 @@ namespace InstantTraceViewerUI
                 {
                     if (_adbDevices == null && _adbDevicesException == null)
                     {
-                        try
+                        _adbDevicesTask ??= _adbClient.GetDevicesAsync(CancellationToken.None);
+
+                        if (_adbDevicesTask.IsCompleted)
                         {
-                            _adbDevices = _adbClient.GetDevices().ToList();
-                        }
-                        catch (SocketException ex)
-                        {
-                            _adbDevicesException = ex;
-                            _adbDevices = Array.Empty<DeviceData>();
+                            try
+                            {
+                                _adbDevices = _adbDevicesTask.GetAwaiter().GetResult();
+                            }
+                            catch (SocketException ex)
+                            {
+                                _adbDevicesException = ex;
+                                _adbDevices = Array.Empty<AdbDevice>();
+                            }
+                            finally
+                            {
+                                _adbDevicesTask = null;
+                            }
                         }
                     }
 
@@ -461,14 +472,18 @@ namespace InstantTraceViewerUI
                         // TODO: See if adb.exe is in the PATH and offer to start the server.
                         ImGui.TextUnformatted("ADB server not running");
                     }
+                    else if (_adbDevices == null)
+                    {
+                        ImGui.TextUnformatted("Connecting...");
+                    }
                     else if (_adbDevices.Count == 0)
                     {
                         ImGui.TextUnformatted("No devices found");
                     }
 
-                    foreach (var device in _adbDevices)
+                    foreach (var device in _adbDevices ?? Array.Empty<AdbDevice>())
                     {
-                        if (ImGui.BeginMenu($"{device.Name} {device.Model} {device.Serial}"))
+                        if (ImGui.BeginMenu($"{device.Codename} {device.Model} {device.Serial}"))
                         {
                             if (ImGui.MenuItem("Open logcat"))
                             {
@@ -483,6 +498,7 @@ namespace InstantTraceViewerUI
 
                     if (ImGui.MenuItem("Refresh devices"))
                     {
+                        _adbDevicesTask = null;
                         _adbDevices = null;
                         _adbDevicesException = null;
                     }

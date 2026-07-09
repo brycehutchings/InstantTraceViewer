@@ -1,13 +1,13 @@
-using AdvancedSharpAdbClient;
-using AdvancedSharpAdbClient.DeviceCommands;
-using AdvancedSharpAdbClient.Logs;
-using AdvancedSharpAdbClient.Models;
+using InstantTraceViewer;
+using InstantTraceViewer.Adb;
+using InstantTraceViewerUI.Etw;
+using Microsoft.Diagnostics.Tracing;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
-using InstantTraceViewer;
 
 namespace InstantTraceViewerUI.Logcat
 {
@@ -15,6 +15,7 @@ namespace InstantTraceViewerUI.Logcat
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
+        public static readonly TraceSourceSchemaColumn ColumnUid = new TraceSourceSchemaColumn { Name = "Uid", DefaultColumnSize = 8.75f };
         public static readonly TraceSourceSchemaColumn ColumnBufferId = new TraceSourceSchemaColumn { Name = "BufferId", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnTag = new TraceSourceSchemaColumn { Name = "Tag", Colorize = true, DefaultColumnSize = 8.75f };
         public static readonly TraceSourceSchemaColumn ColumnPriority = new TraceSourceSchemaColumn { Name = "Priority", DefaultColumnSize = 3.75f };
@@ -23,7 +24,7 @@ namespace InstantTraceViewerUI.Logcat
 
         private static readonly TraceTableSchema _schema = new TraceTableSchema
         {
-            Columns = [ColumnProcess, ColumnThread, ColumnBufferId, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
+            Columns = [ColumnProcess, ColumnThread, ColumnUid, ColumnBufferId, ColumnTag, ColumnPriority, ColumnTime, ColumnMessage],
             TimestampColumn = ColumnTime,
             UnifiedLevelColumn = ColumnPriority,
             ProcessIdColumn = ColumnProcess,
@@ -37,26 +38,59 @@ namespace InstantTraceViewerUI.Logcat
         private int _generationId = 0;
         private readonly CancellationTokenSource _tokenSource = new CancellationTokenSource();
         private readonly AdbClient _adbClient;
-        private readonly DeviceData _device;
+        private readonly AdbDevice _device;
         private readonly Thread _readLogcatThread;
 
         private readonly ConcurrentDictionary<int, string> _processNames = new ConcurrentDictionary<int, string>();
+        private readonly ConcurrentDictionary<uint, string> _uidPackageNames = new ConcurrentDictionary<uint, string>();
 
-        public LogcatTraceSource(AdbClient adbClient, DeviceData device)
+        // Well-known Android UIDs (AIDs) from android_filesystem_config.h. These are shared across
+        // many system packages (sharedUserId), so listing every package under them is noise -- we
+        // display the canonical AID name instead. Applies only to UIDs below FIRST_APPLICATION_UID
+        // (10000); user-installed apps always use their package name.
+        internal static readonly IReadOnlyDictionary<uint, string> KnownSystemUidNames = new Dictionary<uint, string>
+        {
+            [0] = "root",
+            [1000] = "system",
+            [1001] = "radio",
+            [1002] = "bluetooth",
+            [1003] = "graphics",
+            [1004] = "input",
+            [1005] = "audio",
+            [1006] = "camera",
+            [1007] = "log",
+            [1009] = "mount",
+            [1010] = "wifi",
+            [1011] = "adb",
+            [1013] = "media",
+            [1014] = "dhcp",
+            [1019] = "drm",
+            [1020] = "mdnsr",
+            [1021] = "gps",
+            [1023] = "media_rw",
+            [1024] = "mtp",
+            [1027] = "nfc",
+            [1036] = "logd",
+            [1041] = "audioserver",
+            [1046] = "mediacodec",
+            [1047] = "cameraserver",
+            [1053] = "webview_zygote",
+            [1058] = "tombstoned",
+            [1066] = "statsd",
+            [1067] = "incidentd",
+            [1069] = "lmkd",
+            [1073] = "network_stack",
+            [2000] = "shell",
+            [9999] = "nobody",
+        };
+
+        public LogcatTraceSource(AdbClient adbClient, AdbDevice device)
         {
             _adbClient = adbClient;
             _device = device;
 
-            // TODO: Package manager can be useful for filtering to 3rd party apps.
-            // -3 to filter to 3rd party
-            // -I to include UID (appended on the 'key' with this API)
-            // var packages = _adbClient.CreatePackageManager(device, "-3", "-U").Packages.OrderBy(p => p.Value).ToList();
-
-            // Start with a snapshot of pids to package names.
-            foreach (var process in _adbClient.ListProcesses(_device))
-            {
-                _processNames.AddOrUpdate(process.ProcessId, _ => process.Name, (_, _) => process.Name);
-            }
+            // Start with a snapshot of pids to process names and uids to package names.
+            RefreshProcessAndPackageNames();
 
             _readLogcatThread = new Thread(() => ReadLogcatThread(adbClient, device));
             _readLogcatThread.Start();
@@ -68,13 +102,10 @@ namespace InstantTraceViewerUI.Logcat
 
         public void Clear()
         {
-            _adbClient.ExecuteShellCommand(_device, "logcat -c");
+            _adbClient.ExecuteShellCommandAsync(_device, "logcat -c", CancellationToken.None).GetAwaiter().GetResult();
 
-            // Refresh the process name map.
-            foreach (var process in _adbClient.ListProcesses(_device))
-            {
-                _processNames.AddOrUpdate(process.ProcessId, _ => process.Name, (_, _) => process.Name);
-            }
+            // Refresh the process and package name maps.
+            RefreshProcessAndPackageNames();
 
             _traceRecordsLock.EnterWriteLock();
             try
@@ -85,6 +116,25 @@ namespace InstantTraceViewerUI.Logcat
             finally
             {
                 _traceRecordsLock.ExitWriteLock();
+            }
+        }
+
+        private void RefreshProcessAndPackageNames()
+        {
+            foreach (var process in _adbClient.ListProcessesAsync(_device, CancellationToken.None).GetAwaiter().GetResult())
+            {
+                _processNames.AddOrUpdate(process.ProcessId, _ => process.Name, (_, _) => process.Name);
+            }
+
+            // `pm list packages -U` groups multiple package names under the same UID when a
+            // sharedUserId is in use (e.g. UID 1000 covers many system packages). Concatenate them
+            // so the UID column still surfaces every mapped name.
+            foreach (var package in _adbClient.ListPackagesAsync(_device, CancellationToken.None).GetAwaiter().GetResult())
+            {
+                _uidPackageNames.AddOrUpdate(
+                    package.Uid,
+                    _ => package.PackageName,
+                    (_, existing) => existing.Contains(package.PackageName) ? existing : $"{existing},{package.PackageName}");
             }
         }
 
@@ -123,50 +173,48 @@ namespace InstantTraceViewerUI.Logcat
             _tokenSource.Cancel();
         }
 
-        private async void ReadLogcatThread(AdbClient adbClient, DeviceData device)
+        private async void ReadLogcatThread(AdbClient adbClient, AdbDevice device)
         {
             try
             {
-                // FIXME: LogId.Kernel can include log entries which break the 'LogService' background processor in AdvancedSharpAdbClient. This causes it to stop reading messages.
-                //        So until this issue is understood and fixed, kernel messages are not included.
-                await foreach (LogEntry logEntry in adbClient.RunLogServiceAsync(device, _tokenSource.Token, [LogId.Main, LogId.Crash, /*LogId.Kernel,*/ LogId.System, LogId.Security, LogId.Radio]))
+                await foreach (AdbLogEntry androidLogEntry in adbClient.RunLogServiceAsync(device, [AdbLogId.Main, AdbLogId.Crash, AdbLogId.System, AdbLogId.Security, AdbLogId.Radio], _tokenSource.Token))
                 {
                     if (IsPaused)
                     {
                         continue;
                     }
 
-                    if (logEntry is AndroidLogEntry androidLogEntry)
+                    ProcessSystemMessage(androidLogEntry);
+
+                    _processNames.TryGetValue(androidLogEntry.ProcessId, out string processName);
+                    string packageName = null;
+                    if (androidLogEntry.Uid.HasValue)
                     {
-                        ProcessSystemMessage(androidLogEntry);
-
-                        _processNames.TryGetValue(androidLogEntry.ProcessId, out string processName);
-                        var preciseTimestamp = androidLogEntry.TimeStamp.ToLocalTime() + TimeSpan.FromTicks(androidLogEntry.NanoSeconds / TimeSpan.NanosecondsPerTick);
-                        var traceRecord = new LogcatRecord
-                        {
-                            ProcessId = androidLogEntry.ProcessId,
-                            ProcessName = processName,
-                            ThreadId = (int)androidLogEntry.ThreadId,
-                            Timestamp = preciseTimestamp.DateTime,
-                            Priority = androidLogEntry.Priority,
-                            Message = androidLogEntry.Message,
-                            Tag = androidLogEntry.Tag,
-                            LogId = androidLogEntry.Id,
-                        };
-
-                        _traceRecordsLock.EnterWriteLock();
-                        try
-                        {
-                            _traceRecords.Add(traceRecord);
-                        }
-                        finally
-                        {
-                            _traceRecordsLock.ExitWriteLock();
-                        }
+                        _uidPackageNames.TryGetValue(androidLogEntry.Uid.Value, out packageName);
                     }
-                    else
+
+                    var traceRecord = new LogcatRecord
                     {
-                        // Sometimes there are pure "LogEntry" objects. Not sure what to do with them...
+                        ProcessId = androidLogEntry.ProcessId,
+                        ProcessName = processName,
+                        ThreadId = androidLogEntry.ThreadId,
+                        Uid = androidLogEntry.Uid,
+                        PackageName = packageName,
+                        Timestamp = androidLogEntry.TimeStamp.ToLocalTime().DateTime,
+                        Priority = androidLogEntry.Priority,
+                        Message = androidLogEntry.Message,
+                        Tag = androidLogEntry.Tag,
+                        LogId = androidLogEntry.Id,
+                    };
+
+                    _traceRecordsLock.EnterWriteLock();
+                    try
+                    {
+                        _traceRecords.Add(traceRecord);
+                    }
+                    finally
+                    {
+                        _traceRecordsLock.ExitWriteLock();
                     }
                 }
             }
@@ -174,11 +222,36 @@ namespace InstantTraceViewerUI.Logcat
             {
                 // Trace source is being disposed.
             }
+            catch (Exception ex)
+            {
+                // This can happen if the ADB server is killed.
+                var traceRecord = new LogcatRecord
+                {
+                    Timestamp = DateTime.Now,
+                    Priority = AdbLogPriority.Fatal,
+                    Message = $"Unexpected error occurred while reading logcat: {ex}",
+                    Tag = "Instant Trace Viewer",
+                    LogId = AdbLogId.Unknown,
+                };
+
+                _traceRecordsLock.EnterWriteLock();
+                try
+                {
+                    _traceRecords.Add(traceRecord);
+                }
+                finally
+                {
+                    _traceRecordsLock.ExitWriteLock();
+                }
+            }
         }
 
-        private static readonly Regex ActivityManagerStartProc = new Regex(@"Start proc (?<pid>\d+).*\{(?<packageName>[^\s/]+)[/].*}");
+        // Matches messages like:
+        //   Start proc 12345:com.example.app/u0a123 for activity {com.example.app/com.example.app.MainActivity}
+        // The uidToken group is optional because very old devices don't include the "<pid>:<procName>/<uidToken>" prefix.
+        private static readonly Regex ActivityManagerStartProc = new Regex(@"Start proc (?<pid>\d+)(?::[^\s/]+/(?<uidToken>\S+))?.*\{(?<packageName>[^\s/]+)[/].*}");
 
-        private void ProcessSystemMessage(AndroidLogEntry androidLogEntry)
+        private void ProcessSystemMessage(AdbLogEntry androidLogEntry)
         {
             if (androidLogEntry.Tag == "ActivityManager")
             {
@@ -187,10 +260,24 @@ namespace InstantTraceViewerUI.Logcat
                     var match = ActivityManagerStartProc.Match(androidLogEntry.Message);
                     if (match.Success)
                     {
+                        var packageName = match.Groups["packageName"].Value;
+
                         _processNames.AddOrUpdate(
                             int.Parse(match.Groups["pid"].Value),
-                            _ => match.Groups["packageName"].Value,
-                            (_, _) => match.Groups["packageName"].Value);
+                            _ => packageName,
+                            (_, _) => packageName);
+
+                        if (match.Groups["uidToken"].Success)
+                        {
+                            var uid = DecodeAndroidUidToken(match.Groups["uidToken"].Value);
+                            if (uid.HasValue)
+                            {
+                                _uidPackageNames.AddOrUpdate(
+                                    uid.Value,
+                                    _ => packageName,
+                                    (_, existing) => existing.Contains(packageName) ? existing : $"{existing},{packageName}");
+                            }
+                        }
                     }
                     else
                     {
@@ -198,6 +285,61 @@ namespace InstantTraceViewerUI.Logcat
                     }
                 }
             }
+        }
+
+        // Decodes Android's UserHandle.formatUid() token into a Linux UID.
+        //   bare integer     -> that integer (system UIDs below FIRST_APPLICATION_UID = 10000)
+        //   u<user>a<n>      -> user*100000 + 10000 + n    (installed app)
+        //   u<user>s<n>      -> user*100000 + n            (shared system UID inside a user profile, n < 10000)
+        //   u<user>i<n>      -> user*100000 + 99000 + n    (isolated process)
+        internal static uint? DecodeAndroidUidToken(string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                return null;
+            }
+
+            if (uint.TryParse(token, out var bare))
+            {
+                return bare;
+            }
+
+            if (token[0] != 'u' || token.Length < 4)
+            {
+                return null;
+            }
+
+            int userEnd = 1;
+            while (userEnd < token.Length && char.IsDigit(token[userEnd]))
+            {
+                userEnd++;
+            }
+
+            if (userEnd == 1 || userEnd >= token.Length - 1)
+            {
+                return null;
+            }
+
+            if (!uint.TryParse(token.AsSpan(1, userEnd - 1), out var userId))
+            {
+                return null;
+            }
+
+            uint offset;
+            switch (token[userEnd])
+            {
+                case 'a': offset = 10000; break;
+                case 's': offset = 0; break;
+                case 'i': offset = 99000; break;
+                default: return null;
+            }
+
+            if (!uint.TryParse(token.AsSpan(userEnd + 1), out var appId))
+            {
+                return null;
+            }
+
+            return userId * 100000u + offset + appId;
         }
     }
 }

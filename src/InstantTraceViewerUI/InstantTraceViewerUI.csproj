@@ -48,7 +48,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="AdvancedSharpAdbClient" Version="3.6.16" />
     <PackageReference Include="Google.Protobuf" Version="3.35.0-rc1" />
     <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
     <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />

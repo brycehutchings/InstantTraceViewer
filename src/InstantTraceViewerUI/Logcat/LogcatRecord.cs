@@ -1,5 +1,5 @@
-﻿using AdvancedSharpAdbClient.Logs;
-using System;
+﻿using System;
+using InstantTraceViewer.Adb;
 
 namespace InstantTraceViewerUI.Logcat
 {
@@ -11,9 +11,13 @@ namespace InstantTraceViewerUI.Logcat
 
         public int ThreadId;
 
-        public Priority Priority;
+        public uint? Uid;
 
-        public LogId LogId;
+        public string PackageName;
+
+        public AdbLogPriority Priority;
+
+        public AdbLogId LogId;
 
         public string Tag;
 
