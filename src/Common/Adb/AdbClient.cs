@@ -31,6 +31,27 @@ namespace InstantTraceViewer.Adb
             return AdbDeviceListParser.Parse(response);
         }
 
+        public async IAsyncEnumerable<IReadOnlyList<AdbDevice>> TrackDevicesAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            using var connection = await AdbProtocolConnection.ConnectAsync(_host, _port, cancellationToken);
+            await connection.SendRequestAsync("host:track-devices-l", cancellationToken);
+
+            while (true)
+            {
+                string response;
+                try
+                {
+                    response = await connection.ReadLengthPrefixedStringAsync(cancellationToken);
+                }
+                catch (EndOfStreamException)
+                {
+                    yield break;
+                }
+
+                yield return AdbDeviceListParser.Parse(response);
+            }
+        }
+
         /// <summary>
         /// Runs a shell command on the device and returns its combined output.
         /// The command string is passed verbatim to <c>sh -c</c>; callers are responsible for

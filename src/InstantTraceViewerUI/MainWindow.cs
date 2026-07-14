@@ -26,7 +26,8 @@ namespace InstantTraceViewerUI
         }
 
         private readonly AdbClient _adbClient = new AdbClient();
-        private Task<IReadOnlyList<AdbDevice>> _adbDevicesTask = null;
+        private CancellationTokenSource _adbDevicesTokenSource = new CancellationTokenSource();
+        private Task _adbDevicesTask = null;
         private IReadOnlyList<AdbDevice> _adbDevices = null;
         private Exception _adbDevicesException = null;
 
@@ -445,27 +446,7 @@ namespace InstantTraceViewerUI
                 ImGui.SetNextItemShortcut((int)(ImGuiKey.A | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Android"))
                 {
-                    if (_adbDevices == null && _adbDevicesException == null)
-                    {
-                        _adbDevicesTask ??= _adbClient.GetDevicesAsync(CancellationToken.None);
-
-                        if (_adbDevicesTask.IsCompleted)
-                        {
-                            try
-                            {
-                                _adbDevices = _adbDevicesTask.GetAwaiter().GetResult();
-                            }
-                            catch (Exception ex) when (ex is SocketException or IOException or AdbException)
-                            {
-                                _adbDevicesException = ex;
-                                _adbDevices = Array.Empty<AdbDevice>();
-                            }
-                            finally
-                            {
-                                _adbDevicesTask = null;
-                            }
-                        }
-                    }
+                    StartAdbDeviceTracking();
 
                     if (_adbDevicesException != null)
                     {
@@ -487,20 +468,18 @@ namespace InstantTraceViewerUI
                         {
                             if (ImGui.MenuItem("Open logcat"))
                             {
-                                var logcat = new Logcat.LogcatTraceSource(_adbClient, device);
-                                _windows.Add(new LogViewerWindow(logcat));
+                                try
+                                {
+                                    var logcatTraceSource = new Logcat.LogcatTraceSource(_adbClient, device, this);
+                                    _windows.Add(new LogViewerWindow(logcatTraceSource));
+                                }
+                                catch (Exception ex)
+                                {
+                                    ShowMessageBox($"Failed to open logcat: {ex.Message}", "Error", isError: true);
+                                }
                             }
                             ImGui.EndMenu();
                         }
-                    }
-
-                    ImGui.Separator();
-
-                    if (ImGui.MenuItem("Refresh devices"))
-                    {
-                        _adbDevicesTask = null;
-                        _adbDevices = null;
-                        _adbDevicesException = null;
                     }
 
                     ImGui.EndMenu();
@@ -546,12 +525,59 @@ namespace InstantTraceViewerUI
             }
         }
 
+        private void StartAdbDeviceTracking()
+        {
+            if (_adbDevicesTask != null)
+            {
+                return;
+            }
+
+            var cancellationToken = _adbDevicesTokenSource.Token;
+            _adbDevicesTask = Task.Run(async () =>
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        Trace.WriteLine("Querying ADB devices...");
+                        // This is a long-running operation that tracks ADB devices asynchronously. It will yield device lists as they are updated.
+                        await foreach (var devices in _adbClient.TrackDevicesAsync(cancellationToken))
+                        {
+                            _adbDevices = devices;
+                            _adbDevicesException = null;
+                        }
+
+                        Trace.WriteLine("ADB device tracking ended.");
+                        _adbDevicesException = new IOException("ADB device tracking disconnected.");
+                        _adbDevices = Array.Empty<AdbDevice>();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Device tracking is being restarted or the main window is being disposed.
+                        Trace.WriteLine("ADB device tracking canceled.");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"ADB device tracking error: {ex}");
+                        _adbDevicesException = ex;
+                        _adbDevices = Array.Empty<AdbDevice>();
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                }
+            });
+        }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_isDisposed)
             {
                 if (disposing)
                 {
+                    _adbDevicesTokenSource.Cancel();
+                    _adbDevicesTokenSource.Dispose();
+
                     foreach (var window in _windows)
                     {
                         window.Dispose();

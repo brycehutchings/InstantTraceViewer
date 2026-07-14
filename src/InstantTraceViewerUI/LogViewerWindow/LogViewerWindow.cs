@@ -752,7 +752,15 @@ namespace InstantTraceViewerUI
                 ImGui.SameLine();
                 if (ImGui.Button("\uF12D Clear"))
                 {
-                    _traceSource.TraceSource.Clear();
+                    try
+                    {
+                        _traceSource.TraceSource.Clear();
+                    }
+                    catch (Exception ex)
+                    {
+                        uiCommands.ShowMessageBox($"Failed to clear trace source: {ex.Message}", "Error", isError: true);
+                    }
+
                     _lastSelectedVisibleRowIndex = null;
                     _selectedFullTableRowIndices.Clear();
                     _t0Timestamp = null;

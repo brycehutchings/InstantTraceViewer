@@ -1,7 +1,5 @@
 using InstantTraceViewer;
 using InstantTraceViewer.Adb;
-using InstantTraceViewerUI.Etw;
-using Microsoft.Diagnostics.Tracing;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -40,6 +38,7 @@ namespace InstantTraceViewerUI.Logcat
         private readonly CancellationTokenSource _tokenSource = new CancellationTokenSource();
         private readonly AdbClient _adbClient;
         private readonly AdbDevice _device;
+        private readonly IUiCommands _uiCommands;
         private readonly Thread _readLogcatThread;
 
         private readonly ConcurrentDictionary<int, string> _processNames = new ConcurrentDictionary<int, string>();
@@ -85,10 +84,11 @@ namespace InstantTraceViewerUI.Logcat
             [9999] = "nobody",
         };
 
-        public LogcatTraceSource(AdbClient adbClient, AdbDevice device)
+        public LogcatTraceSource(AdbClient adbClient, AdbDevice device, IUiCommands uiCommands)
         {
             _adbClient = adbClient;
             _device = device;
+            _uiCommands = uiCommands;
 
             // Start with a snapshot of pids to process names and uids to package names.
             RefreshProcessAndPackageNames();
@@ -180,6 +180,19 @@ namespace InstantTraceViewerUI.Logcat
 
         private async void ReadLogcatThread(AdbClient adbClient, AdbDevice device)
         {
+            void AddTraceRecord(LogcatRecord record)
+            {
+                _traceRecordsLock.EnterWriteLock();
+                try
+                {
+                    _traceRecords.Add(record);
+                }
+                finally
+                {
+                    _traceRecordsLock.ExitWriteLock();
+                }
+            }
+
             try
             {
                 await foreach (AdbLogEntry androidLogEntry in adbClient.RunLogServiceAsync(device, [AdbLogId.Main, AdbLogId.Crash, AdbLogId.System, AdbLogId.Security, AdbLogId.Radio], _tokenSource.Token))
@@ -198,7 +211,7 @@ namespace InstantTraceViewerUI.Logcat
                         _uidPackageNames.TryGetValue(androidLogEntry.Uid.Value, out packageName);
                     }
 
-                    var traceRecord = new LogcatRecord
+                    AddTraceRecord(new LogcatRecord
                     {
                         ProcessId = androidLogEntry.ProcessId,
                         ProcessName = processName,
@@ -210,44 +223,19 @@ namespace InstantTraceViewerUI.Logcat
                         Message = androidLogEntry.Message,
                         Tag = androidLogEntry.Tag,
                         LogId = androidLogEntry.Id,
-                    };
-
-                    _traceRecordsLock.EnterWriteLock();
-                    try
-                    {
-                        _traceRecords.Add(traceRecord);
-                    }
-                    finally
-                    {
-                        _traceRecordsLock.ExitWriteLock();
-                    }
+                    });
                 }
+
+                _uiCommands.ShowMessageBox("Logcat stream ended unexpectedly.", "Logcat error", isError: true);
             }
             catch (OperationCanceledException)
             {
-                // Trace source is being disposed.
+                // Trace source is being disposed because the user is closing us.
             }
             catch (Exception ex)
             {
                 // This can happen if the ADB server is killed.
-                var traceRecord = new LogcatRecord
-                {
-                    Timestamp = DateTime.Now,
-                    Priority = AdbLogPriority.Fatal,
-                    Message = $"Unexpected error occurred while reading logcat: {ex}",
-                    Tag = "Instant Trace Viewer",
-                    LogId = AdbLogId.Unknown,
-                };
-
-                _traceRecordsLock.EnterWriteLock();
-                try
-                {
-                    _traceRecords.Add(traceRecord);
-                }
-                finally
-                {
-                    _traceRecordsLock.ExitWriteLock();
-                }
+                _uiCommands.ShowMessageBox($"Unexpected error occurred while reading logcat:\n\n{ex}", "Logcat error", isError: true);
             }
         }
 
