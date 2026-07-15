@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Microsoft.Diagnostics.Tracing;
 using InstantTraceViewer;
@@ -29,25 +28,36 @@ namespace InstantTraceViewerUI.Etw
 
             var newRecord = CreateBaseTraceRecord(data);
 
-            List<NamedValue> namedValues = new(data.PayloadNames.Length);
+            int namedValueCount = data.PayloadNames.Length;
 
-            long? privTag = null;
-
-            for (int i = 0; i < data.PayloadNames.Length; i++)
+            if (data.ProviderGuid == Win32kProvider && data.TaskName == "ModifyRgn")
             {
-                if (data.PayloadNames[i] == "PartA_PrivTags" && data.PayloadValue(i) is long)
+                // TraceEvent library throws an exception internally when reading the last payload value of this potentially very noisy
+                // event, which greatly slows down processing, so we need to skip it.
+                namedValueCount--;
+            }
+
+            List<NamedValue> namedValues = new(namedValueCount);
+            List<NamedValue>? lowImportanceValues = null;
+
+            for (int i = 0; i < namedValueCount; i++)
+            {
+                object payloadValue = data.PayloadValue(i);
+
+                // Special telemetry metadata is not really intended for humans so stick it on the end.
+                if (data.PayloadNames[i]?.StartsWith("PartA_") ?? false)
                 {
-                    // Put the priv tag last since it's mostly noise.
-                    privTag = (long)data.PayloadValue(i);
+                    lowImportanceValues ??= new List<NamedValue>();
+                    lowImportanceValues.Add(new NamedValue { Name = data.PayloadNames[i], Value = payloadValue });
                     continue;
                 }
 
-                namedValues.Add(new NamedValue { Name = data.PayloadNames[i], Value = data.PayloadValue(i) });
+                namedValues.Add(new NamedValue { Name = data.PayloadNames[i], Value = payloadValue });
             }
 
-            if (privTag.HasValue)
+            if (lowImportanceValues?.Count > 0)
             {
-                namedValues.Add(new NamedValue { Name = "PartA_PrivTags", Value = privTag.Value });
+                namedValues.AddRange(lowImportanceValues);
             }
 
             // Fallback to using the formatted message if there are no payload values. This is the case for some types of trace events like WPP.
