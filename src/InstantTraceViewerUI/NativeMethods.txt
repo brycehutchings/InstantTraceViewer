@@ -31,6 +31,9 @@ SetWindowPos
 WaitForSingleObject
 CloseHandle
 IDC_ARROW
+DragAcceptFiles
+DragQueryFile
+DragFinish
 
 // Window messages and constants
 WM_SIZE

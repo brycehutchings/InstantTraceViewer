@@ -43,39 +43,55 @@ namespace InstantTraceViewerUI
 
         public MainWindow(string[] args)
         {
-            if (args.Length == 1 && Path.Exists(args[0]))
+            if (args.Length == 1)
             {
-                if (Etw.EtwTraceSource.EtlFileExtensions.Contains(Path.GetExtension(args[0]), StringComparer.OrdinalIgnoreCase))
+                OpenFile(args[0]);
+            }
+        }
+
+        private void OpenFile(string file)
+        {
+            try
+            {
+                if (Etw.EtwTraceSource.EtlFileExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 {
-                    var etlSession = Etw.EtwTraceSource.CreateEtlSession(args[0]);
+                    var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
                     _windows.Add(new LogViewerWindow(etlSession));
                 }
-                else if (string.Equals(Path.GetExtension(args[0]), ".wprp", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(Path.GetExtension(file), ".wprp", StringComparison.OrdinalIgnoreCase))
                 {
-                    var wprp = Etw.Wprp.Load(args[0]);
+                    var wprp = Etw.Wprp.Load(file);
                     var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
                     _windows.Add(new LogViewerWindow(realTimeSession));
                 }
-                else if (string.Equals(Path.GetExtension(args[0]), ".csv", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(Path.GetExtension(file), ".csv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for CSV files.
-                    var csvTableSource = new CsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
+                    var csvTableSource = new CsvTableSource(file, firstRowIsHeader: true, readInBackground: true);
                     _windows.Add(new LogViewerWindow(csvTableSource));
                 }
-                else if (string.Equals(Path.GetExtension(args[0]), ".tsv", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(Path.GetExtension(file), ".tsv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for TSV files.
-                    var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
+                    var tsvTableSource = new TsvTableSource(file, firstRowIsHeader: true, readInBackground: true);
                     _windows.Add(new LogViewerWindow(tsvTableSource));
                 }
                 else if (
-                    string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(Path.GetExtension(args[0]), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
-                    args[0].EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(Path.GetExtension(file), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetExtension(file), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
                 {
-                    var perfettoTableSource = new Perfetto.PerfettoTraceSource(args[0]);
+                    var perfettoTableSource = new Perfetto.PerfettoTraceSource(file);
                     _windows.Add(new LogViewerWindow(perfettoTableSource));
                 }
+                else
+                {
+                    throw new InvalidOperationException($"Unknown file type.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowMessageBox($"Failed to open file {file}\n\n{ex.Message}", "Error", isError: true);
             }
         }
 
@@ -95,6 +111,12 @@ namespace InstantTraceViewerUI
 
         public void Draw()
         {
+            // Handle drag-and-drop requests.
+            foreach (string file in Win32ImGuiHost.TakeDroppedFiles())
+            {
+                OpenFile(file);
+            }
+
             uint dockId = ImGui.DockSpaceOverViewport();
 
             DrawMenuBar();
