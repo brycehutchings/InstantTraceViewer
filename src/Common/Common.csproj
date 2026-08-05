@@ -8,4 +8,15 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.35.0-rc1" />
+    <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
+  </ItemGroup>
+
+  <!-- Note PerfettoTrace.cs is very large and very slow to build. If this becomes a problem it could go into its own assembly. -->
+  <Target Name="GenerateProto" BeforeTargets="PrepareForBuild" Inputs="Perfetto\Protobuf\perfetto_trace.proto" Outputs="Perfetto\Protobuf\PerfettoTrace.cs">
+    <Message Importance="High" Text="Updating C# from Perfetto protobuf file..." />
+    <Exec Command="$(protoc_windows64) --csharp_out=Perfetto\Protobuf Perfetto\Protobuf\perfetto_trace.proto" />
+  </Target>
+
 </Project>
