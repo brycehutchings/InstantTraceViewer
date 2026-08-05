@@ -39,6 +39,7 @@ namespace InstantTraceViewerUI
 
         private int? _hoveredProcessId;
         private int? _hoveredThreadId;
+        private int? _hoveredUid;
 
         private ThreadTimelineWindow _threadTimelineWindow = null;
         private FiltersEditorWindow _filtersEditorWindow = null;
@@ -232,6 +233,13 @@ namespace InstantTraceViewerUI
                 _lastSelectedRowYOffset = null;
 
                 int? newHoveredProcessId = null, newHoveredThreadId = null;
+                int? newHoveredUid = null;
+
+                // Resolve the schema column positions once per frame so cell highlighting doesn't depend on any
+                // particular column ordering. null means "column not present in this schema".
+                int? processIdColIndex = visibleTraceTable.Schema.GetColumnIndex(visibleTraceTable.Schema.ProcessIdColumn);
+                int? threadIdColIndex = visibleTraceTable.Schema.GetColumnIndex(visibleTraceTable.Schema.ThreadIdColumn);
+                int? uidColIndex = visibleTraceTable.Schema.GetColumnIndex(visibleTraceTable.Schema.UidColumn);
 
                 _tableClipper.Begin(visibleTraceTable.RowCount);
 
@@ -251,13 +259,17 @@ namespace InstantTraceViewerUI
 
                         float rowYOffset = ImGui.GetCursorPosY();
 
-                        if (visibleTraceTable.Schema.ProcessIdColumn != null && visibleTraceTable.GetProcessId(rowIdx) == _hoveredProcessId)
+                        if (processIdColIndex.HasValue && visibleTraceTable.GetProcessId(rowIdx) == _hoveredProcessId)
                         {
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, 0);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, processIdColIndex.Value);
                         }
-                        if (visibleTraceTable.Schema.ThreadIdColumn != null && visibleTraceTable.GetThreadId(rowIdx) == _hoveredThreadId)
+                        if (threadIdColIndex.HasValue && visibleTraceTable.GetThreadId(rowIdx) == _hoveredThreadId)
                         {
-                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, 1);
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, threadIdColIndex.Value);
+                        }
+                        if (uidColIndex.HasValue && visibleTraceTable.GetColumnValueInt(rowIdx, visibleTraceTable.Schema.UidColumn) == _hoveredUid)
+                        {
+                            ImGui.TableSetBgColor(ImGuiTableBgTarget.CellBg, AppTheme.MatchingRowBgColor, uidColIndex.Value);
                         }
 
                         HighlightRowBgColor? highlightColor = _viewerRules.TryGetHighlightColor(visibleTraceTable, rowIdx);
@@ -342,13 +354,23 @@ namespace InstantTraceViewerUI
 
                                 if (isRowHovered)
                                 {
-                                    if (visibleTraceTable.Schema.ProcessIdColumn != null && hoveredCol == 0)
+                                    // Resolve which schema column is being hovered by reference rather than by
+                                    // literal column index, so hover-highlighting is independent of column ordering.
+                                    var hoveredColumn = (hoveredCol >= 0 && hoveredCol < visibleTraceTable.Schema.Columns.Count)
+                                        ? visibleTraceTable.Schema.Columns[hoveredCol]
+                                        : null;
+
+                                    if (hoveredColumn != null && hoveredColumn == visibleTraceTable.Schema.ProcessIdColumn)
                                     {
                                         newHoveredProcessId = visibleTraceTable.GetProcessId(rowIdx);
                                     }
-                                    else if (visibleTraceTable.Schema.ThreadIdColumn != null && hoveredCol == 1)
+                                    else if (hoveredColumn != null && hoveredColumn == visibleTraceTable.Schema.ThreadIdColumn)
                                     {
                                         newHoveredThreadId = visibleTraceTable.GetThreadId(rowIdx);
+                                    }
+                                    else if (hoveredColumn != null && hoveredColumn == visibleTraceTable.Schema.UidColumn)
+                                    {
+                                        newHoveredUid = visibleTraceTable.GetColumnValueInt(rowIdx, hoveredColumn);
                                     }
                                 }
 
@@ -442,6 +464,7 @@ namespace InstantTraceViewerUI
 
                 _hoveredProcessId = newHoveredProcessId;
                 _hoveredThreadId = newHoveredThreadId;
+                _hoveredUid = newHoveredUid;
 
                 ImGui.PopStyleVar(); // CellPadding
 
@@ -591,7 +614,7 @@ namespace InstantTraceViewerUI
                 ImGui.Separator();
                 AddCustomRule([TraceTableRowSelectorSyntax.CreateColumnVariableName(column), TraceTableRowSelectorSyntax.LessThanOrEqualOperatorName, timeStr]);
             }
-            else if (column == visibleTraceTable.Schema.ProcessIdColumn || column == visibleTraceTable.Schema.ThreadIdColumn)
+            else if (column == visibleTraceTable.Schema.ProcessIdColumn || column == visibleTraceTable.Schema.ThreadIdColumn || column == visibleTraceTable.Schema.UidColumn)
             {
                 string intValue = visibleTraceTable.GetColumnValueInt(i, column).ToString();
                 string nameValue = visibleTraceTable.GetColumnValueNameForId(i, column);
@@ -729,7 +752,15 @@ namespace InstantTraceViewerUI
                 ImGui.SameLine();
                 if (ImGui.Button("\uF12D Clear"))
                 {
-                    _traceSource.TraceSource.Clear();
+                    try
+                    {
+                        _traceSource.TraceSource.Clear();
+                    }
+                    catch (Exception ex)
+                    {
+                        uiCommands.ShowMessageBox($"Failed to clear trace source: {ex.Message}", "Error", isError: true);
+                    }
+
                     _lastSelectedVisibleRowIndex = null;
                     _selectedFullTableRowIndices.Clear();
                     _t0Timestamp = null;
@@ -742,15 +773,29 @@ namespace InstantTraceViewerUI
             if (_traceSource.TraceSource.CanPause)
             {
                 ImGui.SameLine();
-                if (ImGui.Button(_traceSource.TraceSource.IsPaused ? "\uF04B Resume" : "\uF04C Pause"))
+                bool isPaused = _traceSource.TraceSource.IsPaused;
+                if (isPaused)
+                {
+                    ImGui.PushStyleColor(ImGuiCol.Button, AppTheme.WarningColor);
+                }
+                if (ImGui.Button(isPaused ? "\uF04B Resume" : "\uF04C Pause"))
                 {
                     _traceSource.TraceSource.TogglePause();
+                }
+                if (isPaused)
+                {
+                    ImGui.PopStyleColor();
                 }
             }
 
             ImGui.SameLine();
+            bool filteringOff = !_viewerRules.ApplyFiltering;
+            if (filteringOff)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, AppTheme.WarningColor);
+            }
             string filterCountSuffix =
-                !_viewerRules.ApplyFiltering ? " (Off)" :
+                filteringOff ? " (Off)" :
                 _viewerRules.Rules.Count > 0 ? $" ({_viewerRules.Rules.Count})" : string.Empty;
             if (ImGui.Button($"\uf0b0 Rules{filterCountSuffix}..."))
             {
@@ -797,6 +842,10 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.EndPopup();
+            }
+            if (filteringOff)
+            {
+                ImGui.PopStyleColor();
             }
 
             ImGui.SameLine();

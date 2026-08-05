@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D11;
 using Hexa.NET.ImGui.Backends.Win32;
@@ -11,6 +12,7 @@ using Windows.Win32.Graphics.Direct3D11;
 using Windows.Win32.Graphics.Dxgi;
 using Windows.Win32.Graphics.Dxgi.Common;
 using Windows.Win32.System.Com;
+using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.WindowsAndMessaging;
 using BID3D11Device = Hexa.NET.ImGui.Backends.D3D11.ID3D11Device;
 using BID3D11DeviceContext = Hexa.NET.ImGui.Backends.D3D11.ID3D11DeviceContext;
@@ -32,6 +34,7 @@ namespace InstantTraceViewerUI
         private const uint DefaultWidth = 1200;
         private const uint DefaultHeight = 800;
         private const uint WM_DPICHANGED = 0x02E0;
+        private const uint WM_DROPFILES = 0x0233;
 
         private const DXGI_SWAP_CHAIN_FLAG SwapchainFlags =
             DXGI_SWAP_CHAIN_FLAG.DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG.DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
@@ -52,6 +55,24 @@ namespace InstantTraceViewerUI
         private static WID3D11RenderTargetView* s_renderTargetView;
         private static uint s_resizeWidth;
         private static uint s_resizeHeight;
+        private static readonly List<string> s_droppedFiles = new();
+        private static readonly object s_droppedFilesLock = new();
+
+        public static IReadOnlyList<string> TakeDroppedFiles()
+        {
+            lock (s_droppedFilesLock)
+            {
+                if (s_droppedFiles.Count == 0)
+                {
+                    return Array.Empty<string>();
+                }
+
+                string[] files = s_droppedFiles.ToArray();
+                s_droppedFiles.Clear();
+                return files;
+            }
+        }
+
 
         public static float GetDpiScale()
         {
@@ -111,6 +132,8 @@ namespace InstantTraceViewerUI
                 PInvoke.UnregisterClass(WindowClassName, null);
                 throw new InvalidOperationException("Failed to create application window.");
             }
+
+            PInvoke.DragAcceptFiles(s_hwnd, true);
 
             // Scale window size by the monitor DPI.
             float scale = GetDpiScale();
@@ -459,6 +482,10 @@ namespace InstantTraceViewerUI
                         SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
                     return new LRESULT(0);
 
+                case WM_DROPFILES:
+                    HandleDropFiles(new HDROP((nint)(nuint)wParam));
+                    return new LRESULT(0);
+
                 case PInvoke.WM_SYSCOMMAND:
                     if (((nuint)wParam & 0xFFF0) == PInvoke.SC_KEYMENU)
                     {
@@ -472,6 +499,32 @@ namespace InstantTraceViewerUI
             }
 
             return PInvoke.DefWindowProc(hWnd, msg, wParam, lParam);
+        }
+
+        private static void HandleDropFiles(HDROP drop)
+        {
+            try
+            {
+                uint fileCount = PInvoke.DragQueryFile(drop, uint.MaxValue, null, 0);
+
+                for (uint i = 0; i < fileCount; i++)
+                {
+                    uint length = PInvoke.DragQueryFile(drop, i, null, 0);
+                    char[] buffer = new char[length + 1];
+                    fixed (char* bufferPtr = buffer)
+                    {
+                        PInvoke.DragQueryFile(drop, i, bufferPtr, (uint)buffer.Length);
+                    }
+                    lock (s_droppedFilesLock)
+                    {
+                        s_droppedFiles.Add(new string(buffer, 0, (int)length));
+                    }
+                }
+            }
+            finally
+            {
+                PInvoke.DragFinish(drop);
+            }
         }
     }
 }

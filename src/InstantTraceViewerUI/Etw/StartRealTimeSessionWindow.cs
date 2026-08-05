@@ -208,7 +208,7 @@ namespace InstantTraceViewerUI.Etw
 
         private void DrawKernelKeywords()
         {
-            ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.WarningColor));
+            ImGui.PushStyleColor(ImGuiCol.Text, AppTheme.WarningColor);
             ImGui.TextWrapped("Warning: Many kernel events are not yet supported and will be ignored.");
             if (!(TraceEventSession.IsElevated() ?? false))
             {
@@ -256,7 +256,7 @@ namespace InstantTraceViewerUI.Etw
         {
             if (!string.IsNullOrEmpty(_errorMessage))
             {
-                ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetColorU32(AppTheme.ErrorColor));
+                ImGui.PushStyleColor(ImGuiCol.Text, AppTheme.ErrorColor);
                 ImGui.TextUnformatted(_errorMessage);
                 ImGui.PopStyleColor();
             }

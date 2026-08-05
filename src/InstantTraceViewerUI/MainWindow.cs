@@ -5,10 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
-using AdvancedSharpAdbClient;
-using AdvancedSharpAdbClient.Models;
+using System.Threading;
+using System.Threading.Tasks;
 using Hexa.NET.ImGui;
 using InstantTraceViewer;
+using InstantTraceViewer.Adb;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 
@@ -25,7 +26,9 @@ namespace InstantTraceViewerUI
         }
 
         private readonly AdbClient _adbClient = new AdbClient();
-        private IReadOnlyList<DeviceData> _adbDevices = null;
+        private CancellationTokenSource _adbDevicesTokenSource = new CancellationTokenSource();
+        private Task _adbDevicesTask = null;
+        private IReadOnlyList<AdbDevice> _adbDevices = null;
         private Exception _adbDevicesException = null;
 
         record class MessageBoxData(string Message, string Title, bool IsError);
@@ -40,39 +43,55 @@ namespace InstantTraceViewerUI
 
         public MainWindow(string[] args)
         {
-            if (args.Length == 1 && Path.Exists(args[0]))
+            if (args.Length == 1)
             {
-                if (Etw.EtwTraceSource.EtlFileExtensions.Contains(Path.GetExtension(args[0]), StringComparer.OrdinalIgnoreCase))
+                OpenFile(args[0]);
+            }
+        }
+
+        private void OpenFile(string file)
+        {
+            try
+            {
+                if (Etw.EtwTraceSource.EtlFileExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 {
-                    var etlSession = Etw.EtwTraceSource.CreateEtlSession(args[0]);
+                    var etlSession = Etw.EtwTraceSource.CreateEtlSession(file);
                     _windows.Add(new LogViewerWindow(etlSession));
                 }
-                else if (string.Equals(Path.GetExtension(args[0]), ".wprp", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(Path.GetExtension(file), ".wprp", StringComparison.OrdinalIgnoreCase))
                 {
-                    var wprp = Etw.Wprp.Load(args[0]);
+                    var wprp = Etw.Wprp.Load(file);
                     var realTimeSession = Etw.EtwTraceSource.CreateRealTimeSession(wprp.Profiles[0].ConvertToSessionProfile());
                     _windows.Add(new LogViewerWindow(realTimeSession));
                 }
-                else if (string.Equals(Path.GetExtension(args[0]), ".csv", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(Path.GetExtension(file), ".csv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for CSV files.
-                    var csvTableSource = new CsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
+                    var csvTableSource = new CsvTableSource(file, firstRowIsHeader: true, readInBackground: true);
                     _windows.Add(new LogViewerWindow(csvTableSource));
                 }
-                else if (string.Equals(Path.GetExtension(args[0]), ".tsv", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(Path.GetExtension(file), ".tsv", StringComparison.OrdinalIgnoreCase))
                 {
                     // TODO: We need a --no-header option for TSV files.
-                    var tsvTableSource = new TsvTableSource(args[0], firstRowIsHeader: true, readInBackground: true);
+                    var tsvTableSource = new TsvTableSource(file, firstRowIsHeader: true, readInBackground: true);
                     _windows.Add(new LogViewerWindow(tsvTableSource));
                 }
                 else if (
-                    string.Equals(Path.GetExtension(args[0]), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(Path.GetExtension(args[0]), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
-                    args[0].EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(Path.GetExtension(file), ".perfetto-trace", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(Path.GetExtension(file), ".perfetto_trace", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".perfetto_trace.gz", StringComparison.OrdinalIgnoreCase))
                 {
-                    var perfettoTableSource = new Perfetto.PerfettoTraceSource(args[0]);
+                    var perfettoTableSource = new Perfetto.PerfettoTraceSource(file);
                     _windows.Add(new LogViewerWindow(perfettoTableSource));
                 }
+                else
+                {
+                    throw new InvalidOperationException($"Unknown file type.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowMessageBox($"Failed to open file {file}\n\n{ex.Message}", "Error", isError: true);
             }
         }
 
@@ -92,6 +111,12 @@ namespace InstantTraceViewerUI
 
         public void Draw()
         {
+            // Handle drag-and-drop requests.
+            foreach (string file in Win32ImGuiHost.TakeDroppedFiles())
+            {
+                OpenFile(file);
+            }
+
             uint dockId = ImGui.DockSpaceOverViewport();
 
             DrawMenuBar();
@@ -443,48 +468,40 @@ namespace InstantTraceViewerUI
                 ImGui.SetNextItemShortcut((int)(ImGuiKey.A | ImGuiKey.ModAlt), ImGuiInputFlags.RouteGlobal);
                 if (ImGui.BeginMenu("Android"))
                 {
-                    if (_adbDevices == null && _adbDevicesException == null)
-                    {
-                        try
-                        {
-                            _adbDevices = _adbClient.GetDevices().ToList();
-                        }
-                        catch (SocketException ex)
-                        {
-                            _adbDevicesException = ex;
-                            _adbDevices = Array.Empty<DeviceData>();
-                        }
-                    }
+                    StartAdbDeviceTracking();
 
                     if (_adbDevicesException != null)
                     {
                         // TODO: See if adb.exe is in the PATH and offer to start the server.
-                        ImGui.TextUnformatted("ADB server not running");
+                        ImGui.TextUnformatted($"ADB error: {_adbDevicesException.Message}");
+                    }
+                    else if (_adbDevices == null)
+                    {
+                        ImGui.TextUnformatted("Connecting...");
                     }
                     else if (_adbDevices.Count == 0)
                     {
                         ImGui.TextUnformatted("No devices found");
                     }
 
-                    foreach (var device in _adbDevices)
+                    foreach (var device in _adbDevices ?? Array.Empty<AdbDevice>())
                     {
-                        if (ImGui.BeginMenu($"{device.Name} {device.Model} {device.Serial}"))
+                        if (ImGui.BeginMenu($"{device.Codename} {device.Model} {device.Serial}"))
                         {
                             if (ImGui.MenuItem("Open logcat"))
                             {
-                                var logcat = new Logcat.LogcatTraceSource(_adbClient, device);
-                                _windows.Add(new LogViewerWindow(logcat));
+                                try
+                                {
+                                    var logcatTraceSource = new Logcat.LogcatTraceSource(_adbClient, device, this);
+                                    _windows.Add(new LogViewerWindow(logcatTraceSource));
+                                }
+                                catch (Exception ex)
+                                {
+                                    ShowMessageBox($"Failed to open logcat: {ex.Message}", "Error", isError: true);
+                                }
                             }
                             ImGui.EndMenu();
                         }
-                    }
-
-                    ImGui.Separator();
-
-                    if (ImGui.MenuItem("Refresh devices"))
-                    {
-                        _adbDevices = null;
-                        _adbDevicesException = null;
                     }
 
                     ImGui.EndMenu();
@@ -530,12 +547,59 @@ namespace InstantTraceViewerUI
             }
         }
 
+        private void StartAdbDeviceTracking()
+        {
+            if (_adbDevicesTask != null)
+            {
+                return;
+            }
+
+            var cancellationToken = _adbDevicesTokenSource.Token;
+            _adbDevicesTask = Task.Run(async () =>
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        Trace.WriteLine("Querying ADB devices...");
+                        // This is a long-running operation that tracks ADB devices asynchronously. It will yield device lists as they are updated.
+                        await foreach (var devices in _adbClient.TrackDevicesAsync(cancellationToken))
+                        {
+                            _adbDevices = devices;
+                            _adbDevicesException = null;
+                        }
+
+                        Trace.WriteLine("ADB device tracking ended.");
+                        _adbDevicesException = new IOException("ADB device tracking disconnected.");
+                        _adbDevices = Array.Empty<AdbDevice>();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Device tracking is being restarted or the main window is being disposed.
+                        Trace.WriteLine("ADB device tracking canceled.");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"ADB device tracking error: {ex}");
+                        _adbDevicesException = ex;
+                        _adbDevices = Array.Empty<AdbDevice>();
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                }
+            });
+        }
+
         protected virtual void Dispose(bool disposing)
         {
             if (!_isDisposed)
             {
                 if (disposing)
                 {
+                    _adbDevicesTokenSource.Cancel();
+                    _adbDevicesTokenSource.Dispose();
+
                     foreach (var window in _windows)
                     {
                         window.Dispose();

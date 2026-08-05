@@ -38,24 +38,26 @@ namespace InstantTraceViewerUI.Etw
             }
 
             List<NamedValue> namedValues = new(namedValueCount);
+            List<NamedValue>? lowImportanceValues = null;
 
-            long? privTag = null;
             for (int i = 0; i < namedValueCount; i++)
             {
                 object payloadValue = data.PayloadValue(i);
-                if (data.PayloadNames[i] == "PartA_PrivTags" && payloadValue is long)
+
+                // Special telemetry metadata is not really intended for humans so stick it on the end.
+                if (data.PayloadNames[i]?.StartsWith("PartA_") ?? false)
                 {
-                    // Put the priv tag last since it's mostly noise.
-                    privTag = (long)payloadValue;
+                    lowImportanceValues ??= new List<NamedValue>();
+                    lowImportanceValues.Add(new NamedValue { Name = data.PayloadNames[i], Value = payloadValue });
                     continue;
                 }
 
                 namedValues.Add(new NamedValue { Name = data.PayloadNames[i], Value = payloadValue });
             }
 
-            if (privTag.HasValue)
+            if (lowImportanceValues?.Count > 0)
             {
-                namedValues.Add(new NamedValue { Name = "PartA_PrivTags", Value = privTag.Value });
+                namedValues.AddRange(lowImportanceValues);
             }
 
             // Fallback to using the formatted message if there are no payload values. This is the case for some types of trace events like WPP.

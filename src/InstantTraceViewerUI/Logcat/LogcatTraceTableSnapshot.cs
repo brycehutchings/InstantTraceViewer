@@ -1,6 +1,6 @@
 ﻿using System;
-using AdvancedSharpAdbClient.Logs;
 using InstantTraceViewer;
+using InstantTraceViewer.Adb;
 
 namespace InstantTraceViewerUI.Logcat
 {
@@ -29,6 +29,24 @@ namespace InstantTraceViewerUI.Logcat
             {
                 return traceRecord.ThreadId.ToString();
             }
+            else if (column == LogcatTraceSource.ColumnUid)
+            {
+                if (!traceRecord.Uid.HasValue)
+                {
+                    return string.Empty;
+                }
+
+                // Prefer the canonical Android AID name for well-known system UIDs; those UIDs are
+                // shared by many packages and the joined package list would be huge and unhelpful.
+                if (LogcatTraceSource.KnownSystemUidNames.TryGetValue(traceRecord.Uid.Value, out var aidName))
+                {
+                    return $"{traceRecord.Uid.Value} ({aidName})";
+                }
+
+                return !string.IsNullOrEmpty(traceRecord.PackageName)
+                    ? $"{traceRecord.Uid.Value} ({traceRecord.PackageName})"
+                    : traceRecord.Uid.Value.ToString();
+            }
             else if (column == LogcatTraceSource.ColumnPriority)
             {
                 return traceRecord.Priority.ToString();
@@ -52,11 +70,28 @@ namespace InstantTraceViewerUI.Logcat
 
             throw new NotImplementedException();
         }
-        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
-            => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessName :
-               column == LogcatTraceSource.ColumnThread ? null :
-               throw new NotSupportedException();
 
+        public string GetColumnValueNameForId(int rowIndex, TraceSourceSchemaColumn column)
+        {
+            if (column == LogcatTraceSource.ColumnProcess)
+            {
+                return RecordSnapshot[rowIndex].ProcessName;
+            }
+            if (column == LogcatTraceSource.ColumnThread)
+            {
+                return null;
+            }
+            if (column == LogcatTraceSource.ColumnUid)
+            {
+                var record = RecordSnapshot[rowIndex];
+                if (!record.Uid.HasValue)
+                {
+                    return null;
+                }
+                return LogcatTraceSource.KnownSystemUidNames.TryGetValue(record.Uid.Value, out var aidName) ? aidName : record.PackageName;
+            }
+            throw new NotSupportedException();
+        }
 
         public DateTime GetColumnValueDateTime(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnTime ? RecordSnapshot[rowIndex].Timestamp :
@@ -65,6 +100,7 @@ namespace InstantTraceViewerUI.Logcat
         public int GetColumnValueInt(int rowIndex, TraceSourceSchemaColumn column)
             => column == LogcatTraceSource.ColumnProcess ? RecordSnapshot[rowIndex].ProcessId :
                column == LogcatTraceSource.ColumnThread ? RecordSnapshot[rowIndex].ThreadId :
+               column == LogcatTraceSource.ColumnUid ? (RecordSnapshot[rowIndex].Uid.HasValue ? (int)RecordSnapshot[rowIndex].Uid.Value : -1) :
                throw new NotSupportedException();
 
         public UnifiedLevel GetColumnValueUnifiedLevel(int rowIndex, TraceSourceSchemaColumn column)
@@ -74,13 +110,12 @@ namespace InstantTraceViewerUI.Logcat
         public UnifiedOpcode GetColumnValueUnifiedOpcode(int rowIndex, TraceSourceSchemaColumn column)
             => throw new NotSupportedException();
 
-        private UnifiedLevel ConvertPriority(Priority priority)
-            => priority == Priority.Fatal ? UnifiedLevel.Fatal :
-               priority == Priority.Error ? UnifiedLevel.Error :
-               priority == Priority.Assert ? UnifiedLevel.Error :
-               priority == Priority.Warn ? UnifiedLevel.Warning :
-               priority == Priority.Verbose ? UnifiedLevel.Verbose :
-               priority == Priority.Debug ? UnifiedLevel.Verbose : UnifiedLevel.Info;
+        private UnifiedLevel ConvertPriority(AdbLogPriority priority)
+            => priority == AdbLogPriority.Fatal ? UnifiedLevel.Fatal :
+               priority == AdbLogPriority.Error ? UnifiedLevel.Error :
+               priority == AdbLogPriority.Warn ? UnifiedLevel.Warning :
+               priority == AdbLogPriority.Verbose ? UnifiedLevel.Verbose :
+               priority == AdbLogPriority.Debug ? UnifiedLevel.Verbose : UnifiedLevel.Info;
         #endregion
     }
 }

@@ -38,7 +38,9 @@ namespace InstantTraceViewerUI
                     new CountByProviderAdapter(traceTable.Schema),
                     new CountByEventNameAdapter(traceTable.Schema),
                     new CountByProcessThreadAdapter(traceTable.Schema, includeThreadColumn: true),
-                    new CountByProcessThreadAdapter(traceTable.Schema, includeThreadColumn: false)];
+                    new CountByProcessThreadAdapter(traceTable.Schema, includeThreadColumn: false),
+                    new CountByUidLevelAdapter(traceTable.Schema, includeLevelColumn: false),
+                    new CountByUidLevelAdapter(traceTable.Schema, includeLevelColumn: true)];
                 _adaptersLastGenerationId = traceTable.GenerationId;
                 _eventCounts = null;
             }
