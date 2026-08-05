@@ -789,8 +789,13 @@ namespace InstantTraceViewerUI
             }
 
             ImGui.SameLine();
+            bool filteringOff = !_viewerRules.ApplyFiltering;
+            if (filteringOff)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Button, AppTheme.WarningColor);
+            }
             string filterCountSuffix =
-                !_viewerRules.ApplyFiltering ? " (Off)" :
+                filteringOff ? " (Off)" :
                 _viewerRules.Rules.Count > 0 ? $" ({_viewerRules.Rules.Count})" : string.Empty;
             if (ImGui.Button($"\uf0b0 Rules{filterCountSuffix}..."))
             {
@@ -837,6 +842,10 @@ namespace InstantTraceViewerUI
                 }
 
                 ImGui.EndPopup();
+            }
+            if (filteringOff)
+            {
+                ImGui.PopStyleColor();
             }
 
             ImGui.SameLine();
