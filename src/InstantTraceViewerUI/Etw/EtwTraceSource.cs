@@ -67,6 +67,7 @@ namespace InstantTraceViewerUI.Etw
         private ConcurrentDictionary<int, string> _threadNames = new();
         private ConcurrentDictionary<int, string> _processNames = new();
         private EtwModuleTracker _moduleTracker = new();
+        bool _renderModuleTracker = false;
 
         private bool isDisposed;
 
@@ -290,30 +291,21 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
-        bool _renderSymbolManager = false;
         public void RenderToolstripExtras(IUiCommands uiCommands)
         {
             ImGui.SameLine();
             if (ImGui.Button("\ue697 Symbols"))
             {
-                ImGui.OpenPopup("EtwSymbols");
-            }
-            if (ImGui.BeginPopup("EtwSymbols"))
-            {
-                if (ImGui.MenuItem("Manage symbols", "", _renderSymbolManager))
-                {
-                    _renderSymbolManager = !_renderSymbolManager;
-                }
-
-                ImGui.EndPopup();
+                _renderModuleTracker = true;
+                _moduleTracker.FocusSymbolManagerWindow();
             }
         }
 
         public void RenderActiveWindows(IUiCommands uiCommands)
         {
-            if (_renderSymbolManager)
+            if (_renderModuleTracker)
             {
-                _moduleTracker.RenderSymbolManagerWindow(uiCommands, _processNames, ref _renderSymbolManager);
+                _moduleTracker.RenderSymbolManagerWindow(uiCommands, _processNames, ref _renderModuleTracker);
             }
         }
 

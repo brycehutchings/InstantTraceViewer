@@ -238,6 +238,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void Kernel_PerfInfoSample(SampledProfileTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             var newRecord = CreateBaseTraceRecord(obj);
             newRecord.NamedValues = [new NamedValue(InstructionPointerName, ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer))];
             AddPendingRecord(newRecord);

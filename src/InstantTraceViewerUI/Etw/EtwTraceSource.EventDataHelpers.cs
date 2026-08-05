@@ -85,6 +85,7 @@ namespace InstantTraceViewerUI.Etw
 
         // Invoked when new symbols have been loaded. Walks already-collected records (both committed and pending) and
         // re-resolves every stack frame so previously unresolved instruction pointers can pick up the new symbols.
+        // This runs on a background thread.
         private void ReResolveAllStackFrames()
         {
             _pendingRecordsLock.EnterWriteLock();
@@ -100,14 +101,28 @@ namespace InstantTraceViewerUI.Etw
                 _pendingRecordsLock.ExitWriteLock();
             }
 
+            ListBuilderSnapshot<EtwRecord> snapshot;
             _traceRecordsLock.EnterWriteLock();
             try
             {
-                foreach (var record in _traceRecords.CreateSnapshot())
-                {
-                    ReResolveStackFrames(record);
-                }
+                snapshot = _traceRecords.CreateSnapshot();
+            }
+            finally
+            {
+                _traceRecordsLock.ExitWriteLock();
+            }
 
+            // This will update the rows outside the lock to avoid blocking the UI thread.
+            // ReResolveStackFrames is written so this is safe and the generation id bump at the end
+            // ensures any filtering is rerun after the stack frames are updated.
+            foreach (var record in snapshot)
+            {
+                ReResolveStackFrames(record);
+            }
+
+            _traceRecordsLock.EnterWriteLock();
+            try
+            {
                 // Bump the generation so consumers re-read the now-updated stack frames.
                 _generationId++;
             }
@@ -117,6 +132,9 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
+        // This method will be called on a background thread so must do changes that are safe while
+        // other thread(s) are reading these records. It is ok if something reads a torn stack frame
+        // because the generation id will be bumped after all reresolving is complete.
         private void ReResolveStackFrames(in EtwRecord record)
         {
             if (record.NamedValues == null)

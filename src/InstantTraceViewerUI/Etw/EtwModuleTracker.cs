@@ -17,13 +17,12 @@ namespace InstantTraceViewerUI.Etw
     /// </summary>
     internal class EtwModuleTracker // TODO: Implement IDisposable and have EtwModuleTracker call it.
     {
+        private const string SymbolManagerWindowName = "Symbols";
+
         private Dictionary<int /* pid */, List<LoadedImage>> _loadedImages = new();
 
         // The largest image size ever observed across all processes. Used as an upper bound to early-exit the backward scan in GetLoadedImage.
         private ulong _maxImageSize;
-
-        // Raised after symbols are successfully loaded for a module so consumers can re-resolve existing stack frames.
-        public event Action? SymbolsLoaded;
 
         // Height of the resizable diagnostic log region at the bottom of the symbol manager window. Initialized lazily and then
         // owned by the ResizeY child window; we read it back each frame so the table above fills the remaining space (i.e. resizing
@@ -45,6 +44,12 @@ namespace InstantTraceViewerUI.Etw
         // Shows a blocking modal while symbols load on a background thread so the slow dbghelp/network work doesn't stall the UI.
         private readonly ImGuiWidgets.ProcessingModal _processingModal = new();
 
+        private bool _focusSymbolManagerWindow;
+
+        // Raised after symbols are successfully loaded for a module so consumers can re-resolve existing stack frames.
+        // This is raised on a background thread.
+        public event Action? SymbolsLoaded;
+
         public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, string pdbFileName, int pdbAge, Guid pdbSig, DateTime loadTime, RegisteredModule registeredModule)
         {
             lock (_loadedImages)
@@ -62,12 +67,20 @@ namespace InstantTraceViewerUI.Etw
             }
         }
 
+        public void FocusSymbolManagerWindow()
+        {
+            ImGui.SetWindowFocus(SymbolManagerWindowName);
+        }
+
         public void RenderSymbolManagerWindow(IUiCommands uiCommands, IReadOnlyDictionary<int, string> processNames, ref bool isOpen)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
-            if (ImGui.Begin("Symbols", ref isOpen))
+            if (ImGui.Begin(SymbolManagerWindowName, ref isOpen))
             {
+                // Block interaction with the window contents while the processing dialog is up.
+                ImGui.BeginDisabled(_processingModal.IsRunning);
+
                 // Loaded symbols are tied to SymbolKeys, so we only want to show one row per SymbolKey.
                 // The modules are needed when trying to load the symbol (SymLoadModuleExW takes both the module name and pdb filename, so in
                 // theory the module filename can affect searching.
@@ -102,7 +115,10 @@ namespace InstantTraceViewerUI.Etw
                     }
                 }
 
-                var loadedModulesForDisplay = loadedModulesForDisplayMap.OrderBy(lm => lm.Value.First().FileName).ToList();
+                var loadedModulesForDisplay = loadedModulesForDisplayMap
+                    .OrderBy(lm => lm.Value.First().FileName)
+                    .SelectMany(lm => lm.Value.Select(module => (Key: lm.Key, Module: module)))
+                    .ToList();
 
                 // Toolbar: batch-load symbols for the selected modules, clear the diagnostic log, and filter the list.
                 ImGui.BeginDisabled(_selectedSymbolKeys.Count == 0 || _processingModal.IsRunning);
@@ -115,10 +131,7 @@ namespace InstantTraceViewerUI.Etw
                         if (_selectedSymbolKeys.Contains(loadedImage.Key) &&
                             string.IsNullOrEmpty(SymbolResolver.Instance.GetPdbPath(loadedImage.Key)))
                         {
-                            foreach (var module in loadedImage.Value)
-                            {
-                                toLoad.Add((loadedImage.Key, module));
-                            }
+                            toLoad.Add((loadedImage.Key, loadedImage.Module));
                         }
                     }
 
@@ -142,6 +155,7 @@ namespace InstantTraceViewerUI.Etw
 
                         if (anyLoaded)
                         {
+                            progress.Report(-1.0f /* Indeterminate */, $"Updating stack frames...");
                             SymbolsLoaded?.Invoke();
                         }
                     });
@@ -247,7 +261,7 @@ namespace InstantTraceViewerUI.Etw
                             if (req.Type == ImGuiSelectionRequestType.SetAll)
                             {
                                 startIndex = 0;
-                                endIndex = loadedModulesForDisplayMap.Count - 1;
+                                endIndex = loadedModulesForDisplay.Count - 1;
                             }
                             else
                             {
@@ -273,52 +287,49 @@ namespace InstantTraceViewerUI.Etw
                     applyMultiselectRequests();
 
                     int rowIndex = 0;
-                    foreach (var registeredModule in loadedModulesForDisplay)
+                    foreach (var module in loadedModulesForDisplay)
                     {
-                        foreach (var module in registeredModule.Value)
+                        ImGui.PushID(HashCode.Combine(module.Key, module.Module));
+
+                        ImGui.TableNextRow();
+
+                        ImGui.TableNextColumn();
+
+                        bool selected = _selectedSymbolKeys.Contains(module.Key);
+                        ImGui.SetNextItemSelectionUserData(rowIndex++);
+                        ImGui.Selectable(module.Module.FileName, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap);
+
+                        string? pdbPath = SymbolResolver.Instance.GetPdbPath(module.Key);
+
+                        if (ImGui.IsItemHovered())
                         {
-                            ImGui.PushID(HashCode.Combine(registeredModule.Key, module));
+                            ImGui.BeginTooltip();
+                            ImGui.TextUnformatted(module.Module.FileName);
 
-                            ImGui.TableNextRow();
+                            ImGui.Separator();
+                            string timeDateStampFormatted = module.Module.TimeDateStamp == 0 ? "n/a" : $"0x{module.Module.TimeDateStamp:X8}";
+                            ImGui.TextUnformatted($"Image Size: {module.Module.SizeOfImage}\nTimeDateStamp: {timeDateStampFormatted}");
 
-                            ImGui.TableNextColumn();
+                            ImGui.Separator();
+                            string pdbSigFormatted = module.Module.PdbSig == Guid.Empty ? "n/a" : module.Module.PdbSig.ToString("D");
+                            string pdbAgeFormatted = module.Module.PdbAge == 0 ? "n/a" : $"{module.Module.PdbAge}";
+                            string pdbFileNameFormatted = string.IsNullOrEmpty(module.Module.PdbFileName) ? "n/a" : module.Module.PdbFileName;
+                            ImGui.TextUnformatted($"Pdb Signature: {pdbSigFormatted}\nPdb Age: {pdbAgeFormatted}\nOriginal Pdb FileName: {pdbFileNameFormatted}");
 
-                            bool selected = _selectedSymbolKeys.Contains(registeredModule.Key);
-                            ImGui.SetNextItemSelectionUserData(rowIndex++);
-                            ImGui.Selectable(module.FileName, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap);
+                            ImGui.Separator();
+                            ImGui.TextUnformatted($"Pdb: {pdbPath ?? "<not loaded>"}");
 
-                            string? pdbPath = SymbolResolver.Instance.GetPdbPath(registeredModule.Key);
-
-                            if (ImGui.IsItemHovered())
-                            {
-                                ImGui.BeginTooltip();
-                                ImGui.TextUnformatted(module.FileName);
-
-                                ImGui.Separator();
-                                string timeDateStampFormatted = module.TimeDateStamp == 0 ? "n/a" : $"0x{module.TimeDateStamp:X8}";
-                                ImGui.TextUnformatted($"Image Size: {module.SizeOfImage}\nTimeDateStamp: {timeDateStampFormatted}");
-
-                                ImGui.Separator();
-                                string pdbSigFormatted = module.PdbSig == Guid.Empty ? "n/a" : module.PdbSig.ToString("D");
-                                string pdbAgeFormatted = module.PdbAge == 0 ? "n/a" : $"{module.PdbAge}";
-                                string pdbFileNameFormatted = string.IsNullOrEmpty(module.PdbFileName) ? "n/a" : module.PdbFileName;
-                                ImGui.TextUnformatted($"Pdb Signature: {pdbSigFormatted}\nPdb Age: {pdbAgeFormatted}\nOriginal Pdb FileName: {pdbFileNameFormatted}");
-
-                                ImGui.Separator();
-                                ImGui.TextUnformatted($"Pdb: {pdbPath ?? "<not loaded>"}");
-
-                                ImGui.EndTooltip();
-                            }
-
-                            ImGui.TableNextColumn();
-
-                            if (pdbPath != null)
-                            {
-                                ImGui.TextUnformatted("\uF058"); // "circle-check"
-                            }
-
-                            ImGui.PopID();
+                            ImGui.EndTooltip();
                         }
+
+                        ImGui.TableNextColumn();
+
+                        if (pdbPath != null)
+                        {
+                            ImGui.TextUnformatted("\uF058"); // "circle-check"
+                        }
+
+                        ImGui.PopID();
                     }
 
                     ImGui.EndMultiSelect();
@@ -351,10 +362,12 @@ namespace InstantTraceViewerUI.Etw
                     ImGuiWidgets.GetInputTextBufferSize(selectedLog, 1),
                     new Vector2(-1, -1),
                     ImGuiInputTextFlags.ReadOnly | ImGuiInputTextFlags.AutoSelectAll);
+
+                ImGui.EndDisabled();
+
+                // Drawn inside the window (and after EndDisabled) so the dialog centers on it and stays interactable.
+                _processingModal.Draw(uiCommands);
             }
-
-
-            _processingModal.Draw(uiCommands);
 
             ImGui.End();
         }
