@@ -18,7 +18,7 @@
 
     <PublishTrimmed>true</PublishTrimmed>
 
-    <SelfContained>true</SelfContained>
+    <PublishSelfContained>true</PublishSelfContained>
 
     <!-- Single file has slower startup on first run (Defender scan?)-->
     <PublishSingleFile>false</PublishSingleFile>
@@ -74,11 +74,11 @@
 
   <Target Name="CopyDebuggingPlatformDllsToOutput" AfterTargets="CopyFilesToOutputDirectory">
     <PropertyGroup>
-      <DebuggingPlatformPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-x64'">amd64</DebuggingPlatformPackageArchitecture>
-      <DebuggingPlatformPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</DebuggingPlatformPackageArchitecture>
-      <DebuggingPlatformPackageArchitecture Condition="'$(RuntimeIdentifier)' == 'win-x86'">x86</DebuggingPlatformPackageArchitecture>
+      <DebuggingPlatformPackageArchitecture Condition="'$(PlatformTarget)' == 'x64'">amd64</DebuggingPlatformPackageArchitecture>
+      <DebuggingPlatformPackageArchitecture Condition="'$(PlatformTarget)' == 'arm64'">arm64</DebuggingPlatformPackageArchitecture>
+      <DebuggingPlatformPackageArchitecture Condition="'$(PlatformTarget)' == 'x86'">x86</DebuggingPlatformPackageArchitecture>
     </PropertyGroup>
-    <Error Condition="'$(DebuggingPlatformPackageArchitecture)' == ''" Text="Unable to determine Debugging Platform package architecture for RuntimeIdentifier='$(RuntimeIdentifier)'." />
+    <Error Condition="'$(DebuggingPlatformPackageArchitecture)' == ''" Text="Unable to determine Debugging Platform package architecture for PlatformTarget='$(PlatformTarget)'." />
     <Error Condition="'$(MicrosoftDebuggingPlatformDbgEngContent)' == ''" Text="Microsoft.Debugging.Platform.DbgEng did not define MicrosoftDebuggingPlatformDbgEngContent." />
     <Error Condition="'$(MicrosoftDebuggingPlatformSymSrvContent)' == ''" Text="Microsoft.Debugging.Platform.SymSrv did not define MicrosoftDebuggingPlatformSymSrvContent." />
     <Error Condition="!Exists('$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll')" Text="Unable to find dbgcore.dll at '$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll'." />
