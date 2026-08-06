@@ -10,13 +10,20 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.35.0-rc1" />
-    <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
+    <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" GeneratePathProperty="true" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <!-- $(protoc_windows64) is not always reliable (for unknown reasons) so we compute the path separetely. -->
+    <ProtocPath Condition="'$(PkgGoogle_Protobuf_Tools)' != ''">$(PkgGoogle_Protobuf_Tools)\tools\windows_x64\protoc.exe</ProtocPath>
+  </PropertyGroup>
 
   <!-- Note PerfettoTrace.cs is very large and very slow to build. If this becomes a problem it could go into its own assembly. -->
   <Target Name="GenerateProto" BeforeTargets="PrepareForBuild" Inputs="Perfetto\Protobuf\perfetto_trace.proto" Outputs="Perfetto\Protobuf\PerfettoTrace.cs">
     <Message Importance="High" Text="Updating C# from Perfetto protobuf file..." />
-    <Exec Command="$(protoc_windows64) --csharp_out=Perfetto\Protobuf Perfetto\Protobuf\perfetto_trace.proto" />
+    <Error Condition="'$(PkgGoogle_Protobuf_Tools)' == ''" Text="Google.Protobuf.Tools restore metadata is unavailable. Run 'dotnet restore --force' and reload the project." />
+    <Error Condition="!Exists('$(ProtocPath)')" Text="The restored protoc executable was not found at '$(ProtocPath)'. Run 'dotnet restore --force --no-cache'." />
+    <Exec Command="&quot;$(ProtocPath)&quot; --csharp_out=&quot;Perfetto\Protobuf&quot; &quot;Perfetto\Protobuf\perfetto_trace.proto&quot;" />
   </Target>
 
 </Project>
