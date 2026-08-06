@@ -44,8 +44,6 @@ namespace InstantTraceViewerUI.Etw
         // Shows a blocking modal while symbols load on a background thread so the slow dbghelp/network work doesn't stall the UI.
         private readonly ImGuiWidgets.ProcessingModal _processingModal = new();
 
-        private bool _focusSymbolManagerWindow;
-
         // Raised after symbols are successfully loaded for a module so consumers can re-resolve existing stack frames.
         // This is raised on a background thread.
         public event Action? SymbolsLoaded;
