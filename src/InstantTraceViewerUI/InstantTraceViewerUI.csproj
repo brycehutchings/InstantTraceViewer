@@ -18,7 +18,7 @@
 
     <PublishTrimmed>true</PublishTrimmed>
 
-    <SelfContained>true</SelfContained>
+    <PublishSelfContained>true</PublishSelfContained>
 
     <!-- Single file has slower startup on first run (Defender scan?)-->
     <PublishSingleFile>false</PublishSingleFile>
@@ -81,9 +81,4 @@
       <LogicalName>Font Awesome 6 Free-Solid-900.otf</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
-
-  <Target Name="GenerateProto" BeforeTargets="PrepareForBuild" Inputs="Perfetto\Protobuf\perfetto_trace.proto" Outputs="Perfetto\Protobuf\PerfettoTrace.cs">
-    <Message Importance="High" Text="Updating C# from Perfetto protobuf file..." />
-    <Exec Command="$(protoc_windows64) --csharp_out=Perfetto\Protobuf Perfetto\Protobuf\perfetto_trace.proto" />
-  </Target>
 </Project>
