@@ -1,6 +1,8 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using System;
 using System.IO;
+using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -56,15 +58,21 @@ namespace InstantTraceViewerUI.Etw
             return newRecord;
         }
 
-        private string ResolveInstructionPointer(int processId, DateTime timestamp, ulong instructionPointer)
+        private StackFrame ResolveInstructionPointer(int processId, DateTime timestamp, ulong instructionPointer)
         {
             LoadedImage? loadedImage = _moduleTracker.GetLoadedImage(processId, instructionPointer, timestamp);
             if (!loadedImage.HasValue)
             {
-                return $"0x{instructionPointer:X}";
+                return new StackFrame(instructionPointer, null);
             }
 
             ulong relativeVirtualAddress = instructionPointer - loadedImage.Value.ImageBase;
+
+            string? symbolName = SymbolResolver.Instance.ResolveSymbol(loadedImage.Value.RegisteredModule, relativeVirtualAddress);
+            if (!string.IsNullOrEmpty(symbolName))
+            {
+                return new StackFrame(instructionPointer, symbolName);
+            }
 
             string moduleName = Path.GetFileName(loadedImage.Value.FileName);
             if (string.IsNullOrEmpty(moduleName))
@@ -72,7 +80,79 @@ namespace InstantTraceViewerUI.Etw
                 moduleName = loadedImage.Value.FileName;
             }
 
-            return $"{moduleName}+0x{relativeVirtualAddress:X}";
+            return new StackFrame(instructionPointer, $"{moduleName}+0x{relativeVirtualAddress:X}");
+        }
+
+        // Invoked when new symbols have been loaded. Walks already-collected records (both committed and pending) and
+        // re-resolves every stack frame so previously unresolved instruction pointers can pick up the new symbols.
+        // This runs on a background thread.
+        private void ReResolveAllStackFrames()
+        {
+            _pendingRecordsLock.EnterWriteLock();
+            try
+            {
+                foreach (var record in _pendingRecords)
+                {
+                    ReResolveStackFrames(record);
+                }
+            }
+            finally
+            {
+                _pendingRecordsLock.ExitWriteLock();
+            }
+
+            ListBuilderSnapshot<EtwRecord> snapshot;
+            _traceRecordsLock.EnterWriteLock();
+            try
+            {
+                snapshot = _traceRecords.CreateSnapshot();
+            }
+            finally
+            {
+                _traceRecordsLock.ExitWriteLock();
+            }
+
+            // This will update the rows outside the lock to avoid blocking the UI thread.
+            // ReResolveStackFrames is written so this is safe and the generation id bump at the end
+            // ensures any filtering is rerun after the stack frames are updated.
+            foreach (var record in snapshot)
+            {
+                ReResolveStackFrames(record);
+            }
+
+            _traceRecordsLock.EnterWriteLock();
+            try
+            {
+                // Bump the generation so consumers re-read the now-updated stack frames.
+                _generationId++;
+            }
+            finally
+            {
+                _traceRecordsLock.ExitWriteLock();
+            }
+        }
+
+        // This method will be called on a background thread so must do changes that are safe while
+        // other thread(s) are reading these records. It is ok if something reads a torn stack frame
+        // because the generation id will be bumped after all reresolving is complete.
+        private void ReResolveStackFrames(in EtwRecord record)
+        {
+            if (record.NamedValues == null)
+            {
+                return;
+            }
+
+            // Current stack frames are never nested so this query is sufficient.
+            foreach (var namedValue in record.NamedValues)
+            {
+                if (namedValue.Value is StackFrame[] stackFrames)
+                {
+                    for (int i = 0; i < stackFrames.Length; i++)
+                    {
+                        stackFrames[i] = ResolveInstructionPointer(record.ProcessId, record.Timestamp, stackFrames[i].InstructionPointer);
+                    }
+                }
+            }
         }
     }
 }

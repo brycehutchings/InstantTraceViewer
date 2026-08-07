@@ -3,11 +3,159 @@ using HexaGen.Runtime;
 using System;
 using System.Numerics;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace InstantTraceViewerUI
 {
     internal static class ImGuiWidgets
     {
+        /// <summary>
+        /// Runs a slow operation on a background thread while showing a blocking "processing" dialog scoped to the
+        /// current ImGui window. Call <see cref="Start"/> to begin an operation and <see cref="Draw"/> every frame
+        /// (inside the parent window's Begin/End) to render the dialog until the operation completes. Unlike a real
+        /// popup modal, the dialog is a centered, non-movable child of the parent window so it can't be dragged
+        /// outside it. The worker may optionally report progress and observe the cancellation token (a Cancel button
+        /// is always shown). Callers should disable the parent window's contents (e.g. via BeginDisabled) while
+        /// <see cref="IsRunning"/> so nothing behind the dialog is interactable.
+        /// </summary>
+        public sealed class ProcessingModal
+        {
+            // Passed to the worker so it can optionally report a 0..1 fraction and a status message.
+            public sealed class Progress
+            {
+                private readonly ProcessingModal _owner;
+
+                internal Progress(ProcessingModal owner) => _owner = owner;
+
+                public void Report(float fraction, string? status = null)
+                {
+                    lock (_owner._progressLock)
+                    {
+                        _owner._fraction = fraction;
+                        if (status != null)
+                        {
+                            _owner._status = status;
+                        }
+                    }
+                }
+            }
+
+            private readonly string _childId = $"##ProcessingModal_{Guid.NewGuid():N}";
+            private readonly object _progressLock = new();
+
+            private Task? _task;
+            private CancellationTokenSource? _cts;
+            private string _title = string.Empty;
+            private float _fraction = -1f; // Negative means indeterminate (animated bar).
+            private string? _status;
+
+            // Auto-sized panels only know their size after layout, so we remember the previous frame's size to center the panel this frame.
+            private Vector2 _lastPanelSize = new(300, 100);
+
+            public bool IsRunning => _task is { IsCompleted: false };
+
+            public void Start(string title, Action<Progress, CancellationToken> work)
+            {
+                if (IsRunning)
+                {
+                    return; // Ignore a new request while one is already running.
+                }
+
+                _cts?.Dispose();
+                _cts = new CancellationTokenSource();
+                _title = title;
+                _fraction = -1f;
+                _status = null;
+
+                CancellationToken token = _cts.Token;
+                Progress progress = new(this);
+                _task = Task.Run(() => work(progress, token));
+            }
+
+            // Call once per frame from inside the parent window. Renders the dialog while the operation runs and removes it on completion.
+            public void Draw(IUiCommands uiCommands)
+            {
+                if (_task == null)
+                {
+                    return;
+                }
+
+                Vector2 windowPos = ImGui.GetWindowPos();
+                Vector2 windowSize = ImGui.GetWindowSize();
+
+                // Sibling child windows (the scrolling table, the log's input text, ...) each own a draw list that is
+                // composited on top of the parent window's own primitives. Dimming via the parent draw list would leave
+                // it beneath those children. Instead, cover the parent with a full-window overlay child submitted last;
+                // its (semi-transparent) background dims them, and the centered panel is nested inside it.
+                ImGuiWindowFlags childFlags = ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;
+                ImGui.SetCursorScreenPos(windowPos);
+                ImGui.PushStyleColor(ImGuiCol.ChildBg, ImGui.GetColorU32(ImGuiCol.ModalWindowDimBg));
+                bool overlayVisible = ImGui.BeginChild("##ProcessingOverlay", windowSize, ImGuiChildFlags.None, childFlags);
+                ImGui.PopStyleColor();
+                if (overlayVisible)
+                {
+                    // Center a non-movable, auto-sized panel within the parent window.
+                    ImGui.SetCursorScreenPos(windowPos + (windowSize - _lastPanelSize) * 0.5f);
+
+                    ImGuiChildFlags panelChildFlags = ImGuiChildFlags.Borders | ImGuiChildFlags.AutoResizeX | ImGuiChildFlags.AutoResizeY | ImGuiChildFlags.AlwaysUseWindowPadding;
+
+                    // Child windows have a transparent background by default, which would let the dimming show through. Give it the popup background color.
+                    ImGui.PushStyleColor(ImGuiCol.ChildBg, ImGui.GetColorU32(ImGuiCol.PopupBg));
+                    bool visible = ImGui.BeginChild(_childId, Vector2.Zero, panelChildFlags, childFlags);
+                    ImGui.PopStyleColor();
+                    if (visible)
+                    {
+                        float fraction;
+                        string? status;
+                        lock (_progressLock)
+                        {
+                            fraction = _fraction;
+                            status = _status;
+                        }
+
+                        ImGui.TextUnformatted(status ?? _title);
+
+                        Vector2 barSize = new(ImGui.GetFontSize() * 20, 0);
+                        if (fraction < 0)
+                        {
+                            // Indeterminate: a time-based negative value animates the bar.
+                            ImGui.ProgressBar(-1.0f * (float)ImGui.GetTime(), barSize, "");
+                        }
+                        else
+                        {
+                            ImGui.ProgressBar(fraction, barSize);
+                        }
+
+                        ImGui.BeginDisabled(_cts!.IsCancellationRequested);
+                        if (ImGui.Button("Cancel"))
+                        {
+                            _cts.Cancel();
+                        }
+                        ImGui.EndDisabled();
+
+                        if (_task.IsCompleted)
+                        {
+                            Exception? error = _task.IsFaulted ? (_task.Exception?.InnerException ?? _task.Exception) : null;
+
+                            _cts.Dispose();
+                            _cts = null;
+                            _task = null;
+
+                            if (error != null)
+                            {
+                                uiCommands.ShowMessageBox(error.Message, _title, isError: true);
+                            }
+                        }
+
+                        _lastPanelSize = ImGui.GetWindowSize();
+                    }
+                    ImGui.EndChild();
+                }
+                ImGui.EndChild();
+            }
+        }
+
         public struct CurrentInputTextState
         {
             public uint Id;

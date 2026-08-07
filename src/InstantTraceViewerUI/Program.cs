@@ -1,12 +1,31 @@
 using Hexa.NET.ImGui;
+using InstantTraceViewerUI.Symbols;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace InstantTraceViewerUI
 {
     internal class Program
     {
-        public static unsafe int Main(string[] args)
+        public static int Main(string[] args)
         {
-            Win32ImGuiHost.WindowInitialize();
+            SymbolResolver.Instance.Initialize(
+                PInvoke.SYMOPT_EXACT_SYMBOLS | PInvoke.SYMOPT_UNDNAME | PInvoke.SYMOPT_CASE_INSENSITIVE | PInvoke.SYMOPT_DEFERRED_LOADS,
+                @"c:\windows\system32;" +
+                @"d:\repos\cloud1\binlocal\WinX64;" +
+                @"D:\repos\cloud3\binlocal\Immersive\Desktop\WinX64\MrShell;" +
+                @"d:\repos\cloud1\binlocal\WinX64\Symbols;" +
+                @"d:\repos\cloud2\binlocal\WinX64\Symbols;" +
+                @"d:\repos\cloud3\binlocal\WinX64\Symbols;" +
+                @"srv*c:\symcache*https://driver-symbols.nvidia.com/;" +
+                //@"srv*c:\symcache*https://microsoft.artifacts.visualstudio.com/_apis/Symbol/symsrv;" +
+                @"srv*c:\symcache*https://msdl.microsoft.com/download/symbols");
+
+            using var cleanup = SymbolResolver.Instance;
+
+            HWND mainHWnd = Win32ImGuiHost.WindowInitialize();
+
+            SymbolResolver.SetParentWindow(mainHWnd);
 
             ImGuiContextPtr imguiContext = ImGui.CreateContext();
             ImGui.SetCurrentContext(imguiContext);
