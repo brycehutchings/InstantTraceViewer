@@ -1,4 +1,5 @@
 using InstantTraceViewer;
+using InstantTraceViewerUI.Symbols;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
@@ -237,6 +238,11 @@ namespace InstantTraceViewerUI.Etw
 
         private void Kernel_PerfInfoSample(SampledProfileTraceData obj)
         {
+            if (IsPaused)
+            {
+                return;
+            }
+
             var newRecord = CreateBaseTraceRecord(obj);
             newRecord.NamedValues = [new NamedValue(InstructionPointerName, ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer))];
             AddPendingRecord(newRecord);
@@ -244,13 +250,28 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnImageLoad(ImageLoadTraceData obj)
         {
+            // ProcessID is not compared because the injected symbol events can report 0.
+            LastImagePdbInfo pdbInfo = _lastImagePdbInfo.ImageBase == obj.ImageBase ? _lastImagePdbInfo : default;
+            _lastImagePdbInfo = default;
+
             if (obj.Opcode == TraceEventOpcode.Stop)
             {
                 _moduleTracker.ImageUnload(obj.ProcessID, obj.ImageBase, obj.TimeStamp);
             }
             else if (obj.Opcode == (TraceEventOpcode)10/*Load*/ || obj.Opcode == TraceEventOpcode.DataCollectionStart)
             {
-                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, obj.TimeStamp);
+                var registeredModule = SymbolResolver.Instance.RegisterModule(new SymbolResolver.Module
+                {
+                    FileName = obj.FileName,
+                    SizeOfImage = (ulong)obj.ImageSize,
+                    TimeDateStamp = (uint)obj.TimeDateStamp,
+                    // pdbInfo is data from SymbolTraceEventParser that provides extra information needed to load the correct PDB file.
+                    PdbFileName = pdbInfo.PdbFileName,
+                    PdbAge = pdbInfo.PdbAge,
+                    PdbSig = pdbInfo.PdbSig
+                });
+
+                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, pdbInfo.PdbFileName, pdbInfo.PdbAge, pdbInfo.PdbSig, obj.TimeStamp, registeredModule);
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.
@@ -279,22 +300,25 @@ namespace InstantTraceViewerUI.Etw
                 return;
             }
 
-            Dictionary<string, object> GetStackFrames()
+            StackFrame[] GetStackFrames()
             {
-                var stackFrames = new Dictionary<string, object>();
+                var stackFrames = new StackFrame[obj.FrameCount];
                 for (int i = 0; i < obj.FrameCount; i++)
                 {
-                    stackFrames.Add(i.ToString(), ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer(i)));
+                    stackFrames[i] = ResolveInstructionPointer(obj.ProcessID, obj.TimeStamp, obj.InstructionPointer(i));
                 }
                 return stackFrames;
             }
+
+            // Resolve before taking the pending-record lock since symbol resolution can block behind a symbol download.
+            StackFrame[] stackFrames = GetStackFrames();
 
             // Every Stackwalk is associated with an earlier event which we inject the stackwalk into.
             bool found = UpdatePendingRecord(obj.ThreadID, obj.EventTimeStampRelativeMSec, (ref record) =>
             {
                 // InstructionPointer is emitted by PerfInfoSample, but it's the same as the top of the stack. Since we have the stack, we can remove it.
                 var namedValuesCopy = record.NamedValues.Where(nv => nv.Name != InstructionPointerName).ToList();
-                namedValuesCopy.Add(new NamedValue("StackWalk", GetStackFrames()));
+                namedValuesCopy.Add(new NamedValue("StackWalk", stackFrames));
                 record.NamedValues = namedValuesCopy.ToArray();
             });
 
@@ -304,7 +328,7 @@ namespace InstantTraceViewerUI.Etw
                 var newRecord = CreateBaseTraceRecord(obj);
                 newRecord.NamedValues = [
                     new NamedValue("RelativeMSec", obj.EventTimeStampRelativeMSec - obj.TimeStampRelativeMSec),
-                    new NamedValue("StackWalk", GetStackFrames())];
+                    new NamedValue("StackWalk", stackFrames)];
                 AddPendingRecord(newRecord);
             }
         }

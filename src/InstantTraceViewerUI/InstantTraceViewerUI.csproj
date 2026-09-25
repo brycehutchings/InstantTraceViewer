@@ -52,6 +52,8 @@
     <PackageReference Include="Google.Protobuf.Tools" Version="3.34.1" />
     <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
+    <PackageReference Include="Microsoft.Debugging.Platform.DbgEng" Version="20260319.1511.0" />
+    <PackageReference Include="Microsoft.Debugging.Platform.SymSrv" Version="20260319.1511.0" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -69,6 +71,28 @@
   <ItemGroup>
     <AdditionalFiles Include="NativeMethods.txt" />
   </ItemGroup>
+
+  <!-- Static items (not a copy target) so the app-local dbghelp/symsrv also flow into publish and MSIX output. -->
+  <ItemGroup Condition="'$(PlatformTarget)' == 'x64'">
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)amd64\dbgcore.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)amd64\dbghelp.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformSymSrvContent)amd64\symsrv.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(PlatformTarget)' == 'arm64'">
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)arm64\dbgcore.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)arm64\dbghelp.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformSymSrvContent)arm64\symsrv.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="@(DebuggingPlatformDll)" Visible="false">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="ValidateDebuggingPlatformDlls" BeforeTargets="Build">
+    <Error Condition="'@(DebuggingPlatformDll)' == ''" Text="No Debugging Platform DLLs for PlatformTarget='$(PlatformTarget)'." />
+    <Error Condition="!Exists('%(DebuggingPlatformDll.FullPath)')" Text="Unable to find '%(DebuggingPlatformDll.FullPath)'." />
+  </Target>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Fonts\CascadiaMono.ttf">

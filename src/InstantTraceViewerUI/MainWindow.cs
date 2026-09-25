@@ -36,9 +36,11 @@ namespace InstantTraceViewerUI
         private MessageBoxData? _messageBox = null;
 
         private Etw.OpenActiveSession _openActiveSession = new();
+        private Symbols.SymbolPathsWindow _symbolPathsWindow = new();
         private List<IWindow> _windows = new();
         private List<IWindow> _pendingWindows = new();
         private bool _showOpenActiveSession;
+        private bool _showSymbolPathsWindow;
         private bool _isDisposed;
 
         public MainWindow(string[] args)
@@ -109,6 +111,12 @@ namespace InstantTraceViewerUI
             _messageBoxDoPopup = true;
         }
 
+        public void ShowSymbolPathsWindow()
+        {
+            _showSymbolPathsWindow = true;
+            ImGui.SetWindowFocus(Symbols.SymbolPathsWindow.WindowName);
+        }
+
         public void Draw()
         {
             // Handle drag-and-drop requests.
@@ -140,6 +148,11 @@ namespace InstantTraceViewerUI
             if (_showOpenActiveSession)
             {
                 _openActiveSession.DrawWindow(this, ref _showOpenActiveSession);
+            }
+
+            if (_showSymbolPathsWindow)
+            {
+                _symbolPathsWindow.DrawWindow(ref _showSymbolPathsWindow);
             }
 
             DrawMessageBox();
@@ -238,6 +251,11 @@ namespace InstantTraceViewerUI
                             ImGui.EndMenu();
                         }
                         ImGui.EndDisabled();
+
+                        if (ImGui.MenuItem("Symbol paths..."))
+                        {
+                            ShowSymbolPathsWindow();
+                        }
 
                         ImGui.EndMenu();
                     }

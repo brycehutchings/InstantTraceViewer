@@ -19,15 +19,66 @@ namespace InstantTraceViewerUI
     {
         private static RegistryKey Key = Registry.CurrentUser.CreateSubKey(@"Software\InstantTraceViewerUI", true /* writable */);
 
+        public static readonly string DefaultSymbolPath =
+            $"srv*{Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "InstantTraceViewer", "SymCache")}*https://msdl.microsoft.com/download/symbols";
+
         private static FontType _cachedFont;
         private static int _cachedFontSize;
         private static ImGuiTheme _imguiTheme;
+        private static string _symbolPath;
+        private static bool _symbolPathIncludeEnvironment;
 
         static Settings()
         {
             _cachedFont = Enum.TryParse(Key.GetValue("Font", null) as string, out FontType font) ? font : FontType.SegoeUI;
             _cachedFontSize = (int)Key.GetValue("FontSize", 17);
             _imguiTheme = Enum.TryParse(Key.GetValue("Theme", null) as string, out ImGuiTheme theme) ? theme : ImGuiTheme.Light;
+            _symbolPath = Key.GetValue("SymbolPath", null) as string ?? string.Empty;
+            _symbolPathIncludeEnvironment = (int)Key.GetValue("SymbolPathIncludeEnvironment", 1) != 0;
+        }
+
+        public static string SymbolPath
+        {
+            get => _symbolPath;
+            set
+            {
+                _symbolPath = value;
+                Key.SetValue("SymbolPath", value);
+            }
+        }
+
+        public static bool SymbolPathIncludeEnvironment
+        {
+            get => _symbolPathIncludeEnvironment;
+            set
+            {
+                _symbolPathIncludeEnvironment = value;
+                Key.SetValue("SymbolPathIncludeEnvironment", value ? 1 : 0, RegistryValueKind.DWord);
+            }
+        }
+
+        public static string EffectiveSymbolPath => GetEffectiveSymbolPath(SymbolPath, SymbolPathIncludeEnvironment);
+
+        public static IReadOnlyList<string> SplitSymbolPath(string? symbolPath)
+        {
+            return (symbolPath ?? string.Empty)
+                .Split([';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        // dbghelp only reads _NT_SYMBOL_PATH/_NT_ALT_SYMBOL_PATH when given a NULL search path, so append them ourselves.
+        public static string GetEffectiveSymbolPath(string userPath, bool includeEnvironment)
+        {
+            List<string> entries = SplitSymbolPath(userPath).ToList();
+            if (includeEnvironment)
+            {
+                entries.AddRange(SplitSymbolPath(Environment.GetEnvironmentVariable("_NT_SYMBOL_PATH")));
+                entries.AddRange(SplitSymbolPath(Environment.GetEnvironmentVariable("_NT_ALT_SYMBOL_PATH")));
+            }
+            if (entries.Count == 0)
+            {
+                entries.Add(DefaultSymbolPath);
+            }
+            return string.Join(";", entries);
         }
 
         public static ImGuiTheme Theme
