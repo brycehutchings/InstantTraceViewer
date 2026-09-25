@@ -143,14 +143,19 @@ namespace InstantTraceViewerUI.Etw
             }
 
             // Current stack frames are never nested so this query is sufficient.
-            foreach (var namedValue in record.NamedValues)
+            NamedValue[] namedValues = record.NamedValues;
+            for (int n = 0; n < namedValues.Length; n++)
             {
-                if (namedValue.Value is StackFrame[] stackFrames)
+                if (namedValues[n].Value is StackFrame[] stackFrames)
                 {
                     for (int i = 0; i < stackFrames.Length; i++)
                     {
                         stackFrames[i] = ResolveInstructionPointer(record.ProcessId, record.Timestamp, stackFrames[i].InstructionPointer);
                     }
+                }
+                else if (namedValues[n].Value is StackFrame stackFrame)
+                {
+                    namedValues[n].Value = ResolveInstructionPointer(record.ProcessId, record.Timestamp, stackFrame.InstructionPointer);
                 }
             }
         }

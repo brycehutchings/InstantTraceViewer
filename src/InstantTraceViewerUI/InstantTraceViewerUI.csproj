@@ -72,24 +72,26 @@
     <AdditionalFiles Include="NativeMethods.txt" />
   </ItemGroup>
 
-  <Target Name="CopyDebuggingPlatformDllsToOutput" AfterTargets="CopyFilesToOutputDirectory">
-    <PropertyGroup>
-      <DebuggingPlatformPackageArchitecture Condition="'$(PlatformTarget)' == 'x64'">amd64</DebuggingPlatformPackageArchitecture>
-      <DebuggingPlatformPackageArchitecture Condition="'$(PlatformTarget)' == 'arm64'">arm64</DebuggingPlatformPackageArchitecture>
-      <DebuggingPlatformPackageArchitecture Condition="'$(PlatformTarget)' == 'x86'">x86</DebuggingPlatformPackageArchitecture>
-    </PropertyGroup>
-    <Error Condition="'$(DebuggingPlatformPackageArchitecture)' == ''" Text="Unable to determine Debugging Platform package architecture for PlatformTarget='$(PlatformTarget)'." />
-    <Error Condition="'$(MicrosoftDebuggingPlatformDbgEngContent)' == ''" Text="Microsoft.Debugging.Platform.DbgEng did not define MicrosoftDebuggingPlatformDbgEngContent." />
-    <Error Condition="'$(MicrosoftDebuggingPlatformSymSrvContent)' == ''" Text="Microsoft.Debugging.Platform.SymSrv did not define MicrosoftDebuggingPlatformSymSrvContent." />
-    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll')" Text="Unable to find dbgcore.dll at '$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll'." />
-    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbghelp.dll')" Text="Unable to find dbghelp.dll at '$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbghelp.dll'." />
-    <Error Condition="!Exists('$(MicrosoftDebuggingPlatformSymSrvContent)$(DebuggingPlatformPackageArchitecture)\symsrv.dll')" Text="Unable to find symsrv.dll at '$(MicrosoftDebuggingPlatformSymSrvContent)$(DebuggingPlatformPackageArchitecture)\symsrv.dll'." />
-    <ItemGroup>
-      <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbgcore.dll" />
-      <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)$(DebuggingPlatformPackageArchitecture)\dbghelp.dll" />
-      <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformSymSrvContent)$(DebuggingPlatformPackageArchitecture)\symsrv.dll" />
-    </ItemGroup>
-    <Copy SourceFiles="@(DebuggingPlatformDll)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  <!-- Static items (not a copy target) so the app-local dbghelp/symsrv also flow into publish and MSIX output. -->
+  <ItemGroup Condition="'$(PlatformTarget)' == 'x64'">
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)amd64\dbgcore.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)amd64\dbghelp.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformSymSrvContent)amd64\symsrv.dll" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(PlatformTarget)' == 'arm64'">
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)arm64\dbgcore.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformDbgEngContent)arm64\dbghelp.dll" />
+    <DebuggingPlatformDll Include="$(MicrosoftDebuggingPlatformSymSrvContent)arm64\symsrv.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="@(DebuggingPlatformDll)" Visible="false">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="ValidateDebuggingPlatformDlls" BeforeTargets="Build">
+    <Error Condition="'@(DebuggingPlatformDll)' == ''" Text="No Debugging Platform DLLs for PlatformTarget='$(PlatformTarget)'." />
+    <Error Condition="!Exists('%(DebuggingPlatformDll.FullPath)')" Text="Unable to find '%(DebuggingPlatformDll.FullPath)'." />
   </Target>
 
   <ItemGroup>

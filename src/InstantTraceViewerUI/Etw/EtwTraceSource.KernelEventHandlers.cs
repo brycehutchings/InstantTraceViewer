@@ -250,6 +250,10 @@ namespace InstantTraceViewerUI.Etw
 
         private void OnImageLoad(ImageLoadTraceData obj)
         {
+            // ProcessID is not compared because the injected symbol events can report 0.
+            LastImagePdbInfo pdbInfo = _lastImagePdbInfo.ImageBase == obj.ImageBase ? _lastImagePdbInfo : default;
+            _lastImagePdbInfo = default;
+
             if (obj.Opcode == TraceEventOpcode.Stop)
             {
                 _moduleTracker.ImageUnload(obj.ProcessID, obj.ImageBase, obj.TimeStamp);
@@ -261,14 +265,13 @@ namespace InstantTraceViewerUI.Etw
                     FileName = obj.FileName,
                     SizeOfImage = (ulong)obj.ImageSize,
                     TimeDateStamp = (uint)obj.TimeDateStamp,
-                    // _lastImagePdbInfo is data from SymbolTraceEventParser that provides extra information needed to load the correct PDB file.
-                    PdbFileName = _lastImagePdbInfo.PdbFileName,
-                    PdbAge = _lastImagePdbInfo.PdbAge,
-                    PdbSig = _lastImagePdbInfo.PdbSig
+                    // pdbInfo is data from SymbolTraceEventParser that provides extra information needed to load the correct PDB file.
+                    PdbFileName = pdbInfo.PdbFileName,
+                    PdbAge = pdbInfo.PdbAge,
+                    PdbSig = pdbInfo.PdbSig
                 });
 
-                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, _lastImagePdbInfo.PdbFileName, _lastImagePdbInfo.PdbAge, _lastImagePdbInfo.PdbSig, obj.TimeStamp, registeredModule);
-                _lastImagePdbInfo = new();
+                _moduleTracker.ImageLoad(obj.ProcessID, obj.FileName, obj.ImageBase, (ulong)obj.ImageSize, (uint)obj.TimeDateStamp, (uint)obj.ImageChecksum, pdbInfo.PdbFileName, pdbInfo.PdbAge, pdbInfo.PdbSig, obj.TimeStamp, registeredModule);
             }
 
             // Better for analysis or graphical visualization. Too noisy for logs.

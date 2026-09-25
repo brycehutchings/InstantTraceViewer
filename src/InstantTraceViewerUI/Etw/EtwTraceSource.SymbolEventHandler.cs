@@ -46,14 +46,6 @@ namespace InstantTraceViewerUI.Etw
             // "ImageID/DbgPPDB" - TimeDateStamp, MajorVersion, MinorVersion
             // _symbolEventParser.ImageIDDbgPPDB += <ignored>
 #endif
-
-
-            /*
-            48204 (MrShell)	39108	KernelTraceControl	64		ImageID/FileVersion	Always	2026-05-13 08:39:09.599900	ImageSize:78716928 TimeDateStamp:1777934217 BuildTime:2026-05-04 15:36:57.000000 OrigFileName:MrShell.exe FileDescription: FileVersion:1.0.0.0 BinFileVersion:1.0.0.0 VerLanguage:1033 ProductName: CompanyName: ProductVersion:1.0.0.0 FileId:00006d56ed143fad2eb687316e8bfeefe9da757081c1 ProgramId:0006322c2ec31bae675159dee83eca493eae00000904
-            48204 (MrShell)	39108	KernelTraceControl	Info		ImageID	Always	2026-05-13 08:39:09.599900	ImageBase:0x7FF765130000 ImageSize:78716928 ProcessID:0 TimeDateStamp:1777934217 BuildTime:2026-05-04 15:36:57.000000 OriginalFileName:MrShell.exe
-
-            48204 (MrShell)	39108	Windows Kernel	Load		Image	Always	2026-05-13 08:39:09.599900	File:D:\repos\cloud1\binlocal\Immersive\Desktop\WinX64\MrShell\MrShell.exe ImageBase:0x7FF765130000 SizeOfImage:0x04B12000(78716928) CheckSum:0x00000000 TimeDateStamp:0x69F91F89 (1777934217)
-            */
         }
 
         private void _symbolEventParser_ImageIDDbgID_RSDS(Microsoft.Diagnostics.Tracing.Parsers.Symbol.DbgIDRSDSTraceData obj)
