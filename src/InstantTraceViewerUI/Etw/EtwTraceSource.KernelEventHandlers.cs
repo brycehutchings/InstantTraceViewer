@@ -310,12 +310,15 @@ namespace InstantTraceViewerUI.Etw
                 return stackFrames;
             }
 
+            // Resolve before taking the pending-record lock since symbol resolution can block behind a symbol download.
+            StackFrame[] stackFrames = GetStackFrames();
+
             // Every Stackwalk is associated with an earlier event which we inject the stackwalk into.
             bool found = UpdatePendingRecord(obj.ThreadID, obj.EventTimeStampRelativeMSec, (ref record) =>
             {
                 // InstructionPointer is emitted by PerfInfoSample, but it's the same as the top of the stack. Since we have the stack, we can remove it.
                 var namedValuesCopy = record.NamedValues.Where(nv => nv.Name != InstructionPointerName).ToList();
-                namedValuesCopy.Add(new NamedValue("StackWalk", GetStackFrames()));
+                namedValuesCopy.Add(new NamedValue("StackWalk", stackFrames));
                 record.NamedValues = namedValuesCopy.ToArray();
             });
 
@@ -325,7 +328,7 @@ namespace InstantTraceViewerUI.Etw
                 var newRecord = CreateBaseTraceRecord(obj);
                 newRecord.NamedValues = [
                     new NamedValue("RelativeMSec", obj.EventTimeStampRelativeMSec - obj.TimeStampRelativeMSec),
-                    new NamedValue("StackWalk", GetStackFrames())];
+                    new NamedValue("StackWalk", stackFrames)];
                 AddPendingRecord(newRecord);
             }
         }

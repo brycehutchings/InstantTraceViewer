@@ -1,5 +1,6 @@
 ﻿using Microsoft.Diagnostics.Tracing;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using InstantTraceViewer;
 using InstantTraceViewerUI.Symbols;
@@ -88,17 +89,21 @@ namespace InstantTraceViewerUI.Etw
         // This runs on a background thread.
         private void ReResolveAllStackFrames()
         {
-            _pendingRecordsLock.EnterWriteLock();
+            List<EtwRecord> pendingRecordsCopy;
+            _pendingRecordsLock.EnterReadLock();
             try
             {
-                foreach (var record in _pendingRecords)
-                {
-                    ReResolveStackFrames(record);
-                }
+                pendingRecordsCopy = new List<EtwRecord>(_pendingRecords);
             }
             finally
             {
-                _pendingRecordsLock.ExitWriteLock();
+                _pendingRecordsLock.ExitReadLock();
+            }
+
+            // Resolved outside the lock since symbol resolution can block behind another trace's symbol download.
+            foreach (var record in pendingRecordsCopy)
+            {
+                ReResolveStackFrames(record);
             }
 
             ListBuilderSnapshot<EtwRecord> snapshot;

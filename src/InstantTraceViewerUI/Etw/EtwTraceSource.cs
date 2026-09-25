@@ -68,6 +68,7 @@ namespace InstantTraceViewerUI.Etw
         private ConcurrentDictionary<int, string> _processNames = new();
         private EtwModuleTracker _moduleTracker = new();
         bool _renderModuleTracker = false;
+        private int _lastModuleTrackerRenderFrame = -1;
 
         private bool isDisposed;
 
@@ -83,7 +84,7 @@ namespace InstantTraceViewerUI.Etw
             _kernelProcessThreadProviderEnabled = kernelProcessThreadProviderEnabled;
             _sessionNum = sessionNum;
             _profile = profile;
-            _moduleTracker.SymbolsLoaded += ReResolveAllStackFrames;
+            EtwModuleTracker.SymbolsLoaded += ReResolveAllStackFrames;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -96,7 +97,7 @@ namespace InstantTraceViewerUI.Etw
             _symbolEventParser = new SymbolTraceEventParser(_etwSource);
             _kernelProcessThreadProviderEnabled = false;
             _sessionNum = -1;
-            _moduleTracker.SymbolsLoaded += ReResolveAllStackFrames;
+            EtwModuleTracker.SymbolsLoaded += ReResolveAllStackFrames;
             _processingThread = new Thread(() => ProcessThread());
             _processingThread.Start();
         }
@@ -303,9 +304,12 @@ namespace InstantTraceViewerUI.Etw
 
         public void RenderActiveWindows(IUiCommands uiCommands)
         {
-            if (_renderModuleTracker)
+            // Duplicated views share this trace source, so only render the window once per frame.
+            int frame = ImGui.GetFrameCount();
+            if (_renderModuleTracker && _lastModuleTrackerRenderFrame != frame)
             {
-                _moduleTracker.RenderSymbolManagerWindow(uiCommands, _processNames, ref _renderModuleTracker);
+                _lastModuleTrackerRenderFrame = frame;
+                _moduleTracker.RenderSymbolManagerWindow(uiCommands, DisplayName, _processNames, ref _renderModuleTracker);
             }
         }
 
@@ -348,6 +352,7 @@ namespace InstantTraceViewerUI.Etw
             {
                 if (disposing)
                 {
+                    EtwModuleTracker.SymbolsLoaded -= ReResolveAllStackFrames;
                     _etwSource.Dispose();
                     _etwSession?.Dispose();
                     SessionNums.Remove(_sessionNum);

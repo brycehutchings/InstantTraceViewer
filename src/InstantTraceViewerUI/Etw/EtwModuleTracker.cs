@@ -18,7 +18,9 @@ namespace InstantTraceViewerUI.Etw
     /// </summary>
     internal class EtwModuleTracker // TODO: Implement IDisposable and have EtwModuleTracker call it.
     {
-        private const string SymbolManagerWindowName = "Symbols";
+        private static int s_nextWindowId;
+
+        private readonly string _windowId = $"###Symbols_{Interlocked.Increment(ref s_nextWindowId)}";
 
         private Dictionary<int /* pid */, List<LoadedImage>> _loadedImages = new();
         private readonly ReaderWriterLockSlim _loadedImagesLock = new();
@@ -46,9 +48,8 @@ namespace InstantTraceViewerUI.Etw
         // Shows a blocking modal while symbols load on a background thread so the slow dbghelp/network work doesn't stall the UI.
         private readonly ImGuiWidgets.ProcessingModal _processingModal = new();
 
-        // Raised after symbols are successfully loaded for a module so consumers can re-resolve existing stack frames.
-        // This is raised on a background thread.
-        public event Action? SymbolsLoaded;
+        // Static because loaded symbols are shared by every trace. Raised on a background thread.
+        public static event Action? SymbolsLoaded;
 
         public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, string pdbFileName, int pdbAge, Guid pdbSig, DateTime loadTime, RegisteredModule registeredModule)
         {
@@ -74,14 +75,14 @@ namespace InstantTraceViewerUI.Etw
 
         public void FocusSymbolManagerWindow()
         {
-            ImGui.SetWindowFocus(SymbolManagerWindowName);
+            ImGui.SetWindowFocus(_windowId);
         }
 
-        public void RenderSymbolManagerWindow(IUiCommands uiCommands, IReadOnlyDictionary<int, string> processNames, ref bool isOpen)
+        public void RenderSymbolManagerWindow(IUiCommands uiCommands, string displayName, IReadOnlyDictionary<int, string> processNames, ref bool isOpen)
         {
             ImGui.SetNextWindowSize(new Vector2(1000, 500), ImGuiCond.FirstUseEver);
 
-            if (ImGui.Begin(SymbolManagerWindowName, ref isOpen))
+            if (ImGui.Begin($"Symbols - {displayName}{_windowId}", ref isOpen))
             {
                 // Block interaction with the window contents while the processing dialog is up.
                 ImGui.BeginDisabled(_processingModal.IsRunning);
@@ -142,7 +143,7 @@ namespace InstantTraceViewerUI.Etw
                     foreach (var loadedImage in loadedModulesForDisplay)
                     {
                         if (_selectedSymbolKeys.Contains(loadedImage.Key) &&
-                            string.IsNullOrEmpty(SymbolResolver.Instance.GetPdbPath(loadedImage.Key)))
+                            !SymbolResolver.Instance.HasSymbolsLoaded(loadedImage.Key))
                         {
                             toLoad.Add((loadedImage.Key, loadedImage.Module));
                         }
@@ -319,6 +320,7 @@ namespace InstantTraceViewerUI.Etw
                         ImGui.Selectable(module.Module.FileName, selected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowOverlap);
 
                         string? pdbPath = SymbolResolver.Instance.GetPdbPath(module.Key);
+                        bool symbolsLoaded = SymbolResolver.Instance.HasSymbolsLoaded(module.Key);
 
                         if (ImGui.IsItemHovered())
                         {
@@ -336,14 +338,15 @@ namespace InstantTraceViewerUI.Etw
                             ImGui.TextUnformatted($"Pdb Signature: {pdbSigFormatted}\nPdb Age: {pdbAgeFormatted}\nOriginal Pdb FileName: {pdbFileNameFormatted}");
 
                             ImGui.Separator();
-                            ImGui.TextUnformatted($"Pdb: {pdbPath ?? "<not loaded>"}");
+                            string pdbStatus = pdbPath == null ? "<not loaded>" : symbolsLoaded ? pdbPath : $"{pdbPath} (failed to load)";
+                            ImGui.TextUnformatted($"Pdb: {pdbStatus}");
 
                             ImGui.EndTooltip();
                         }
 
                         ImGui.TableNextColumn();
 
-                        if (pdbPath != null)
+                        if (symbolsLoaded)
                         {
                             ImGui.TextUnformatted("\uF058"); // "circle-check"
                         }
