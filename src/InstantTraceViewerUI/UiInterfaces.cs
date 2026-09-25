@@ -12,6 +12,8 @@ namespace InstantTraceViewerUI
         void AddWindow(IWindow window);
 
         void ShowMessageBox(string message, string title, bool isError);
+
+        void ShowSymbolPathsWindow();
     }
 
     interface ITraceSourceGuiExtensions

@@ -57,6 +57,7 @@ SymCleanup
 SymSetOptions
 SymGetOptions
 SymSetParentWindow
+SymSetSearchPathW
 SymRegisterCallbackW64
 SymFindFileInPathW
 SymLoadModuleExW

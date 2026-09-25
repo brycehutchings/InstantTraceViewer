@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 
 namespace InstantTraceViewerUI.Etw
 {
@@ -20,6 +21,7 @@ namespace InstantTraceViewerUI.Etw
         private const string SymbolManagerWindowName = "Symbols";
 
         private Dictionary<int /* pid */, List<LoadedImage>> _loadedImages = new();
+        private readonly ReaderWriterLockSlim _loadedImagesLock = new();
 
         // The largest image size ever observed across all processes. Used as an upper bound to early-exit the backward scan in GetLoadedImage.
         private ulong _maxImageSize;
@@ -50,7 +52,8 @@ namespace InstantTraceViewerUI.Etw
 
         public void ImageLoad(int pid, string fileName, ulong imageBase, ulong imageSize, uint timeDateStamp, uint checkSum, string pdbFileName, int pdbAge, Guid pdbSig, DateTime loadTime, RegisteredModule registeredModule)
         {
-            lock (_loadedImages)
+            _loadedImagesLock.EnterWriteLock();
+            try
             {
                 if (!_loadedImages.TryGetValue(pid, out var loadedImages))
                 {
@@ -62,6 +65,10 @@ namespace InstantTraceViewerUI.Etw
 
                 int insertIndex = FindFirstImageWithBaseGreaterThan(loadedImages, imageBase);
                 loadedImages.Insert(insertIndex, new LoadedImage(fileName, imageBase, imageSize, timeDateStamp, checkSum, pdbFileName, pdbAge, pdbSig, registeredModule, loadTime, null));
+            }
+            finally
+            {
+                _loadedImagesLock.ExitWriteLock();
             }
         }
 
@@ -83,9 +90,11 @@ namespace InstantTraceViewerUI.Etw
                 // The modules are needed when trying to load the symbol (SymLoadModuleExW takes both the module name and pdb filename, so in
                 // theory the module filename can affect searching.
                 Dictionary<SymbolKey, HashSet<SymbolResolver.Module>> loadedModulesForDisplayMap = new();
+                int[] loadedProcessIds;
 
                 // TODO: Recompute only when a module is added/removed.
-                lock (_loadedImages)
+                _loadedImagesLock.EnterReadLock();
+                try
                 {
                     foreach ((var pid, var images) in _loadedImages)
                     {
@@ -111,6 +120,12 @@ namespace InstantTraceViewerUI.Etw
                             }
                         }
                     }
+
+                    loadedProcessIds = _loadedImages.Keys.ToArray();
+                }
+                finally
+                {
+                    _loadedImagesLock.ExitReadLock();
                 }
 
                 var loadedModulesForDisplay = loadedModulesForDisplayMap
@@ -171,6 +186,12 @@ namespace InstantTraceViewerUI.Etw
                 }
 
                 ImGui.SameLine();
+                if (ImGui.Button("Symbol Paths..."))
+                {
+                    uiCommands.ShowSymbolPathsWindow();
+                }
+
+                ImGui.SameLine();
                 ImGui.SetNextItemWidth(ImGui.GetFontSize() * 12);
                 string processComboPreview = _processFilterPid == -1 ? "All processes" : FormatProcessLabel(_processFilterPid, processNames);
                 if (ImGui.BeginCombo("##ProcessFilter", processComboPreview))
@@ -190,7 +211,7 @@ namespace InstantTraceViewerUI.Etw
                         _processFilterPid = -1;
                     }
 
-                    foreach (int pid in _loadedImages.Keys.OrderBy(pid => GetProcessName(pid, processNames), StringComparer.OrdinalIgnoreCase).ThenBy(pid => pid))
+                    foreach (int pid in loadedProcessIds.OrderBy(pid => GetProcessName(pid, processNames), StringComparer.OrdinalIgnoreCase).ThenBy(pid => pid))
                     {
                         string label = FormatProcessLabel(pid, processNames);
                         if (hasProcessSearch && !label.Contains(_processFilterSearch, StringComparison.OrdinalIgnoreCase))
@@ -372,7 +393,8 @@ namespace InstantTraceViewerUI.Etw
 
         public void ImageUnload(int pid, ulong imageBase, DateTime unloadTime)
         {
-            lock (_loadedImages)
+            _loadedImagesLock.EnterWriteLock();
+            try
             {
                 if (_loadedImages.TryGetValue(pid, out var loadedImages))
                 {
@@ -388,11 +410,16 @@ namespace InstantTraceViewerUI.Etw
                     }
                 }
             }
+            finally
+            {
+                _loadedImagesLock.ExitWriteLock();
+            }
         }
 
         public LoadedImage? GetLoadedImage(int pid, ulong virtualAddress, DateTime timestamp)
         {
-            lock (_loadedImages)
+            _loadedImagesLock.EnterReadLock();
+            try
             {
                 if (_loadedImages.TryGetValue(pid, out var loadedImages))
                 {
@@ -416,6 +443,10 @@ namespace InstantTraceViewerUI.Etw
                         }
                     }
                 }
+            }
+            finally
+            {
+                _loadedImagesLock.ExitReadLock();
             }
 
             return null;

@@ -37,6 +37,8 @@ namespace InstantTraceViewerUI.Symbols
         {
             public HashSet<Module> Modules { get; } = new();
 
+            public Dictionary<(Module Module, ulong RelativeVirtualAddress), string?> ResolvedSymbolCache { get; } = new();
+
             // public string? ResolvedBinaryPath { get; set; }
 
             public string? PdbPath { get; set; }
@@ -197,6 +199,24 @@ namespace InstantTraceViewerUI.Symbols
             }
         }
 
+        // Already-loaded PDBs are unaffected; the new path is used on the next symbol load.
+        public void SetSearchPath(string searchPath)
+        {
+            ArgumentNullException.ThrowIfNull(searchPath);
+
+            lock (DbgHelpLock)
+            {
+                if (PInvoke.SymSetSearchPathW(_sessionHandle, searchPath))
+                {
+                    WriteTraceLine($"SymbolResolver: Search path set to '{searchPath}'.");
+                }
+                else
+                {
+                    WriteTraceLine($"SymbolResolver: SymSetSearchPathW failed. LastError={Marshal.GetLastPInvokeError()}.");
+                }
+            }
+        }
+
         public enum FindBinaryMethod
         {
             // Use value from cache if available, otherwise search for it.
@@ -239,7 +259,12 @@ namespace InstantTraceViewerUI.Symbols
             symbolData.PdbPath = FindPdb(module);
             if (!string.IsNullOrEmpty(symbolData.PdbPath))
             {
-                symbolData.LoadedSymbolBase = TryLoadModule(module, symbolData.PdbPath);
+                ulong loadedSymbolBase = TryLoadModule(module, symbolData.PdbPath);
+                lock (symbolData)
+                {
+                    symbolData.ResolvedSymbolCache.Clear();
+                    symbolData.LoadedSymbolBase = loadedSymbolBase;
+                }
             }
             return symbolData.LoadedSymbolBase != 0;
         }
@@ -255,7 +280,14 @@ namespace InstantTraceViewerUI.Symbols
                     return null;
                 }
 
-                return ResolveLoadedSymbol(registeredModule.Module, symbolData.LoadedSymbolBase, relativeVirtualAddress);
+                var cacheKey = (registeredModule.Module, relativeVirtualAddress);
+                if (!symbolData.ResolvedSymbolCache.TryGetValue(cacheKey, out string? symbolName))
+                {
+                    symbolName = ResolveLoadedSymbol(registeredModule.Module, symbolData.LoadedSymbolBase, relativeVirtualAddress);
+                    symbolData.ResolvedSymbolCache.Add(cacheKey, symbolName);
+                }
+
+                return symbolName;
             }
         }
 
