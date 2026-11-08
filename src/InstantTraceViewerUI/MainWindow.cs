@@ -510,7 +510,7 @@ namespace InstantTraceViewerUI
                             {
                                 try
                                 {
-                                    var logcatTraceSource = new Logcat.LogcatTraceSource(_adbClient, device, this);
+                                    var logcatTraceSource = new Logcat.LogcatTraceSource(_adbClient, device);
                                     _windows.Add(new LogViewerWindow(logcatTraceSource));
                                 }
                                 catch (Exception ex)

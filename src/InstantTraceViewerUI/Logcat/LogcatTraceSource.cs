@@ -1,3 +1,4 @@
+using Hexa.NET.ImGui;
 using InstantTraceViewer;
 using InstantTraceViewer.Adb;
 using System;
@@ -6,10 +7,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace InstantTraceViewerUI.Logcat
 {
-    internal class LogcatTraceSource : ITraceSource
+    internal class LogcatTraceSource : ITraceSource, ITraceSourceGuiExtensions
     {
         public static readonly TraceSourceSchemaColumn ColumnProcess = new TraceSourceSchemaColumn { Name = "Process", DefaultColumnSize = 3.75f };
         public static readonly TraceSourceSchemaColumn ColumnThread = new TraceSourceSchemaColumn { Name = "Thread", DefaultColumnSize = 3.75f };
@@ -38,8 +40,20 @@ namespace InstantTraceViewerUI.Logcat
         private readonly CancellationTokenSource _tokenSource = new CancellationTokenSource();
         private readonly AdbClient _adbClient;
         private readonly AdbDevice _device;
-        private readonly IUiCommands _uiCommands;
-        private readonly Thread _readLogcatThread;
+        private DateTimeOffset? _lastReceivedTimestamp;
+        private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(5);
+
+        private enum ConnectionState
+        {
+            Connecting,
+            Connected,
+            WaitingToReconnect,
+        }
+
+        private volatile ConnectionState _connectionState; // Starts as Connecting.
+        private volatile string _connectionError;
+        private readonly SemaphoreSlim _reconnectRequested = new SemaphoreSlim(0, 1);
 
         private readonly ConcurrentDictionary<int, string> _processNames = new ConcurrentDictionary<int, string>();
         private readonly ConcurrentDictionary<uint, string> _uidPackageNames = new ConcurrentDictionary<uint, string>();
@@ -84,22 +98,16 @@ namespace InstantTraceViewerUI.Logcat
             [9999] = "nobody",
         };
 
-        public LogcatTraceSource(AdbClient adbClient, AdbDevice device, IUiCommands uiCommands)
+        public LogcatTraceSource(AdbClient adbClient, AdbDevice device)
         {
             _adbClient = adbClient;
             _device = device;
-            _uiCommands = uiCommands;
-
-            // Start with a snapshot of pids to process names and uids to package names.
-            RefreshProcessAndPackageNames();
-
-            _readLogcatThread = new Thread(() => ReadLogcatThread(adbClient, device));
-            _readLogcatThread.Start();
+            Task.Run(RunLogcatAsync);
         }
 
         public string DisplayName => $"{_device.Product} {_device.Model} {_device.Serial} (Logcat)";
 
-        public bool CanClear => true;
+        public bool CanClear => _connectionState == ConnectionState.Connected;
 
         public void Clear()
         {
@@ -121,15 +129,18 @@ namespace InstantTraceViewerUI.Logcat
         }
 
         private void RefreshProcessAndPackageNames()
+            => RefreshProcessAndPackageNamesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+        private async Task RefreshProcessAndPackageNamesAsync(CancellationToken cancellationToken)
         {
-            foreach (var process in _adbClient.ListProcessesAsync(_device, CancellationToken.None).GetAwaiter().GetResult())
+            foreach (var process in await _adbClient.ListProcessesAsync(_device, cancellationToken))
             {
                 _processNames.AddOrUpdate(process.ProcessId, _ => process.Name, (_, _) => process.Name);
             }
 
             // `pm list packages -U` groups multiple package names under the same UID when a sharedUserId is in use
             // (e.g. UID 1000 covers many system packages). Concatenate them so the UID column still surfaces every mapped name.
-            foreach (var package in _adbClient.ListPackagesAsync(_device, CancellationToken.None).GetAwaiter().GetResult())
+            foreach (var package in await _adbClient.ListPackagesAsync(_device, cancellationToken))
             {
                 _uidPackageNames.AddOrUpdate(
                     package.Uid,
@@ -178,7 +189,84 @@ namespace InstantTraceViewerUI.Logcat
             _tokenSource.Cancel();
         }
 
-        private async void ReadLogcatThread(AdbClient adbClient, AdbDevice device)
+        public void RenderToolstripExtras(IUiCommands uiCommands)
+        {
+            if (_tokenSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var state = _connectionState;
+            if (state == ConnectionState.Connected)
+            {
+                return;
+            }
+
+            ImGui.SameLine();
+            ImGui.PushStyleColor(ImGuiCol.Button, AppTheme.WarningColor);
+            ImGui.BeginDisabled(state == ConnectionState.Connecting);
+            if (ImGui.Button(state == ConnectionState.Connecting ? "Connecting to Logcat..." : "Reconnect") && _reconnectRequested.CurrentCount == 0)
+            {
+                _reconnectRequested.Release();
+            }
+            ImGui.EndDisabled();
+            ImGui.PopStyleColor();
+            string error = _connectionError;
+            if (error != null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            {
+                ImGui.BeginTooltip();
+                ImGui.TextUnformatted(error);
+                ImGui.EndTooltip();
+            }
+        }
+
+        public void RenderActiveWindows(IUiCommands uiCommands)
+        {
+        }
+
+        // Reads logcat until disposed, reconnecting every ReconnectInterval (or immediately when the user clicks) whenever the stream ends or fails.
+        private async Task RunLogcatAsync()
+        {
+            try
+            {
+                while (true)
+                {
+                    _connectionState = ConnectionState.Connecting;
+                    using var attemptTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_tokenSource.Token);
+                    attemptTokenSource.CancelAfter(ConnectionTimeout);
+                    try
+                    {
+                        await ReadLogcatAsync(attemptTokenSource.Token, () =>
+                        {
+                            // Limit setup time, but allow a connected stream to remain idle indefinitely.
+                            attemptTokenSource.CancelAfter(Timeout.InfiniteTimeSpan);
+                            _connectionState = ConnectionState.Connected;
+                        });
+                        _connectionError = "Logcat stream ended unexpectedly.";
+                    }
+                    catch (OperationCanceledException) when (!_tokenSource.IsCancellationRequested)
+                    {
+                        _connectionError = $"Connecting to Logcat timed out after {ConnectionTimeout.TotalSeconds} seconds.";
+                    }
+                    catch (Exception ex)
+                    {
+                        // This can happen if the ADB server is killed or the device is unplugged. Disposal is handled by the wait below.
+                        _connectionError = $"Unexpected error occurred while reading logcat:\n\n{ex}";
+                    }
+
+                    // Discard a click that raced with the previous wait ending.
+                    _reconnectRequested.Wait(0);
+                    _connectionState = ConnectionState.WaitingToReconnect;
+                    await _reconnectRequested.WaitAsync(ReconnectInterval, _tokenSource.Token);
+                }
+            }
+            catch (OperationCanceledException) when (_tokenSource.IsCancellationRequested)
+            {
+                // Trace source is being disposed because the user is closing us.
+            }
+        }
+
+        private async Task ReadLogcatAsync(CancellationToken cancellationToken, Action onConnected)
         {
             void AddTraceRecord(LogcatRecord record)
             {
@@ -193,49 +281,49 @@ namespace InstantTraceViewerUI.Logcat
                 }
             }
 
-            try
+            await RefreshProcessAndPackageNamesAsync(cancellationToken);
+
+            await foreach (AdbLogEntry androidLogEntry in _adbClient.RunLogServiceAsync(
+                _device,
+                [AdbLogId.Main, AdbLogId.Crash, AdbLogId.System, AdbLogId.Security, AdbLogId.Radio],
+                cancellationToken,
+                afterTimestamp: _lastReceivedTimestamp,
+                onConnected: onConnected))
             {
-                await foreach (AdbLogEntry androidLogEntry in adbClient.RunLogServiceAsync(device, [AdbLogId.Main, AdbLogId.Crash, AdbLogId.System, AdbLogId.Security, AdbLogId.Radio], _tokenSource.Token))
+                // Advance the timestamp even while paused so reconnect does not replay intentionally skipped events.
+                // Retain this high-water mark across Clear and reconnect to avoid replaying previously received events.
+                if (!_lastReceivedTimestamp.HasValue || androidLogEntry.TimeStamp > _lastReceivedTimestamp.Value)
                 {
-                    if (IsPaused)
-                    {
-                        continue;
-                    }
-
-                    ProcessSystemMessage(androidLogEntry);
-
-                    _processNames.TryGetValue(androidLogEntry.ProcessId, out string processName);
-                    string packageName = null;
-                    if (androidLogEntry.Uid.HasValue)
-                    {
-                        _uidPackageNames.TryGetValue(androidLogEntry.Uid.Value, out packageName);
-                    }
-
-                    AddTraceRecord(new LogcatRecord
-                    {
-                        ProcessId = androidLogEntry.ProcessId,
-                        ProcessName = processName,
-                        ThreadId = androidLogEntry.ThreadId,
-                        Uid = androidLogEntry.Uid,
-                        PackageName = packageName,
-                        Timestamp = androidLogEntry.TimeStamp.ToLocalTime().DateTime,
-                        Priority = androidLogEntry.Priority,
-                        Message = androidLogEntry.Message,
-                        Tag = androidLogEntry.Tag,
-                        LogId = androidLogEntry.Id,
-                    });
+                    _lastReceivedTimestamp = androidLogEntry.TimeStamp;
                 }
 
-                _uiCommands.ShowMessageBox("Logcat stream ended unexpectedly.", "Logcat error", isError: true);
-            }
-            catch (OperationCanceledException)
-            {
-                // Trace source is being disposed because the user is closing us.
-            }
-            catch (Exception ex)
-            {
-                // This can happen if the ADB server is killed.
-                _uiCommands.ShowMessageBox($"Unexpected error occurred while reading logcat:\n\n{ex}", "Logcat error", isError: true);
+                if (IsPaused)
+                {
+                    continue;
+                }
+
+                ProcessSystemMessage(androidLogEntry);
+
+                _processNames.TryGetValue(androidLogEntry.ProcessId, out string processName);
+                string packageName = null;
+                if (androidLogEntry.Uid.HasValue)
+                {
+                    _uidPackageNames.TryGetValue(androidLogEntry.Uid.Value, out packageName);
+                }
+
+                AddTraceRecord(new LogcatRecord
+                {
+                    ProcessId = androidLogEntry.ProcessId,
+                    ProcessName = processName,
+                    ThreadId = androidLogEntry.ThreadId,
+                    Uid = androidLogEntry.Uid,
+                    PackageName = packageName,
+                    Timestamp = androidLogEntry.TimeStamp.ToLocalTime().DateTime,
+                    Priority = androidLogEntry.Priority,
+                    Message = androidLogEntry.Message,
+                    Tag = androidLogEntry.Tag,
+                    LogId = androidLogEntry.Id,
+                });
             }
         }
 

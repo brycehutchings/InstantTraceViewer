@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -75,15 +76,22 @@ namespace InstantTraceViewer.Adb
             return AdbPackageParser.Parse(packageList);
         }
 
+        /// <summary>
+        /// Streams log entries, optionally resuming strictly after a UTC timestamp.
+        /// <paramref name="onConnected"/> is invoked once the device service is open, even if no entries arrive.
+        /// </summary>
         public async IAsyncEnumerable<AdbLogEntry> RunLogServiceAsync(
             AdbDevice device,
             IReadOnlyList<AdbLogId> logIds,
-            [EnumeratorCancellation] CancellationToken cancellationToken)
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            DateTimeOffset? afterTimestamp = null,
+            Action? onConnected = null)
         {
             // Use the "exec:" service (raw pipe, no PTY) instead of "shell:" for the binary "-B"
             // stream. "shell:" merges the command's stderr into stdout and can apply PTY newline
             // translation, both of which corrupt the binary output.
-            using var connection = await OpenDeviceServiceAsync(device, $"exec:{BuildLogcatCommand(logIds)}", cancellationToken);
+            using var connection = await OpenDeviceServiceAsync(device, $"exec:{BuildLogcatCommand(logIds, afterTimestamp)}", cancellationToken);
+            onConnected?.Invoke();
             var parser = new AdbLogcatBinaryParser();
 
             while (true)
@@ -94,7 +102,11 @@ namespace InstantTraceViewer.Adb
                     yield break;
                 }
 
-                yield return entry;
+                // The "-T" argument passed to logcat is inclusive, so we must compare to keep the boundary exclusive.
+                if (!afterTimestamp.HasValue || entry.TimeStamp > afterTimestamp.Value)
+                {
+                    yield return entry;
+                }
             }
         }
 
@@ -115,7 +127,7 @@ namespace InstantTraceViewer.Adb
             }
         }
 
-        private static string BuildLogcatCommand(IReadOnlyList<AdbLogId> logIds)
+        private static string BuildLogcatCommand(IReadOnlyList<AdbLogId> logIds, DateTimeOffset? afterTimestamp)
         {
             var command = new StringBuilder("logcat -B");
 
@@ -127,6 +139,16 @@ namespace InstantTraceViewer.Adb
                     command.Append(" -b ");
                     command.Append(bufferName);
                 }
+            }
+
+            if (afterTimestamp.HasValue)
+            {
+                var timestamp = afterTimestamp.Value;
+                long nanoseconds = timestamp.UtcTicks % TimeSpan.TicksPerSecond * TimeSpan.NanosecondsPerTick;
+                command.Append(" -T ");
+                command.Append(timestamp.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
+                command.Append('.');
+                command.Append(nanoseconds.ToString("D9", CultureInfo.InvariantCulture));
             }
 
             return command.ToString();
